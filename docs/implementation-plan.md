@@ -32,8 +32,8 @@
 **Exit criteria:** repeatable evidence that approach works sufficiently on target (see plan section 3).
 
 ## Phase 2 — Domain and persistence foundation
-- [ ] Scaffold solution/project structure (`src/`, `tests/`, central props/package mgmt)
-- [ ] Implement core identities, measurement types, time-range rules
+- [~] Scaffold solution/project structure (`src/`, `tests/`, central props/package mgmt) — `Flow.slnx`, core projects, test projects, `Directory.Build.props`, and project references added; full solution build not yet fully verified in this session (Avalonia restore/build timed out)
+- [~] Implement core identities, measurement types, time-range rules — initial `Flow.Domain` types added (process/application identity, measurement primitives, monitoring state, time ranges/window resolver, usage sample model); domain project builds cleanly
 - [ ] SQLite schema/migrations/repositories
 - [ ] Idempotent ingestion and transactional aggregation pipeline
 - [ ] Unit and integration tests (time boundaries, PID reuse, aggregation, persistence)

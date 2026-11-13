@@ -136,9 +136,33 @@
 - Stable identity completeness, PID-reuse safety, unattributed accounting, interface-counter comparison, and overhead: **still pending**.
 
 ### Next steps
-1. Rebuild/rerun updated prototype (`flow_tcp_bytes.bpf.c` + loader) to validate **unattributed counters** and **cached identity for exited processes** with controlled traffic and synchronized interface-counter snapshots.
-2. Design/implement stable process identity records (PID + start time/generation binding, uid/exe/cgroup/ns metadata, PID-reuse-safe handling) and first-seen event capture suitable for daemon persistence.
-3. Evaluate broader coverage (UDP/QUIC, cgroup/tc hooks), namespace/VPN/virtual-interface semantics, double-count risks, and overhead; record ADRs and update gate status with evidence.
+1. Continue **Phase 2**: finalize domain contracts/events, implement SQLite schema/migrations/repositories in `Flow.Infrastructure`, and add unit/integration tests (time boundaries, identity/PID reuse, aggregation/rollups).
+2. Implement `Flow.Application` abstractions/use cases and `Flow.Linux` monitoring integration surface (bridging validated prototype learnings to production provider design), keeping attribution semantics explicit.
+3. Progress daemon (`Flow.Daemon`) and IPC/contracts in parallel with persistence; continue desktop (`Flow.Desktop`) after core query/health paths are stable.
+4. Revisit Phase 1 gate evidence as needed: controlled interface-counter comparisons, overhead, UDP/namespace/VPN coverage, and stable persisted identity behavior.
+
+## 2026-11-13 (solution scaffolding and initial domain foundation)
+
+### Completed
+- User-provided enriched TCP prototype run (with fixed `startticks`) showed correct per-process identity correlation fields for live processes (e.g. non-zero startticks across msedge/code/opencode). Prototype validation step considered sufficient for now by user direction; **full Phase 1 gate criteria remain not fully satisfied** (UDP/coverage, controlled counter/overhead reports, persisted stable identity, etc.).
+- Scaffolded .NET solution/app structure:
+  - `Flow.slnx`, `Directory.Build.props` (net10.0, nullable, implicit usings)
+  - `src/`: `Flow.Domain`, `Flow.Application`, `Flow.Infrastructure`, `Flow.Linux`, `Flow.Contracts`, `Flow.Daemon` (worker), `Flow.Desktop` (Avalonia MVVM template)
+  - `tests/`: `Flow.Domain.Tests`, `Flow.Application.Tests`, `Flow.Infrastructure.Tests`, `Flow.Linux.Tests`, `Flow.Daemon.Tests`, `Flow.SystemTests`
+  - Project references wired per layered architecture baseline
+- Implemented initial `Flow.Domain` foundation:
+  - `Identity`: `ProcessIdentity` (stable key inputs), `ApplicationIdentity`
+  - `Measurement`: `TrafficDirection`, `ByteCounters`, `MeasurementPoint`
+  - `Monitoring`: `MonitoringState`
+  - `Time`: `TimeRangeKind`, `TimeWindow` (`[start,end)`), `TimeRangeResolver` (rolling/calendar ranges, local TZ/DST-aware boundary handling, configurable week start)
+  - `Model`: `NetworkUsageSample`
+
+### Test results
+- `dotnet build src/Flow.Domain/Flow.Domain.csproj -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet build Flow.slnx -v minimal` → **timed out in this session** (Avalonia restore/build in progress or slow); full solution build status not yet confirmed.
+
+### Current work
+- Phase 2 started (scaffolding + initial domain model). Persistence, application services, Linux provider integration, daemon/desktop implementation remain in progress/todo.
 
 ## 2026-11-13 (prototype hardening: unattributed + identity caching)
 

@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Flow.Application/Flow.Application.csproj" />
+    <Project Path="src/Flow.Contracts/Flow.Contracts.csproj" />
+    <Project Path="src/Flow.Daemon/Flow.Daemon.csproj" />
+    <Project Path="src/Flow.Desktop/Flow.Desktop.csproj" />
+    <Project Path="src/Flow.Domain/Flow.Domain.csproj" />
+    <Project Path="src/Flow.Infrastructure/Flow.Infrastructure.csproj" />
+    <Project Path="src/Flow.Linux/Flow.Linux.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Flow.Application.Tests/Flow.Application.Tests.csproj" />
+    <Project Path="tests/Flow.Daemon.Tests/Flow.Daemon.Tests.csproj" />
+    <Project Path="tests/Flow.Domain.Tests/Flow.Domain.Tests.csproj" />
+    <Project Path="tests/Flow.Infrastructure.Tests/Flow.Infrastructure.Tests.csproj" />
+    <Project Path="tests/Flow.Linux.Tests/Flow.Linux.Tests.csproj" />
+    <Project Path="tests/Flow.SystemTests/Flow.SystemTests.csproj" />
+  </Folder>
+</Solution>
