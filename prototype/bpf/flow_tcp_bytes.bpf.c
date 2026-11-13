@@ -93,8 +93,8 @@ int BPF_PROG(tcp_sendmsg_exit, struct sock *sk, struct msghdr *msg, size_t size,
     return 0;
 }
 
-SEC("fexit/tcp_recvmsg")
-int BPF_PROG(tcp_recvmsg_exit, struct sock *sk, struct msghdr *msg, size_t len, int flags, int *addr_len, int ret)
+SEC("kretprobe/tcp_recvmsg")
+int BPF_KRETPROBE(tcp_recvmsg_exit, int ret)
 {
     if (ret > 0)
         add_rx((__u64)ret);

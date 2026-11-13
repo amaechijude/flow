@@ -1,9 +1,9 @@
 # TCP byte attribution prototype (BPF)
 
-This prototype counts bytes returned by kernel TCP send/recv functions using BTF-enabled `fexit` hooks:
+This prototype counts bytes returned by kernel TCP send/recv functions:
 
 - `fexit/tcp_sendmsg` → upload/TX bytes (`ret > 0`)
-- `fexit/tcp_recvmsg` → download/RX bytes (`ret > 0`)
+- `kretprobe/tcp_recvmsg` → download/RX bytes (`ret > 0`)
 
 Counters are aggregated per `(tgid, uid)` in BPF maps and printed periodically by a userspace loader.
 

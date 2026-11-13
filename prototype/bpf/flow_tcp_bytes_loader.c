@@ -65,17 +65,24 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    err = flow_tcp_bytes_bpf__attach(skel);
-    if (err) {
-        fprintf(stderr, "failed to attach BPF programs: %d (%s)\n", err, strerror(-err));
+    skel->links.tcp_sendmsg_exit = bpf_program__attach(skel->progs.tcp_sendmsg_exit);
+    if (!skel->links.tcp_sendmsg_exit) {
+        err = -errno;
+        fprintf(stderr, "failed to attach tcp_sendmsg_exit: %d (%s)\n", err, strerror(-err));
         flow_tcp_bytes_bpf__destroy(skel);
         return 1;
+    }
+    skel->links.tcp_recvmsg_exit = bpf_program__attach(skel->progs.tcp_recvmsg_exit);
+    if (!skel->links.tcp_recvmsg_exit) {
+        err = -errno;
+        fprintf(stderr, "warning: failed to attach tcp_recvmsg_exit: %d (%s) (continuing with TX-only accounting)\n", err, strerror(-err));
     }
 
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
 
-    printf("flow_tcp_bytes prototype attached (fexit/tcp_sendmsg, fexit/tcp_recvmsg).\n");
+    printf("flow_tcp_bytes prototype attached (TX: tcp_sendmsg%s).\n",
+           skel->links.tcp_recvmsg_exit ? ", RX: tcp_recvmsg" : "");
     printf("Measurement note: counts bytes returned by TCP send/recv kernel functions (TCP payload bytes at that hook), cumulative per (tgid,uid) while attached. UDP/other protocols and non-TCP paths are NOT counted. Unattributed/context edge cases require further validation.\n");
     printf("Sampling every %d s for %d rounds (Ctrl-C to stop early).\n", interval, rounds);
 

@@ -110,4 +110,5 @@
 
 ### Blockers / risks
 - **Privileged runtime validation pending:** prototype must be executed with adequate privileges/capabilities to attach/load and observe real traffic.
+- **Signature/attach compatibility:** initial `fexit/tcp_recvmsg` BTF signature did not match kernel 7.0 on this host (verifier load failure); RX hook switched to `kretprobe/tcp_recvmsg` for broader compatibility (needs revalidation under `sudo`).
 - **Gate criteria still unmet:** current prototype is TCP send/recv return-byte accounting per TGID/UID only; does not yet provide stable process identity, PID-reuse-safe records, process-exit lifecycle handling, unattributed bucket, UDP/namespace/VPN coverage analysis, or controlled accuracy/overhead report.
