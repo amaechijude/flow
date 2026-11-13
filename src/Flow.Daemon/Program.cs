@@ -2,6 +2,7 @@ using Flow.Application.Monitoring;
 using Flow.Application.Persistence;
 using Flow.Daemon;
 using Flow.Infrastructure.Sqlite;
+using Flow.Linux.Monitoring;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -24,7 +25,13 @@ builder.Services.AddSingleton(connectionFactory);
 builder.Services.AddSingleton<UsageRepository>();
 builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
-builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
+
+var monitorKind = builder.Configuration["Flow:Monitor"];
+if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
+    builder.Services.AddSingleton<INetworkMonitor, ProcNetDevMonitor>();
+else
+    builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
+
 builder.Services.AddSingleton<UsageIngestionPipeline>();
 builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
 builder.Services.AddHostedService<Worker>();

@@ -47,6 +47,82 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         return Task.FromResult(new UsageSummaryDto(startUtc, endUtc, interfaceId, rx, tx, rxu, txu));
     }
 
+    public Task<IReadOnlyList<ApplicationUsageDto>> GetTopApplicationsAsync(
+        DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT
+              COALESCE(b.application_key, '(unattributed)') AS app_key,
+              a.display_name,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.rx_bytes ELSE 0 END), 0) AS rx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.tx_bytes ELSE 0 END), 0) AS tx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.rx_bytes ELSE 0 END), 0) AS rx_unattr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.tx_bytes ELSE 0 END), 0) AS tx_unattr,
+              COALESCE(SUM(b.rx_bytes + b.tx_bytes), 0) AS total
+            FROM usage_buckets b
+            LEFT JOIN applications a ON a.application_key = b.application_key
+            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+              AND ($iface IS NULL OR b.interface_id = $iface)
+            GROUP BY COALESCE(b.application_key, '(unattributed)'), a.display_name
+            ORDER BY total DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$limit", Math.Max(1, limit));
+        using var reader = cmd.ExecuteReader();
+        var list = new List<ApplicationUsageDto>();
+        while (reader.Read())
+        {
+            list.Add(new ApplicationUsageDto(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? 0 : reader.GetInt64(2),
+                reader.IsDBNull(3) ? 0 : reader.GetInt64(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt64(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt64(5)));
+        }
+        return Task.FromResult<IReadOnlyList<ApplicationUsageDto>>(list);
+    }
+
+    public Task<IReadOnlyList<UsageTimePointDto>> GetUsageTimeSeriesAsync(
+        DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, string? applicationKey = null, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT bucket_start_utc,
+                   COALESCE(SUM(rx_bytes), 0) AS rx,
+                   COALESCE(SUM(tx_bytes), 0) AS tx
+            FROM usage_buckets
+            WHERE bucket_start_utc >= $start AND bucket_start_utc < $end
+              AND ($iface IS NULL OR interface_id = $iface)
+              AND ($app IS NULL OR application_key = $app)
+            GROUP BY bucket_start_utc
+            ORDER BY bucket_start_utc ASC;
+            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$app", (object?)applicationKey ?? DBNull.Value);
+        using var reader = cmd.ExecuteReader();
+        var list = new List<UsageTimePointDto>();
+        while (reader.Read())
+        {
+            var ts = DateTimeOffset.Parse(reader.GetString(0), null, System.Globalization.DateTimeStyles.RoundtripKind);
+            list.Add(new UsageTimePointDto(
+                ts,
+                reader.IsDBNull(1) ? 0 : reader.GetInt64(1),
+                reader.IsDBNull(2) ? 0 : reader.GetInt64(2)));
+        }
+        return Task.FromResult<IReadOnlyList<UsageTimePointDto>>(list);
+    }
+
     public Task UpsertMinuteBucketAsync(
         DateTimeOffset bucketStartUtc,
         string? applicationKey,

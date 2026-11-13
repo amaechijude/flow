@@ -180,7 +180,24 @@
 - Full `dotnet build Flow.slnx` / `dotnet test Flow.slnx` not rerun in this increment (previous verified state: build and tests passing before these additions).
 
 ### Current work
-- Phase 2 in progress: ingestion/aggregation pipeline, metadata persistence hooks, and daemon wiring in place (null monitor, SQLite-backed writer, health/diagnostics, session tracking); richer repositories/queries, migrations evolution, real Linux provider adapter, IPC, and broader tests still pending.
+- Phase 2 in progress: ingestion/aggregation pipeline, metadata/session persistence, initial historical query APIs, and daemon wiring in place; migrations evolution, production per-process Linux provider adapter, IPC/GUI integration, and broader tests still pending.
+
+## 2026-11-13 (query APIs, procfs monitor, and tests)
+
+### Completed
+- Added usage query DTOs and repository methods:
+  - `Flow.Contracts.Usage.ApplicationUsageDto`, `UsageTimePointDto`
+  - `Flow.Infrastructure.Sqlite.UsageRepository`: `GetTopApplicationsAsync`, `GetUsageTimeSeriesAsync` (grouped 1m bucket series)
+- Added `Flow.Linux.Monitoring.ProcNetDevMonitor` (`/proc/net/dev` delta sampling) as an **unattributed interface-level** `INetworkMonitor` fallback (explicit measurement point/attribution note; not per-process attribution).
+- `Flow.Daemon` monitor selection: `Flow:Monitor=procfs` uses `ProcNetDevMonitor`, otherwise `NullNetworkMonitor`.
+- Expanded infrastructure tests (`SqliteUsageRepositoryTests`) to cover top-app and time-series queries (3 tests total in project).
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal` → **passed** (8 tests total: Domain 1, Application 1, Infrastructure 3, Linux 1, Daemon 1, System 1).
+
+### Notes
+- `ProcNetDevMonitor` provides operational end-to-end flow for interface totals only; per-application/per-process attribution remains dependent on validated eBPF/provider work.
 
 ## 2026-11-13 (metadata persistence, session tracking, and infrastructure tests)
 

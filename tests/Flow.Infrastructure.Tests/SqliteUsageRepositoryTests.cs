@@ -73,6 +73,51 @@ public sealed class SqliteUsageRepositoryTests
         }
     }
 
+    [Fact]
+    public async Task TopApplicationsAndTimeSeriesQueriesReturnExpectedData()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");
+        try
+        {
+            var factory = new SqliteConnectionFactory(dbPath);
+            using (var conn = factory.CreateOpenConnection())
+                DbMigrator.Migrate(conn);
+
+            var repo = new UsageRepository(factory);
+            var b1 = new DateTimeOffset(2026, 11, 13, 10, 0, 0, TimeSpan.Zero);
+            var b2 = b1.AddMinutes(1);
+
+            await repo.WriteMinuteDeltasAsync(new[]
+            {
+                new UsageBucketDelta(b1, "app.a", "p1", "wlan0", 100, 10, true, null, "test", "hook"),
+                new UsageBucketDelta(b1, "app.b", "p2", "wlan0", 50, 5, true, null, "test", "hook"),
+                new UsageBucketDelta(b2, "app.a", "p1", "wlan0", 30, 3, true, null, "test", "hook"),
+                new UsageBucketDelta(b2, null, null, "wlan0", 7, 1, false, "unattributed", "test", "hook"),
+            });
+
+            var top = await repo.GetTopApplicationsAsync(b1, b1.AddMinutes(2), "wlan0", 10);
+            Assert.True(top.Count >= 2);
+            Assert.Equal("app.a", top[0].ApplicationKey);
+            Assert.Equal(130, top[0].RxBytes);
+            Assert.Equal(13, top[0].TxBytes);
+
+            var series = await repo.GetUsageTimeSeriesAsync(b1, b1.AddMinutes(2), "wlan0", "app.a");
+            Assert.Equal(2, series.Count);
+            Assert.Equal(100, series[0].RxBytes);
+            Assert.Equal(30, series[1].RxBytes);
+
+            var summary = await repo.GetSummaryAsync(b1, b1.AddMinutes(2), "wlan0");
+            Assert.Equal(180, summary.RxBytes);
+            Assert.Equal(18, summary.TxBytes);
+            Assert.Equal(7, summary.UnattributedRxBytes);
+            Assert.Equal(1, summary.UnattributedTxBytes);
+        }
+        finally
+        {
+            TryDeleteDb(dbPath);
+        }
+    }
+
     private static void TryDeleteDb(string dbPath)
     {
         try
