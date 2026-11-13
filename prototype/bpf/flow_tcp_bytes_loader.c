@@ -30,6 +30,17 @@ struct prev_entry {
     __u64 tx;
     __u64 rx;
     int used;
+    int identity_cached;
+    char comm[64];
+    char exe[256];
+    unsigned long long startticks;
+};
+
+struct unattributed_val {
+    __u64 tx_bytes;
+    __u64 rx_bytes;
+    __u64 tx_events;
+    __u64 rx_events;
 };
 
 #define MAX_PREV 4096
@@ -43,11 +54,12 @@ static struct prev_entry *find_prev(__u32 tgid, __u32 uid)
     }
     for (int i = 0; i < MAX_PREV; i++) {
         if (!prev[i].used) {
+            memset(&prev[i], 0, sizeof(prev[i]));
             prev[i].used = 1;
             prev[i].tgid = tgid;
             prev[i].uid = uid;
-            prev[i].tx = 0;
-            prev[i].rx = 0;
+            snprintf(prev[i].comm, sizeof(prev[i].comm), "?");
+            snprintf(prev[i].exe, sizeof(prev[i].exe), "-");
             return &prev[i];
         }
     }
@@ -104,31 +116,59 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
     struct traffic_key key = {}, next_key;
     struct traffic_val val;
     int fd = bpf_map__fd(skel->maps.traffic);
+    int ufd = bpf_map__fd(skel->maps.unattributed);
 
-    printf("\n--- snapshot %d: TCP attribution (cumulative, delta, process info best-effort) ---\n", snapshot_idx);
-    printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/STARTTICKS");
+    printf("\n--- snapshot %d: TCP attribution (cumulative, delta, cached identity) ---\n", snapshot_idx);
+    printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/STARTTICKS/STATE");
     while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
         if (bpf_map_lookup_elem(fd, &next_key, &val) == 0) {
             struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid);
             unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
+            int alive = 0;
+            char live_comm[64] = {0}, live_exe[256] = {0};
+            read_proc_comm(next_key.tgid, live_comm, sizeof(live_comm));
+            read_proc_exe(next_key.tgid, live_exe, sizeof(live_exe));
+            unsigned long long st = read_proc_startticks(next_key.tgid);
+            if (live_comm[0] != '?' || live_exe[0] != '-' || st != 0)
+                alive = 1;
             if (pe) {
                 dtx = (val.tx_bytes >= pe->tx) ? (val.tx_bytes - pe->tx) : val.tx_bytes;
                 drx = (val.rx_bytes >= pe->rx) ? (val.rx_bytes - pe->rx) : val.rx_bytes;
                 pe->tx = val.tx_bytes;
                 pe->rx = val.rx_bytes;
+                if (alive) {
+                    snprintf(pe->comm, sizeof(pe->comm), "%s", live_comm);
+                    snprintf(pe->exe, sizeof(pe->exe), "%s", live_exe);
+                    pe->startticks = st;
+                    pe->identity_cached = 1;
+                }
             }
-            char comm[64], exe[256];
-            read_proc_comm(next_key.tgid, comm, sizeof(comm));
-            read_proc_exe(next_key.tgid, exe, sizeof(exe));
-            unsigned long long st = read_proc_startticks(next_key.tgid);
-            char extra[320];
-            snprintf(extra, sizeof(extra), "%s (startticks=%llu)", exe, st);
+            const char *comm = pe ? pe->comm : live_comm;
+            const char *exe = pe ? pe->exe : live_exe;
+            unsigned long long show_st = pe ? pe->startticks : st;
+            char extra[360];
+            snprintf(extra, sizeof(extra), "%s (startticks=%llu%s)", exe, show_st, alive ? "" : ", exited/unknown");
             printf("%-8u %-6u %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
                    next_key.tgid, next_key.uid,
                    (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                    dtx, drx, comm, extra);
         }
         key = next_key;
+    }
+
+    __u32 uk = 0;
+    struct unattributed_val uv = {0};
+    static __u64 prev_utx = 0, prev_urx = 0;
+    if (bpf_map_lookup_elem(ufd, &uk, &uv) == 0) {
+        unsigned long long dutx = (uv.tx_bytes >= prev_utx) ? (uv.tx_bytes - prev_utx) : uv.tx_bytes;
+        unsigned long long durx = (uv.rx_bytes >= prev_urx) ? (uv.rx_bytes - prev_urx) : uv.rx_bytes;
+        prev_utx = uv.tx_bytes;
+        prev_urx = uv.rx_bytes;
+        char info[128];
+        snprintf(info, sizeof(info), "events tx=%llu rx=%llu", (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
+        printf("UNATTRIB %-6s %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
+               "-", (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes,
+               dutx, durx, "(no-task)", info);
     }
     fflush(stdout);
 }

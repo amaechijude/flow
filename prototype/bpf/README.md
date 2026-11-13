@@ -10,8 +10,9 @@ Counters are aggregated per `(tgid, uid)` in BPF maps and printed periodically b
 ## Measurement semantics (important)
 - **What is counted:** bytes returned by `tcp_sendmsg` / `tcp_recvmsg` at hook time (TCP-path bytes observed by these functions), cumulative while attached.
 - **Not counted:** UDP, QUIC-over-UDP, ICMP, non-TCP kernel paths, traffic before attach/after detach.
-- **Attribution scope:** keyed by current task TGID/UID at hook execution; userspace must combine with process start time/cmdline/exe for stable identity and handle PID reuse/process exit. Edge cases (context/ownership nuances, namespaces, tunnels/VPN stacks) require validation.
-- **This is a prototype, not final Flow attribution.** Do not interpret as complete or production-accurate per-application accounting.
+- **Attribution scope:** keyed by current task TGID/UID at hook execution. Userspace loader enriches/caches `/proc` identity (comm/exe/startticks) when first seen/alive to retain context if a process exits before later snapshots.
+- **Unattributed (prototype):** when `tgid==0` in hook context, bytes/events are counted in an explicit unattributed map/counter instead of being dropped silently.
+- **This is a prototype, not final Flow attribution.** Edge cases (context/ownership nuances, namespaces, tunnels/VPN stacks, PID reuse handling in storage, UDP coverage) require validation.
 
 ## Build artifacts
 - `flow_tcp_bytes.bpf.c` — BPF program source

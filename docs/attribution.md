@@ -65,7 +65,11 @@ Prototype and product must handle (to supported extent):
   - Enriched run (`2s x 20`): attributed traffic observed for multiple applications including `msedge`, `code` (Snap path), and `opencode`, with changing deltas over time.
 - **Process-exit visibility issue:** TGIDs observed with counters but unresolved `/proc` enrichment (`COMM=?`, `EXE=-`) at snapshot time (likely exited/short-lived), demonstrating that enrichment must be captured at event/first-seen time and retained independently of process liveness.
 - **Measurement point (current prototype):** bytes taken from positive return values of `tcp_sendmsg` / `tcp_recvmsg` kernel functions (TCP-path bytes at those hooks). Not equivalent to IP/link/interface counters.
-- **Tooling note:** loader `startticks` parsing bug produced `0` in the enriched run; fixed in source pending rebuild/rerun for correct process-start correlation.
+- **Tooling note:** loader `startticks` parsing bug produced `0` in an earlier run; fixed and subsequently confirmed to report non-zero startticks in rerun.
+
+### Recent prototype enhancements (source updated)
+- **Explicit unattributed accounting:** BPF now increments an unattributed counter/map for hook events where `tgid==0` (instead of silently ignoring), and loader reports unattributed totals/deltas/events.
+- **Identity caching:** loader caches first-seen/alive `/proc` identity (comm/exe/startticks) per TGID+UID so exited processes can retain last-known context in snapshots (partial progress; full stable identity/PID-reuse-safe persistence still pending).
 
 ### Not yet satisfied (gate still open)
 - **Stable identity:** prototype keys are `(tgid, uid)` only; no PID/start-time/generation correlation, no exe/cmdline/cgroup/namespace metadata persisted for attribution records.

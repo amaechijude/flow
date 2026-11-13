@@ -136,6 +136,17 @@
 - Stable identity completeness, PID-reuse safety, unattributed accounting, interface-counter comparison, and overhead: **still pending**.
 
 ### Next steps
-1. Rebuild/rerun loader to verify `startticks` fix and collect controlled-transfer evidence (known PID/start time/exe, synchronized `/proc/net/dev` or `ip -s link` deltas).
-2. Add explicit unattributed accounting in BPF/userspace and capture identity at first-seen/event time where possible.
-3. Evaluate broader coverage (UDP/QUIC, cgroup/tc hooks), namespace/VPN behavior, and overhead; record ADRs and update gate status with evidence.
+1. Rebuild/rerun updated prototype (`flow_tcp_bytes.bpf.c` + loader) to validate **unattributed counters** and **cached identity for exited processes** with controlled traffic and synchronized interface-counter snapshots.
+2. Design/implement stable process identity records (PID + start time/generation binding, uid/exe/cgroup/ns metadata, PID-reuse-safe handling) and first-seen event capture suitable for daemon persistence.
+3. Evaluate broader coverage (UDP/QUIC, cgroup/tc hooks), namespace/VPN/virtual-interface semantics, double-count risks, and overhead; record ADRs and update gate status with evidence.
+
+## 2026-11-13 (prototype hardening: unattributed + identity caching)
+
+### Completed
+- Updated BPF prototype (`prototype/bpf/flow_tcp_bytes.bpf.c`) to count `tgid==0` hook contexts into an explicit **unattributed** map (tx/rx bytes and event counts) instead of dropping them.
+- Updated loader (`prototype/bpf/flow_tcp_bytes_loader.c`) to report unattributed totals/deltas/events and to cache `/proc` identity (comm/exe/startticks) on first-seen/alive observations for later snapshots when processes exit.
+- Rebuilt BPF object/skeleton and verified loader compiles after changes. (Binaries/objects remain rebuildable artifacts; source committed.)
+- User confirmed rerun with fixed `startticks` looked correct (non-zero startticks observed for live processes).
+
+### Gate impact
+- Improves transparency (unattributed visibility) and resilience of enrichment across process exit, but **does not** yet satisfy full gate requirements (stable persisted identity model, PID-reuse-proof records, controlled accuracy/overhead report, UDP/namespace/VPN coverage).
