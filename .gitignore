@@ -47,3 +47,4 @@ logs/
 *.buildinfo
 *.changes
 /packaging/out/
+st.sh
