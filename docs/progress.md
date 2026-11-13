@@ -109,6 +109,21 @@
 - Runtime without sufficient privilege: **failed as expected** with `EPERM` / `failed to load BPF object` on this host (`unprivileged_bpf_disabled=2`), confirming privilege requirement; **no validated per-process attribution data collected yet**.
 
 ### Blockers / risks
-- **Privileged runtime validation pending:** prototype must be executed with adequate privileges/capabilities to attach/load and observe real traffic.
-- **Signature/attach compatibility:** initial `fexit/tcp_recvmsg` BTF signature did not match kernel 7.0 on this host (verifier load failure); RX hook switched to `kretprobe/tcp_recvmsg` for broader compatibility (needs revalidation under `sudo`).
-- **Gate criteria still unmet:** current prototype is TCP send/recv return-byte accounting per TGID/UID only; does not yet provide stable process identity, PID-reuse-safe records, process-exit lifecycle handling, unattributed bucket, UDP/namespace/VPN coverage analysis, or controlled accuracy/overhead report.
+- **Gate criteria still unmet:** live privileged run confirmed basic TCP per-TGID/UID counting, but prototype still lacks stable process identity (PID start-time/generation, exe/cgroup/ns correlation), PID-reuse/process-exit handling, explicit **unattributed** bucket, UDP/non-TCP coverage, controlled interface-counter comparison for the same transfer window, overhead measurements, and namespace/VPN/virtual-interface validation.
+- **Hook scope/semantics:** counts bytes from `tcp_sendmsg` return / `tcp_recvmsg` return at hook point (TCP-path only); not directly comparable to link/interface byte totals and may miss or differ across offload/tunnel paths. RX hook uses `kretprobe` for kernel 7.0 compatibility (fexit signature mismatch observed earlier).
+
+## 2026-11-13 (privileged TCP prototype validation - initial evidence)
+
+### Completed
+- User executed rebuilt TCP prototype with `sudo ./prototype/bpf/flow_tcp_bytes_loader 2 15`.
+- Both hooks attached successfully: `TX: tcp_sendmsg, RX: tcp_recvmsg`.
+- Loader produced cumulative per-(TGID,UID) snapshots showing attributed TCP bytes during the run (example observed: TGID 64022 UID 1000 RX reached 36 bytes; TGID 64042 UID 1000 TX reached 956 bytes), confirming **basic privileged eBPF TCP per-process/TGID byte attribution works on this kernel** at the chosen hook points.
+
+### Interpretation / caveats
+- Positive evidence for feasibility of eBPF-based per-task accounting on target (kernel 7.0.0-43, BTF, unprivileged_bpf_disabled=2 requiring elevation).
+- Not evidence of full gate completion: TGID-only keying, no stable identity enrichment/lifecycle, no unattributed bucket, TCP-only coverage, and no recorded controlled comparison to interface counters or overhead metrics for this run.
+
+### Next steps
+1. Enhance loader/userspace correlation: resolve TGID->process start time/comm/exe/cgroup at sampling time, show deltas, and persist/export structured samples for analysis.
+2. Add explicit unattributed accounting and evaluate broader hook coverage (UDP/QUIC, cgroup skb/tc) with documented byte semantics.
+3. Run controlled transfer tests with synchronized interface-counter snapshots and overhead measurements; update `docs/attribution.md` and create ADRs for hook/measurement decisions.

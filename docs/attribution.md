@@ -56,11 +56,23 @@ Prototype and product must handle (to supported extent):
 - Network namespaces and containerized workloads where observable
 - Provider start/stop gaps and event loss (must be surfaced)
 
-## 7. Current status and open questions
+## 7. Prototype evidence (2026-11-13, kernel 7.0.0-43-generic)
 
-- **Validated prototype:** none yet in this repo (technical gate open).
-- **Hook/byte semantics:** undecided pending evidence on kernel 7.0.0-43-generic.
-- **Namespace/container attribution fidelity:** unknown until tested.
-- **Application grouping confidence rules:** to be designed after reliable process-to-app mapping sources are evaluated.
+### Validated (initial, privileged run)
+- **Hooks:** `fexit/tcp_sendmsg` (TX) and `kretprobe/tcp_recvmsg` (RX) loaded and attached successfully via libbpf skeleton with `sudo` (`unprivileged_bpf_disabled=2`).
+- **Observed attribution:** cumulative per-(TGID, UID) TCP byte counters reported by userspace loader during a live sampling run (example observed TGIDs: 64022 RX=36, 64042 TX=956 over the session). This demonstrates **basic TCP per-process (TGID-level) byte counting is feasible** on this host at this hook point.
+- **Measurement point (current prototype):** bytes taken from positive return values of `tcp_sendmsg` / `tcp_recvmsg` kernel functions (TCP-path bytes at those hooks). Not equivalent to IP/link/interface counters.
+
+### Not yet satisfied (gate still open)
+- **Stable identity:** prototype keys are `(tgid, uid)` only; no PID/start-time/generation correlation, no exe/cmdline/cgroup/namespace metadata persisted for attribution records.
+- **PID reuse / process exit:** no lifecycle handling or historical identity binding demonstrated.
+- **Unattributed traffic:** no explicit unattributed bucket/diagnostics in current prototype maps.
+- **Coverage:** UDP/QUIC, ICMP, non-TCP paths, and traffic outside attach lifetime not counted.
+- **Controlled comparison:** no documented side-by-side comparison against `/proc/net/dev`/`ip -s link` for the same controlled transfers in this recorded run.
+- **Overhead/edge cases:** CPU/memory overhead, namespaces/containers, VPN/tunnels, virtual interfaces, short-lived processes, and double-counting risks not yet measured/documented.
+- **Application grouping:** not implemented.
+
+### Working hypothesis (subject to revision)
+`fexit/tcp_sendmsg` + `kretprobe/tcp_recvmsg` is a viable **TCP-only** starting point for per-task byte observation on this kernel; Flow’s production provider must expand/replace this based on validated semantics for broader protocol coverage and robust attribution.
 
 Updates to this document must track prototype results and recorded decisions in `docs/decisions/`.

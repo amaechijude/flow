@@ -35,6 +35,8 @@ sudo ./prototype/bpf/flow_tcp_bytes_loader 2 15
 
 Args: `interval_seconds rounds` (defaults: `2 10`).
 
+Loader output includes cumulative and per-snapshot delta bytes per `(TGID,UID)` plus best-effort process enrichment from `/proc/<tgid>/{comm,exe,stat}` (startticks). This aids correlation but is **not** yet a complete stable identity implementation (PID reuse/start-time binding and lifecycle persistence still required).
+
 ## Controlled validation idea
 In another terminal, generate TCP traffic while attached, e.g.:
 ```bash
