@@ -1,0 +1,47 @@
+# .NET / build
+bin/
+obj/
+**/bin/
+**/obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+TestResults/
+artifacts/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SQLite / local data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Generated/native prototype outputs (rebuildable)
+prototype/bpf/*.o
+prototype/bpf/*.skel.h
+prototype/bpf/.output/
+
+# Logs
+*.log
+logs/
+
+# Packaging
+*.deb
+*.ddeb
+*.buildinfo
+*.changes
+/packaging/out/

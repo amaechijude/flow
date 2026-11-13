@@ -1,0 +1,14 @@
+// Phase 1 prototype placeholder (NOT compiled/validated in this pass).
+// Intended direction: CO-RE eBPF program to attribute network bytes to task/process identity
+// at a documented observation point. Hook choice must be validated on Ubuntu kernel 7.0.x.
+//
+// Prerequisites to build (to be verified): clang/LLVM, libbpf headers/dev, bpftool, BTF (present),
+// and a chosen attach strategy (e.g. cgroup_skb, sockops, tc, kprobe/tracepoint) with explicit
+// capability and byte-semantics documentation.
+//
+// This file is named .stub to avoid implying a working/compiled artifact.
+#include "vmlinux.h"
+// #include <bpf/bpf_helpers.h>
+// #include <bpf/bpf_core_read.h>
+
+char LICENSE[] SEC("license") = "GPL";
