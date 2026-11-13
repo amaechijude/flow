@@ -70,6 +70,12 @@ Prototype and product must handle (to supported extent):
 ### Recent prototype enhancements (source updated)
 - **Explicit unattributed accounting:** BPF now increments an unattributed counter/map for hook events where `tgid==0` (instead of silently ignoring), and loader reports unattributed totals/deltas/events.
 - **Identity caching:** loader caches first-seen/alive `/proc` identity (comm/exe/startticks) per TGID+UID so exited processes can retain last-known context in snapshots (partial progress; full stable identity/PID-reuse-safe persistence still pending).
+- **Machine-readable loader mode:** `prototype/bpf/flow_tcp_bytes_loader` supports `tsv` output (`M` meta with clk_tck/boot time, `S` snapshots, `E` per-TGID deltas with identity fields, `U` unattributed deltas/events) to enable integration.
+- **Flow.Linux provider integration (initial):** `Flow.Linux.Monitoring.EbpfTcpMonitor` launches the privileged prototype loader in TSV mode and converts snapshot deltas into `NetworkUsageEvent`s with:
+  - **Measurement semantics:** `ebpf-tcp` / `fexit/tcp_sendmsg + kretprobe/tcp_recvmsg`; bytes from positive return values of TCP send/recv functions (TCP-path bytes at hook point). UDP/non-TCP not counted. Interface-level per-event attribution not provided by this hook.
+  - **Process identity:** `ProcessIdentity` built from TGID, UID, executable path (when available), and start time derived from boot time + startticks/clk_tck (fallback to current time if unavailable; reduces stability).
+  - **Attribution:** attributed per-process/TGID events for `E` deltas; explicit unattributed events for `U` deltas (`tgid==0` hook context). Application hint derived from exe/comm when available.
+  - **Limitations:** requires privileged loader/BPF attach, subprocess-based integration (not in-process libbpf), snapshot-delta granularity, no PID-reuse-proof persisted identity lifecycle yet, no per-interface mapping, and coverage/accuracy/overhead still subject to gate validation.
 
 ### Not yet satisfied (gate still open)
 - **Stable identity:** prototype keys are `(tgid, uid)` only; no PID/start-time/generation correlation, no exe/cmdline/cgroup/namespace metadata persisted for attribution records.

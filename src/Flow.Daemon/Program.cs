@@ -28,9 +28,26 @@ builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredServ
 
 var monitorKind = builder.Configuration["Flow:Monitor"];
 if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
+{
     builder.Services.AddSingleton<INetworkMonitor, ProcNetDevMonitor>();
+}
+else if (string.Equals(monitorKind, "ebpf", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(monitorKind, "ebpf-tcp", StringComparison.OrdinalIgnoreCase))
+{
+    var ebpfOptions = new EbpfTcpMonitorOptions
+    {
+        LoaderPath = builder.Configuration["Flow:Ebpf:LoaderPath"],
+    };
+    if (int.TryParse(builder.Configuration["Flow:Ebpf:IntervalSeconds"], out var interval) && interval > 0)
+        ebpfOptions.IntervalSeconds = interval;
+    if (int.TryParse(builder.Configuration["Flow:Ebpf:Rounds"], out var rounds) && rounds > 0)
+        ebpfOptions.Rounds = rounds;
+    builder.Services.AddSingleton<INetworkMonitor>(_ => new EbpfTcpMonitor(ebpfOptions));
+}
 else
+{
     builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
+}
 
 builder.Services.AddSingleton<UsageIngestionPipeline>();
 builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());

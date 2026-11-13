@@ -199,6 +199,23 @@
 ### Notes
 - `ProcNetDevMonitor` provides operational end-to-end flow for interface totals only; per-application/per-process attribution remains dependent on validated eBPF/provider work.
 
+## 2026-11-13 (per-process eBPF provider integration - initial)
+
+### Completed
+- Enhanced prototype loader `prototype/bpf/flow_tcp_bytes_loader.c` with machine-readable `tsv` mode (`M` meta clk_tck/boot time, `S` snapshots, `E` per-TGID/UID delta records with cached identity, `U` unattributed deltas/events) and rebuilt loader/BPF artifacts locally.
+- Implemented `Flow.Linux.Monitoring.EbpfTcpMonitor` (`INetworkMonitor`) integrating the validated TCP eBPF prototype via privileged subprocess loader:
+  - parses TSV snapshots, derives process start time from boot time + startticks/clk_tck, emits **attributed per-process delta events** with `ProcessIdentity`/application hints and **explicit unattributed delta events** (`tgid==0`) with documented measurement semantics.
+  - configurable via `Flow:Monitor=ebpf|ebpf-tcp` and `Flow:Ebpf:LoaderPath` / `Flow:Ebpf:IntervalSeconds`.
+- Documented semantics/limitations in `docs/attribution.md` (TCP hook point, TGID/UID + startticks-based identity, unattributed handling, subprocess/privilege/granularity/coverage caveats).
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal` → **passed** (8 tests total).
+
+### Notes / gaps
+- Integration is subprocess-based and requires privileges to load/attach BPF; not an in-process libbpf implementation.
+- Attribution is TCP-only (sendmsg/recvmsg return bytes), no per-interface mapping in events, and identity persistence/PID-reuse lifecycle hardening in production storage remains incomplete. Further controlled accuracy/overhead/gate validation still required.
+
 ## 2026-11-13 (metadata persistence, session tracking, and infrastructure tests)
 
 ### Completed

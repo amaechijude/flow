@@ -13,6 +13,7 @@
 
 static volatile sig_atomic_t exiting = 0;
 static void on_sig(int sig) { (void)sig; exiting = 1; }
+static int g_tsv = 0;
 
 struct traffic_key {
     __u32 tgid;
@@ -111,6 +112,13 @@ static unsigned long long read_proc_startticks(__u32 tgid)
     return 0;
 }
 
+static void tsv_sanitize(char *s)
+{
+    for (; *s; s++) {
+        if (*s == '\t' || *s == '\n' || *s == '\r') *s = ' ';
+    }
+}
+
 static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
 {
     struct traffic_key key = {}, next_key;
@@ -118,8 +126,13 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
     int fd = bpf_map__fd(skel->maps.traffic);
     int ufd = bpf_map__fd(skel->maps.unattributed);
 
-    printf("\n--- snapshot %d: TCP attribution (cumulative, delta, cached identity) ---\n", snapshot_idx);
-    printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/STARTTICKS/STATE");
+    if (!g_tsv) {
+        printf("\n--- snapshot %d: TCP attribution (cumulative, delta, cached identity) ---\n", snapshot_idx);
+        printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/STARTTICKS/STATE");
+    } else {
+        printf("S\t%d\n", snapshot_idx);
+    }
+
     while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
         if (bpf_map_lookup_elem(fd, &next_key, &val) == 0) {
             struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid);
@@ -146,12 +159,24 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             const char *comm = pe ? pe->comm : live_comm;
             const char *exe = pe ? pe->exe : live_exe;
             unsigned long long show_st = pe ? pe->startticks : st;
-            char extra[360];
-            snprintf(extra, sizeof(extra), "%s (startticks=%llu%s)", exe, show_st, alive ? "" : ", exited/unknown");
-            printf("%-8u %-6u %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
-                   next_key.tgid, next_key.uid,
-                   (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
-                   dtx, drx, comm, extra);
+            if (!g_tsv) {
+                char extra[360];
+                snprintf(extra, sizeof(extra), "%s (startticks=%llu%s)", exe, show_st, alive ? "" : ", exited/unknown");
+                printf("%-8u %-6u %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
+                       next_key.tgid, next_key.uid,
+                       (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
+                       dtx, drx, comm, extra);
+            } else {
+                char comm2[64], exe2[256];
+                snprintf(comm2, sizeof(comm2), "%s", comm);
+                snprintf(exe2, sizeof(exe2), "%s", exe);
+                tsv_sanitize(comm2);
+                tsv_sanitize(exe2);
+                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\n",
+                       next_key.tgid, next_key.uid,
+                       (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
+                       dtx, drx, comm2, exe2, show_st, alive);
+            }
         }
         key = next_key;
     }
@@ -164,13 +189,42 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
         unsigned long long durx = (uv.rx_bytes >= prev_urx) ? (uv.rx_bytes - prev_urx) : uv.rx_bytes;
         prev_utx = uv.tx_bytes;
         prev_urx = uv.rx_bytes;
-        char info[128];
-        snprintf(info, sizeof(info), "events tx=%llu rx=%llu", (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
-        printf("UNATTRIB %-6s %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
-               "-", (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes,
-               dutx, durx, "(no-task)", info);
+        if (!g_tsv) {
+            char info[128];
+            snprintf(info, sizeof(info), "events tx=%llu rx=%llu", (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
+            printf("UNATTRIB %-6s %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
+                   "-", (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes,
+                   dutx, durx, "(no-task)", info);
+        } else {
+            printf("U\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\n",
+                   (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes,
+                   dutx, durx,
+                   (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
+        }
     }
     fflush(stdout);
+}
+
+static long read_clk_tck(void)
+{
+    long v = sysconf(_SC_CLK_TCK);
+    return v > 0 ? v : 100;
+}
+
+static long long read_boot_unix_ms(void)
+{
+    FILE *f = fopen("/proc/stat", "r");
+    if (!f) return 0;
+    char line[256];
+    long long btime = 0;
+    while (fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "btime ", 6) == 0) {
+            btime = strtoll(line + 6, NULL, 10);
+            break;
+        }
+    }
+    fclose(f);
+    return btime * 1000LL;
 }
 
 int main(int argc, char **argv)
@@ -179,6 +233,8 @@ int main(int argc, char **argv)
     int rounds = 10;
     if (argc > 1) interval = atoi(argv[1]);
     if (argc > 2) rounds = atoi(argv[2]);
+    if (argc > 3 && strcmp(argv[3], "tsv") == 0) g_tsv = 1;
+    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "tsv") == 0) g_tsv = 1;
     if (interval <= 0) interval = 2;
     if (rounds <= 0) rounds = 10;
 
@@ -214,10 +270,15 @@ int main(int argc, char **argv)
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
 
-    printf("flow_tcp_bytes prototype attached (TX: tcp_sendmsg%s).\n",
-           skel->links.tcp_recvmsg_exit ? ", RX: tcp_recvmsg" : "");
-    printf("Measurement note: counts bytes returned by TCP send/recv kernel functions (TCP payload bytes at that hook), cumulative per (tgid,uid) while attached. UDP/other protocols and non-TCP paths are NOT counted. Unattributed/context edge cases require further validation.\n");
-    printf("Sampling every %d s for %d rounds (Ctrl-C to stop early).\n", interval, rounds);
+    if (!g_tsv) {
+        printf("flow_tcp_bytes prototype attached (TX: tcp_sendmsg%s).\n",
+               skel->links.tcp_recvmsg_exit ? ", RX: tcp_recvmsg" : "");
+        printf("Measurement note: counts bytes returned by TCP send/recv kernel functions (TCP payload bytes at that hook), cumulative per (tgid,uid) while attached. UDP/other protocols and non-TCP paths are NOT counted. Unattributed/context edge cases require further validation.\n");
+        printf("Sampling every %d s for %d rounds (Ctrl-C to stop early).\n", interval, rounds);
+    } else {
+        printf("M\t%ld\t%lld\n", read_clk_tck(), read_boot_unix_ms());
+        fflush(stdout);
+    }
 
     for (int i = 1; i <= rounds && !exiting; i++) {
         sleep(interval);
