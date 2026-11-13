@@ -180,7 +180,28 @@
 - Full `dotnet build Flow.slnx` / `dotnet test Flow.slnx` not rerun in this increment (previous verified state: build and tests passing before these additions).
 
 ### Current work
-- Phase 2 in progress: abstractions and initial persistence primitives exist; ingestion pipeline, richer repositories/queries, migrations evolution, Linux provider adapter, daemon wiring, and tests for new logic still pending.
+- Phase 2 in progress: ingestion/aggregation pipeline and daemon wiring scaffolded (null monitor, SQLite-backed writer, health/diagnostics); richer repositories/queries, migrations evolution, Linux provider adapter, IPC, and tests for new logic still pending.
+
+## 2026-11-13 (application/daemon ingestion pipeline)
+
+### Completed
+- Implemented ingestion/aggregation pipeline in `Flow.Application`:
+  - `Persistence/UsageBucketDelta.cs`, `IUsageBucketStore.cs` (batch write contract)
+  - `Monitoring/MonitoringDiagnostics.cs` (state, last event/flush, errors, received/dropped/aggregated/batches/writeErrors counters)
+  - `Monitoring/UsageIngestionPipeline.cs` — bounded channel (`DropOldest`) ingestion from `INetworkMonitor`, in-memory aggregation keyed by 1-minute UTC bucket + app/process/interface/attribution, periodic and size-triggered **batch flushes** to `IUsageBucketStore` (idempotent upsert path), start/pause/stop lifecycle and diagnostics
+  - `Monitoring/NullNetworkMonitor.cs` placeholder provider
+- Updated `Flow.Infrastructure.Sqlite/UsageRepository.cs` to implement `IUsageBucketStore.WriteMinuteDeltasAsync(...)` (single-transaction batched upserts).
+- Wired daemon (`Flow.Daemon`):
+  - `Program.cs` configures DB path (`Flow:DatabasePath` or local app data `flow/flow.db`), runs migrations, registers factory/store/monitor/pipeline/controller, and starts host
+  - `Worker.cs` starts pipeline and logs periodic diagnostics/health state
+- Verified runtime: `dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` starts pipeline, migrates/creates SQLite DB, reaches `Monitoring` state with null provider, and shuts down cleanly.
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+
+### Notes / gaps
+- Write failures currently mark pipeline degraded and drop the failed batch (retry/backoff queue not yet implemented).
+- Interface identity normalization, process/app persistence/upserts, and real Linux monitor integration still pending.
 
 ## 2026-11-13 (prototype hardening: unattributed + identity caching)
 

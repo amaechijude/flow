@@ -1,18 +1,43 @@
+using Flow.Application.Monitoring;
+using Flow.Domain.Monitoring;
+
 namespace Flow.Daemon;
 
-public class Worker(ILogger<Worker> logger) : BackgroundService
+public sealed partial class Worker(
+    UsageIngestionPipeline pipeline,
+    ILogger<Worker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        while (!stoppingToken.IsCancellationRequested)
+        LogStarting(logger);
+        await pipeline.StartMonitoringAsync(stoppingToken).ConfigureAwait(false);
+
+        try
         {
-            if (logger.IsEnabled(LogLevel.Information))
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-#pragma warning disable CA1848 // Template worker placeholder; replace with structured service logging.
-                logger.LogInformation("Worker running at: {Time}", DateTimeOffset.Now);
-#pragma warning restore CA1848
+                var d = pipeline.Diagnostics;
+                LogDiagnostics(logger, d.State, d.EventsReceived, d.EventsDropped, d.EventsAggregated, d.BatchesWritten, d.WriteErrors, d.LastError ?? "-");
             }
-            await Task.Delay(1000, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+            // shutdown
+        }
+        finally
+        {
+            LogStopping(logger, pipeline.State);
+            await pipeline.StopAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
+
+    [LoggerMessage(EventId = 2001, Level = LogLevel.Information, Message = "Flow daemon worker starting monitoring pipeline")]
+    private static partial void LogStarting(ILogger logger);
+
+    [LoggerMessage(EventId = 2002, Level = LogLevel.Information, Message = "Flow daemon worker stopping (state={State})")]
+    private static partial void LogStopping(ILogger logger, MonitoringState state);
+
+    [LoggerMessage(EventId = 2003, Level = LogLevel.Information, Message = "Pipeline diagnostics: state={State} received={Received} dropped={Dropped} aggregated={Aggregated} batches={Batches} writeErrors={WriteErrors} lastError={LastError}")]
+    private static partial void LogDiagnostics(ILogger logger, MonitoringState state, long received, long dropped, long aggregated, long batches, long writeErrors, string lastError);
 }
