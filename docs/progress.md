@@ -65,6 +65,29 @@
 - No unit/integration/system tests added yet.
 
 ### Blockers / risks
-- Cannot compile/load a custom BPF program yet without `clang` (and compatible BPF build workflow).
+- Cannot compile/load a custom BPF program yet without `clang` (and compatible BPF build workflow) and likely `libbpf-dev` headers.
 - Attribution semantics/hook selection still unproven; current prototype must not be interpreted as satisfying per-application/per-process accounting requirements.
 - Process sample in this environment shows many kernel threads with unreadable exe paths (expected for restricted `/proc/[pid]/exe`); userspace correlation design must handle this.
+- Avalonia Wayland behavior and maintained .NET D-Bus library/API choice remain unverified on target.
+
+## 2026-11-13 (git initialization and continued prototype prep)
+
+### Completed
+- Initialized git repository and created `.gitignore` for .NET/build/local-db/prototype artifacts.
+- Commits:
+  - `9694f3d` — baseline plan/docs/prototype scaffold and generated `vmlinux.h`
+  - `815f58b` — prerequisite check script, pending UI/IPC ADR, and draft eBPF program
+- Added `scripts/check-prereqs.sh` to report toolchain/kernel/BTF/libbpf prerequisites (no package installation performed).
+- Added `docs/decisions/0002-pending-ui-and-ipc-choices.md` documenting pending verification for Avalonia (Wayland) and .NET D-Bus library selection.
+- Added `prototype/bpf/flow_net_monitor.bpf.c.draft` (hypothesis draft, e.g. cgroup_skb ingress/egress accounting sketch) — **not compiled or validated**; hook/byte semantics must be chosen from evidence.
+
+### Current work
+- Repository is now version-controlled; Phase 0/1 remains blocked on BPF build toolchain availability and validated attribution prototype.
+
+### Test results
+- `scripts/check-prereqs.sh` created (executable) for repeatable environment checks; prior prototype build/run still passing as reported above.
+
+### Next steps
+1. On a host with package install rights, install/verify BPF build deps (e.g. `clang`, `llvm`, `libbpf-dev`, headers/tools as appropriate) and rerun `scripts/check-prereqs.sh`.
+2. Compile/iterate on a chosen BPF hook draft, implement privileged userspace loader/collector, and validate per-process attribution semantics against controlled traffic.
+3. Spike Avalonia Wayland smoke test and D-Bus prototype; supersede ADR 0002 with accepted decisions and pinned versions.
