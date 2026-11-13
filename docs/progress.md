@@ -136,10 +136,11 @@
 - Stable identity completeness, PID-reuse safety, unattributed accounting, interface-counter comparison, and overhead: **still pending**.
 
 ### Next steps
-1. Continue **Phase 2**: finalize domain contracts/events, implement SQLite schema/migrations/repositories in `Flow.Infrastructure`, and add unit/integration tests (time boundaries, identity/PID reuse, aggregation/rollups).
-2. Implement `Flow.Application` abstractions/use cases and `Flow.Linux` monitoring integration surface (bridging validated prototype learnings to production provider design), keeping attribution semantics explicit.
-3. Progress daemon (`Flow.Daemon`) and IPC/contracts in parallel with persistence; continue desktop (`Flow.Desktop`) after core query/health paths are stable.
-4. Revisit Phase 1 gate evidence as needed: controlled interface-counter comparisons, overhead, UDP/namespace/VPN coverage, and stable persisted identity behavior.
+1. Continue **Phase 2**: expand SQLite persistence (app/process/interface upserts, interface buckets, rollups/retention jobs, migrations beyond v1) and add unit/integration tests (time boundaries, identity/PID reuse, aggregation/rollups, migration correctness).
+2. Implement `Flow.Application` use cases/query services and daemon ingestion pipeline (bounded channel, idempotent aggregation, health/diagnostics) on top of new abstractions.
+3. Implement `Flow.Linux` monitoring integration surface (provider adapter informed by prototype) and `Flow.Contracts` expansion for GUI/daemon IPC.
+4. Progress daemon (`Flow.Daemon`) runtime wiring and D-Bus integration after contracts are verified; continue desktop (`Flow.Desktop`) once query/health paths are stable.
+5. Revisit Phase 1 gate evidence as needed: controlled interface-counter comparisons, overhead, UDP/namespace/VPN coverage, and stable persisted identity behavior.
 
 ## 2026-11-13 (solution scaffolding and initial domain foundation)
 
@@ -161,8 +162,25 @@
 - `dotnet build src/Flow.Domain/Flow.Domain.csproj -v minimal` → **succeeded** (0 warnings, 0 errors).
 - `dotnet build Flow.slnx -v minimal` → **timed out in this session** (Avalonia restore/build in progress or slow); full solution build status not yet confirmed.
 
+## 2026-11-13 (application/contracts abstractions and initial SQLite persistence)
+
+### Completed
+- Added initial monitoring abstractions in `Flow.Application`:
+  - `Monitoring/NetworkUsageEvent.cs`, `INetworkMonitor.cs` (async event stream), `IMonitoringController.cs`
+- Added initial IPC/query DTOs in `Flow.Contracts`:
+  - `Monitoring/MonitoringStatusDto.cs`, `Usage/UsageSummaryDto.cs`
+- Added SQLite foundation in `Flow.Infrastructure.Sqlite` (using `Microsoft.Data.Sqlite`):
+  - `SqliteConnectionFactory` (WAL/synchronous/foreign_keys pragmas)
+  - `DbMigrator` with `schema_migrations` and initial schema v1 (applications, processes, network_interfaces, usage_buckets, interface_usage_buckets, monitoring_sessions, user_settings + indexes)
+  - `UsageRepository` with summary query over `[start,end)` buckets and minute-bucket upsert/aggregation helper
+- Removed template `Class1.cs` placeholders from core src projects.
+
+### Test results
+- `dotnet build src/Flow.Infrastructure/Flow.Infrastructure.csproj -v minimal` (and dependencies) → **succeeded**.
+- Full `dotnet build Flow.slnx` / `dotnet test Flow.slnx` not rerun in this increment (previous verified state: build and tests passing before these additions).
+
 ### Current work
-- Phase 2 started (scaffolding + initial domain model). Persistence, application services, Linux provider integration, daemon/desktop implementation remain in progress/todo.
+- Phase 2 in progress: abstractions and initial persistence primitives exist; ingestion pipeline, richer repositories/queries, migrations evolution, Linux provider adapter, daemon wiring, and tests for new logic still pending.
 
 ## 2026-11-13 (prototype hardening: unattributed + identity caching)
 
