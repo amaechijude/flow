@@ -34,6 +34,8 @@ Thumbs.db
 prototype/bpf/*.o
 prototype/bpf/*.skel.h
 prototype/bpf/.output/
+prototype/bpf/*_loader
+!prototype/bpf/*_loader.c
 
 # Logs
 *.log

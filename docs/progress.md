@@ -88,6 +88,26 @@
 - `scripts/check-prereqs.sh` created (executable) for repeatable environment checks; prior prototype build/run still passing as reported above.
 
 ### Next steps
-1. On a host with package install rights, install/verify BPF build deps (e.g. `clang`, `llvm`, `libbpf-dev`, headers/tools as appropriate) and rerun `scripts/check-prereqs.sh`.
-2. Compile/iterate on a chosen BPF hook draft, implement privileged userspace loader/collector, and validate per-process attribution semantics against controlled traffic.
+1. **Run privileged validation of TCP prototype:** execute `sudo ./prototype/bpf/flow_tcp_bytes_loader <interval> <rounds>` while generating controlled TCP traffic (e.g. `curl` downloads), compare TGID-attributed deltas to generating processes and to interface counter deltas (`/proc/net/dev`, `ip -s link`); record results, gaps, and overhead in `docs/attribution.md`/`docs/progress.md`.
+2. **Harden prototype toward gate criteria:** enrich attribution to stable process identity (PID + start time/generation id, exe/cmd/uid/cgroup/namespace as available), handle process exit/PID reuse, add explicit **unattributed** accounting/diagnostics, and evaluate UDP/other-path coverage and hook/semantics tradeoffs (cgroup_skb vs fentry/tc/etc.) with evidence.
 3. Spike Avalonia Wayland smoke test and D-Bus prototype; supersede ADR 0002 with accepted decisions and pinned versions.
+
+## 2026-11-13 (BPF TCP prototype compiled and loader built)
+
+### Completed
+- BPF build prerequisites now available on host (clang/LLVM/llvm-strip/libbpf-dev confirmed via `scripts/check-prereqs.sh`).
+- Implemented and compiled TCP byte-counter BPF prototype:
+  - `prototype/bpf/flow_tcp_bytes.bpf.c` (`fexit/tcp_sendmsg`, `fexit/tcp_recvmsg` returning >0 bytes; per-(tgid,uid) cumulative maps)
+  - compiled `flow_tcp_bytes.bpf.o` (CO-RE/BTF target, warnings only from `vmlinux.h`)
+  - generated `prototype/bpf/flow_tcp_bytes.skel.h`
+- Built userspace loader `prototype/bpf/flow_tcp_bytes_loader.c` (libbpf skeleton-based; prints periodic TGID/UID/TX/RX snapshots). Binary built locally but intentionally not committed (rebuildable).
+- Added `prototype/bpf/README.md` documenting measurement semantics, limitations (TCP-only hooks, non-final attribution), rebuild steps, privileged run, and controlled-validation approach.
+
+### Test results
+- BPF object compilation: **succeeded**.
+- Loader compilation: **succeeded** (`cc ... -lbpf -lelf -lz`).
+- Runtime without sufficient privilege: **failed as expected** with `EPERM` / `failed to load BPF object` on this host (`unprivileged_bpf_disabled=2`), confirming privilege requirement; **no validated per-process attribution data collected yet**.
+
+### Blockers / risks
+- **Privileged runtime validation pending:** prototype must be executed with adequate privileges/capabilities to attach/load and observe real traffic.
+- **Gate criteria still unmet:** current prototype is TCP send/recv return-byte accounting per TGID/UID only; does not yet provide stable process identity, PID-reuse-safe records, process-exit lifecycle handling, unattributed bucket, UDP/namespace/VPN coverage analysis, or controlled accuracy/overhead report.

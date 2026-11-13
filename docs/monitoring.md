@@ -69,5 +69,8 @@ A CLI prototype must demonstrate on the target environment:
 
 - `prototype/README.md` — scope/status of prototype workspace.
 - `prototype/bpf/vmlinux.h` — generated from host BTF for CO-RE development.
-- `prototype/bpf/flow_monitor.bpf.c.stub` — placeholder BPF source (not compiled/validated).
+- `prototype/bpf/flow_monitor.bpf.c.stub` and `prototype/bpf/flow_net_monitor.bpf.c.draft` — early draft placeholders (superseded for initial compile tests).
+- `prototype/bpf/flow_tcp_bytes.bpf.c` — **compiled** TCP byte-counter BPF prototype (`fexit/tcp_sendmsg`, `fexit/tcp_recvmsg`, bytes from positive return values), per-(tgid,uid) cumulative maps. **Not yet privilege-validated with live traffic.**
+- `prototype/bpf/flow_tcp_bytes_loader.c` (+ rebuildable skeleton/object/binary) — libbpf loader that attaches and prints periodic TGID/UID/TX/RX snapshots; requires sufficient BPF privileges to load/attach.
+- `prototype/bpf/README.md` — semantics, limitations, build/run/validation instructions for TCP prototype.
 - `prototype/Flow.MonitorPrototype/` — .NET 10 diagnostic CLI (builds/runs). **Current capability:** environment/prereq reporting, `/proc/net/dev` aggregate counter snapshots/deltas, and process identity sampling; **not** validated per-process byte attribution.

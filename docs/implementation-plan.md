@@ -14,8 +14,8 @@
 - [x] Create required baseline docs (`architecture`, `monitoring`, `attribution`, `security`, `database`, `implementation-plan`, `progress`)
 - [ ] Verify Avalonia Wayland behavior for target session and choose/pin UI version
 - [ ] Evaluate maintained .NET D-Bus library options and IPC approach
-- [~] Verify eBPF build toolchain/prereqs (clang/llvm/libbpf headers/CO-RE workflow) — **partial:** BTF/bpftool/libbpf runtime/kernel headers present and `vmlinux.h` generated; `clang`/BPF build toolchain and `libbpf-dev` still missing
-- [~] Prototype eBPF attribution path and complementary Netlink/proc enrichment — **scaffolded only:** baseline diagnostic CLI + BPF stub created; no validated per-process byte attribution yet
+- [x] Verify eBPF build toolchain/prereqs (clang/llvm/libbpf headers/CO-RE workflow) — clang/LLVM/llvm-strip/libbpf-dev/BTF/bpftool present; `vmlinux.h` generated; BPF object/skeleton/loader build succeeds
+- [~] Prototype eBPF attribution path and complementary Netlink/proc enrichment — **in progress:** compiled TCP fexit BPF prototype + userspace loader built; privileged live-traffic validation and full gate criteria (stable identity, PID reuse, unattributed, UDP/ns/VPN coverage, controlled comparison, overhead) still pending
 - [ ] Measure accuracy/overhead with controlled traffic and document limitations
 - [ ] Record decisions in `docs/decisions/`
 
