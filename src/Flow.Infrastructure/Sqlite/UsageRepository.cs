@@ -1,10 +1,12 @@
 using Flow.Application.Persistence;
 using Flow.Contracts.Usage;
+using Flow.Domain.Identity;
+using Flow.Domain.Monitoring;
 using Microsoft.Data.Sqlite;
 
 namespace Flow.Infrastructure.Sqlite;
 
-public sealed class UsageRepository : IUsageBucketStore
+public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStore
 {
     private readonly SqliteConnectionFactory _factory;
 
@@ -150,6 +152,124 @@ public sealed class UsageRepository : IUsageBucketStore
         tx.Commit();
         return Task.CompletedTask;
     }
+
+    public Task UpsertApplicationAsync(ApplicationIdentity application, DateTimeOffset seenAtUtc, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(application);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO applications (application_key, display_name, desktop_file_id, executable_path, icon_ref, first_seen_utc, last_seen_utc)
+            VALUES ($key, $name, $desktop, $exe, $icon, $seen, $seen)
+            ON CONFLICT(application_key) DO UPDATE SET
+                display_name = CASE WHEN excluded.display_name <> '' THEN excluded.display_name ELSE applications.display_name END,
+                desktop_file_id = COALESCE(excluded.desktop_file_id, applications.desktop_file_id),
+                executable_path = COALESCE(excluded.executable_path, applications.executable_path),
+                icon_ref = COALESCE(excluded.icon_ref, applications.icon_ref),
+                last_seen_utc = CASE WHEN excluded.last_seen_utc > applications.last_seen_utc THEN excluded.last_seen_utc ELSE applications.last_seen_utc END;
+            """;
+        cmd.Parameters.AddWithValue("$key", application.ApplicationKey);
+        cmd.Parameters.AddWithValue("$name", application.DisplayName);
+        cmd.Parameters.AddWithValue("$desktop", (object?)application.DesktopFileId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$exe", (object?)application.ExecutablePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$icon", (object?)application.IconRef ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$seen", seenAtUtc.ToUniversalTime().ToString("O"));
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    public Task UpsertProcessAsync(ProcessIdentity process, string? applicationKey, DateTimeOffset seenAtUtc, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO processes (process_stable_key, pid, start_time_utc, executable_path, uid, cgroup_id, network_namespace_id, application_key, first_seen_utc, last_seen_utc)
+            VALUES ($key, $pid, $start, $exe, $uid, $cgroup, $netns, $app, $seen, $seen)
+            ON CONFLICT(process_stable_key) DO UPDATE SET
+                executable_path = COALESCE(excluded.executable_path, processes.executable_path),
+                uid = COALESCE(excluded.uid, processes.uid),
+                cgroup_id = COALESCE(excluded.cgroup_id, processes.cgroup_id),
+                network_namespace_id = COALESCE(excluded.network_namespace_id, processes.network_namespace_id),
+                application_key = COALESCE(excluded.application_key, processes.application_key),
+                last_seen_utc = CASE WHEN excluded.last_seen_utc > processes.last_seen_utc THEN excluded.last_seen_utc ELSE processes.last_seen_utc END;
+            """;
+        cmd.Parameters.AddWithValue("$key", process.StableKey);
+        cmd.Parameters.AddWithValue("$pid", process.Pid);
+        cmd.Parameters.AddWithValue("$start", process.StartTimeUtc.ToUniversalTime().ToString("O"));
+        cmd.Parameters.AddWithValue("$exe", (object?)process.ExecutablePath ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$uid", process.Uid.HasValue ? (object)(long)process.Uid.Value : DBNull.Value);
+        cmd.Parameters.AddWithValue("$cgroup", (object?)process.CgroupId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$netns", (object?)process.NetworkNamespaceId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$app", (object?)applicationKey ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$seen", seenAtUtc.ToUniversalTime().ToString("O"));
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    public Task UpsertInterfaceAsync(string interfaceName, string? interfaceType, DateTimeOffset seenAtUtc, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(interfaceName);
+        cancellationToken.ThrowIfCancellationRequested();
+        var id = NormalizeInterfaceId(interfaceName);
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO network_interfaces (interface_id, interface_name, interface_type, first_seen_utc, last_seen_utc)
+            VALUES ($id, $name, $type, $seen, $seen)
+            ON CONFLICT(interface_id) DO UPDATE SET
+                interface_name = excluded.interface_name,
+                interface_type = COALESCE(excluded.interface_type, network_interfaces.interface_type),
+                last_seen_utc = CASE WHEN excluded.last_seen_utc > network_interfaces.last_seen_utc THEN excluded.last_seen_utc ELSE network_interfaces.last_seen_utc END;
+            """;
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.Parameters.AddWithValue("$name", interfaceName);
+        cmd.Parameters.AddWithValue("$type", (object?)interfaceType ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$seen", seenAtUtc.ToUniversalTime().ToString("O"));
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    public Task<long> StartMonitoringSessionAsync(string? providerName, string? measurementVersion, MonitoringState healthState, string? diagnostics, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO monitoring_sessions (started_at_utc, provider_name, measurement_version, health_state, diagnostics)
+            VALUES ($start, $prov, $ver, $health, $diag);
+            SELECT last_insert_rowid();
+            """;
+        cmd.Parameters.AddWithValue("$start", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$prov", (object?)providerName ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ver", (object?)measurementVersion ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$health", healthState.ToString());
+        cmd.Parameters.AddWithValue("$diag", (object?)diagnostics ?? DBNull.Value);
+        var id = (long)(cmd.ExecuteScalar() ?? 0L);
+        return Task.FromResult(id);
+    }
+
+    public Task EndMonitoringSessionAsync(long sessionId, MonitoringState healthState, string? diagnostics, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            UPDATE monitoring_sessions
+            SET ended_at_utc = $end, health_state = $health, diagnostics = COALESCE($diag, diagnostics)
+            WHERE id = $id;
+            """;
+        cmd.Parameters.AddWithValue("$end", DateTimeOffset.UtcNow.ToString("O"));
+        cmd.Parameters.AddWithValue("$health", healthState.ToString());
+        cmd.Parameters.AddWithValue("$diag", (object?)diagnostics ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$id", sessionId);
+        cmd.ExecuteNonQuery();
+        return Task.CompletedTask;
+    }
+
+    public static string NormalizeInterfaceId(string interfaceName) => interfaceName.Trim().ToLowerInvariant();
 
     public static DateTimeOffset AlignToMinuteUtc(DateTimeOffset valueUtc)
     {

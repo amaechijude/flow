@@ -23,6 +23,7 @@ using (var conn = connectionFactory.CreateOpenConnection())
 builder.Services.AddSingleton(connectionFactory);
 builder.Services.AddSingleton<UsageRepository>();
 builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<UsageRepository>());
+builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
 builder.Services.AddSingleton<UsageIngestionPipeline>();
 builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());

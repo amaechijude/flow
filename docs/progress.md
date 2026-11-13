@@ -180,7 +180,21 @@
 - Full `dotnet build Flow.slnx` / `dotnet test Flow.slnx` not rerun in this increment (previous verified state: build and tests passing before these additions).
 
 ### Current work
-- Phase 2 in progress: ingestion/aggregation pipeline and daemon wiring scaffolded (null monitor, SQLite-backed writer, health/diagnostics); richer repositories/queries, migrations evolution, Linux provider adapter, IPC, and tests for new logic still pending.
+- Phase 2 in progress: ingestion/aggregation pipeline, metadata persistence hooks, and daemon wiring in place (null monitor, SQLite-backed writer, health/diagnostics, session tracking); richer repositories/queries, migrations evolution, real Linux provider adapter, IPC, and broader tests still pending.
+
+## 2026-11-13 (metadata persistence, session tracking, and infrastructure tests)
+
+### Completed
+- Added `Flow.Application.Persistence.IMonitoringMetadataStore` and implemented in `Flow.Infrastructure.Sqlite.UsageRepository`:
+  - application/process/interface upserts (with `last_seen` updates, normalized interface IDs)
+  - monitoring session start/end records
+- Extended `UsageIngestionPipeline` to optionally persist seen applications/processes/interfaces during flush and to record monitoring sessions (start/end) tied to pipeline lifecycle.
+- Wired `IMonitoringMetadataStore` in `Flow.Daemon`.
+- Added `tests/Flow.Infrastructure.Tests/SqliteUsageRepositoryTests.cs` covering migration idempotency, minute-bucket delta aggregation/summary (attributed + unattributed), and metadata/session smoke behavior.
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal` → **passed** (7 tests total: Domain 1, Application 1, Infrastructure 2, Linux 1, Daemon 1, System 1).
 
 ## 2026-11-13 (application/daemon ingestion pipeline)
 
