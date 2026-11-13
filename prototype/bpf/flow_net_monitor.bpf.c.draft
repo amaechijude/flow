@@ -1,0 +1,98 @@
+// Draft eBPF program for Flow (NOT compiled, NOT validated).
+// Purpose: explore per-process network byte attribution with explicit, testable semantics.
+// Hook/attach strategy MUST be selected and validated on Ubuntu kernel 7.0.x before use.
+//
+// Candidate hooks to evaluate (choose one based on evidence):
+//   - cgroup_skb/egress + cgroup_skb/ingress: good for container/cgroup attribution; bytes at skb/cgroup hook point
+//   - sock_ops / BPF_CGROUP_SOCK_OPS: connection lifecycle context
+//   - tcp_sendmsg/tcp_cleanup_rbuf or tracepoints: transport-level visibility (attach/overhead/CO-RE considerations)
+//   - tc (ingress/egress): interface-level attach, process attribution may be indirect
+//
+// This draft sketches a cgroup_skb-oriented direction because it can align with cgroup/task context,
+// but it is only a starting hypothesis and may be replaced.
+
+#include "vmlinux.h"
+#include <bpf/bpf_helpers.h>
+#include <bpf/bpf_core_read.h>
+#include <bpf/bpf_tracing.h>
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
+
+// Event key: stable-enough correlation inputs (to be refined).
+// NOTE: PID is not a stable long-term identity; userspace must combine with start time/generation metadata.
+struct flow_key {
+    __u32 pid;
+    __u32 tgid;
+    __u32 uid;
+    __u32 ifindex;
+    __u8  direction; // 0 = rx/ingress, 1 = tx/egress (define precisely per attach point)
+    __u8  family;    // AF_INET / AF_INET6 / other
+    __u16 pad;
+};
+
+struct flow_val {
+    __u64 bytes;
+    __u64 packets;
+};
+
+struct {
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
+    __uint(max_entries, 16384);
+    __type(key, struct flow_key);
+    __type(value, struct flow_val);
+} flow_stats SEC(".maps");
+
+static __always_inline int account_skb(struct __sk_buff *skb, __u8 direction)
+{
+    __u64 pid_tgid = bpf_get_current_pid_tgid();
+    __u32 tgid = pid_tgid >> 32;
+    __u32 pid = (__u32)pid_tgid;
+    __u32 uid = bpf_get_current_uid_gid();
+
+    // In some contexts (e.g. interrupt/softirq paths) current task may not be the owning process.
+    // Userspace must treat unattributed/ambiguous cases explicitly.
+    if (tgid == 0) {
+        return 1; // allow packet, but not attributed here (needs separate accounting strategy)
+    }
+
+    struct flow_key key = {};
+    key.pid = pid;
+    key.tgid = tgid;
+    key.uid = uid;
+    key.ifindex = skb->ifindex;
+    key.direction = direction;
+    key.family = skb->family;
+
+    struct flow_val *val = bpf_map_lookup_elem(&flow_stats, &key);
+    if (val) {
+        __sync_fetch_and_add(&val->bytes, skb->len);
+        __sync_fetch_and_add(&val->packets, 1);
+    } else {
+        struct flow_val init = {};
+        init.bytes = skb->len;
+        init.packets = 1;
+        bpf_map_update_elem(&flow_stats, &key, &init, BPF_ANY);
+    }
+
+    return 1; // allow
+}
+
+SEC("cgroup_skb/ingress")
+int flow_ingress(struct __sk_buff *skb)
+{
+    return account_skb(skb, 0);
+}
+
+SEC("cgroup_skb/egress")
+int flow_egress(struct __sk_buff *skb)
+{
+    return account_skb(skb, 1);
+}
+
+// TODOs before prototype validation:
+// - Confirm skb->len semantics at this hook (what bytes are included) and document measurement point.
+// - Handle/record unattributed packets when current task is not meaningful.
+// - Add cgroup id / socket cookie correlation if available/useful.
+// - Consider per-CPU maps + userspace aggregation for performance.
+// - Define attach target (root cgroup vs specific cgroups) and namespace behavior.
+// - Add ringbuf/perf events only if needed; polling hash map may suffice for first prototype.
