@@ -6,7 +6,7 @@ using Flow.Desktop.Views;
 
 namespace Flow.Desktop;
 
-public partial class App : Application
+public partial class App : global::Avalonia.Application
 {
     public override void Initialize()
     {
