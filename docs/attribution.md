@@ -60,8 +60,12 @@ Prototype and product must handle (to supported extent):
 
 ### Validated (initial, privileged run)
 - **Hooks:** `fexit/tcp_sendmsg` (TX) and `kretprobe/tcp_recvmsg` (RX) loaded and attached successfully via libbpf skeleton with `sudo` (`unprivileged_bpf_disabled=2`).
-- **Observed attribution:** cumulative per-(TGID, UID) TCP byte counters reported by userspace loader during a live sampling run (example observed TGIDs: 64022 RX=36, 64042 TX=956 over the session). This demonstrates **basic TCP per-process (TGID-level) byte counting is feasible** on this host at this hook point.
+- **Observed attribution:** cumulative and per-interval delta per-(TGID, UID) TCP byte counters reported during live sampling runs.
+  - Initial run: attributed traffic observed for TGIDs 64022/64042.
+  - Enriched run (`2s x 20`): attributed traffic observed for multiple applications including `msedge`, `code` (Snap path), and `opencode`, with changing deltas over time.
+- **Process-exit visibility issue:** TGIDs observed with counters but unresolved `/proc` enrichment (`COMM=?`, `EXE=-`) at snapshot time (likely exited/short-lived), demonstrating that enrichment must be captured at event/first-seen time and retained independently of process liveness.
 - **Measurement point (current prototype):** bytes taken from positive return values of `tcp_sendmsg` / `tcp_recvmsg` kernel functions (TCP-path bytes at those hooks). Not equivalent to IP/link/interface counters.
+- **Tooling note:** loader `startticks` parsing bug produced `0` in the enriched run; fixed in source pending rebuild/rerun for correct process-start correlation.
 
 ### Not yet satisfied (gate still open)
 - **Stable identity:** prototype keys are `(tgid, uid)` only; no PID/start-time/generation correlation, no exe/cmdline/cgroup/namespace metadata persisted for attribution records.

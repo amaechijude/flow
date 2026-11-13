@@ -85,13 +85,14 @@ static unsigned long long read_proc_startticks(__u32 tgid)
     if (!fgets(line, sizeof(line), f)) { fclose(f); return 0; }
     fclose(f);
     char *rparen = strrchr(line, ')');
-    if (!rparen || !rparen[1] || !rparen[2]) return 0;
-    char *p = rparen + 2; // state + space
-    int field = 3; // state
+    if (!rparen) return 0;
+    char *p = rparen + 1;
+    if (*p == ' ') p++;
+    // fields after comm: [0]=state(field3) ... [19]=starttime(field22)
     char *save = NULL;
-    for (char *tok = strtok_r(p, " ", &save); tok; tok = strtok_r(NULL, " ", &save)) {
-        field++;
-        if (field == 22) {
+    int idx = 0;
+    for (char *tok = strtok_r(p, " ", &save); tok; tok = strtok_r(NULL, " ", &save), idx++) {
+        if (idx == 19) {
             return strtoull(tok, NULL, 10);
         }
     }

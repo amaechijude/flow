@@ -123,7 +123,19 @@
 - Positive evidence for feasibility of eBPF-based per-task accounting on target (kernel 7.0.0-43, BTF, unprivileged_bpf_disabled=2 requiring elevation).
 - Not evidence of full gate completion: TGID-only keying, no stable identity enrichment/lifecycle, no unattributed bucket, TCP-only coverage, and no recorded controlled comparison to interface counters or overhead metrics for this run.
 
+## 2026-11-13 (enriched loader validation run)
+
+### Completed
+- User ran improved loader: `sudo ./prototype/bpf/flow_tcp_bytes_loader 2 20` with enriched snapshots/deltas and `/proc` correlation.
+- **Observed attributed live traffic across multiple apps/userspace contexts:** `msedge` (`/opt/microsoft/msedge/msedge`), `code` (`/snap/code/268/usr/share/code/code`), and `opencode` (`/home/amaechi/.opencode/bin/opencode`) showed non-zero cumulative/delta TCP TX/RX bytes over time.
+- **Process-exit enrichment gap observed:** some TGIDs (e.g. 102158, 102346) appeared with counters but `COMM=?`, `EXE=-` at snapshot time, indicating processes exited before/at enrichment lookup (bytes were attributed to TGID, but identity context was unavailable at sample time). This highlights need for event-time identity capture/lifecycle handling.
+- **Loader bug found/fixed:** `startticks` was reported as `0` in this run due to `/proc/<tgid>/stat` field parsing offset; fixed in `prototype/bpf/flow_tcp_bytes_loader.c` (requires rebuild + rerun to collect correct start-time values).
+
+### Test results
+- Privileged attach and live per-TGID TCP byte attribution with deltas: **observed working**.
+- Stable identity completeness, PID-reuse safety, unattributed accounting, interface-counter comparison, and overhead: **still pending**.
+
 ### Next steps
-1. Enhance loader/userspace correlation: resolve TGID->process start time/comm/exe/cgroup at sampling time, show deltas, and persist/export structured samples for analysis.
-2. Add explicit unattributed accounting and evaluate broader hook coverage (UDP/QUIC, cgroup skb/tc) with documented byte semantics.
-3. Run controlled transfer tests with synchronized interface-counter snapshots and overhead measurements; update `docs/attribution.md` and create ADRs for hook/measurement decisions.
+1. Rebuild/rerun loader to verify `startticks` fix and collect controlled-transfer evidence (known PID/start time/exe, synchronized `/proc/net/dev` or `ip -s link` deltas).
+2. Add explicit unattributed accounting in BPF/userspace and capture identity at first-seen/event time where possible.
+3. Evaluate broader coverage (UDP/QUIC, cgroup/tc hooks), namespace/VPN behavior, and overhead; record ADRs and update gate status with evidence.
