@@ -271,3 +271,118 @@
 
 ### Gate impact
 - Improves transparency (unattributed visibility) and resilience of enrichment across process exit, but **does not** yet satisfy full gate requirements (stable persisted identity model, PID-reuse-proof records, controlled accuracy/overhead report, UDP/namespace/VPN coverage).
+
+## 2026-11-15 (usage bucket consolidation correctness fix)
+
+### Completed
+- **Diagnosed duplicate-row risk:** `usage_buckets` v1 `UNIQUE(bucket_start_utc,bucket_seconds,granularity,application_key,process_stable_key,interface_id,is_attributed)` does not conflict when nullable key dimensions are `NULL` (SQLite treats NULLs as distinct), so repeated upserts/flushes for the same logical bucket (e.g. unattributed or missing app/process/interface) could insert duplicate rows instead of coalescing. Pipeline in-memory aggregation already coalesces by logical key while buffered, but DB-level idempotent consolidation depended on a conflict target that was not NULL-safe.
+- **Migration v2 (`usage_buckets_null_safe_uniqueness`):** consolidates existing `usage_buckets` rows by logical key (`COALESCE` over nullable dimensions), summing `rx/tx` and preserving/coalescing note/provider/hook metadata, then creates `ux_usage_buckets_logical` (unique index on the same NULL-safe expressions) to enforce idempotent consolidation going forward.
+- **Repository upserts:** `UpsertMinuteBucketAsync` and `WriteMinuteDeltasAsync` now use `ON CONFLICT(bucket_start_utc,bucket_seconds,granularity,COALESCE(application_key,''),COALESCE(process_stable_key,''),COALESCE(interface_id,''),is_attributed)` so repeated writes for the same 1-minute UTC bucket + dimensions accumulate into one row.
+- **Tests:** added `RepeatedWritesWithNullDimensionsCoalesceIntoSingleLogicalBucket` in `tests/Flow.Infrastructure.Tests/SqliteUsageRepositoryTests.cs` (separate writes/flush-equivalent with NULL app/process/interface coalesce to one row with correct totals). Existing infra tests remain valid.
+
+### Test results
+- `dotnet test tests/Flow.Infrastructure.Tests/Flow.Infrastructure.Tests.csproj -v minimal` → **passed** (4 tests).
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal` → **passed** (9 tests total: Domain 1, Application 1, Infrastructure 4, Linux 1, Daemon 1, System 1).
+
+### Notes / remaining gaps
+- `is_attributed` remains part of the logical key; attributed and unattributed buckets are not merged.
+- Failed flush behavior unchanged: pipeline still marks degraded and drops the failed batch (no retry/backoff/durability queue).
+- Broader pipeline/integration tests with a fake `INetworkMonitor` (end-to-end batching, diagnostics, multi-flush idempotency across the full ingestion loop) and further provider/identity/gate validation are still pending.
+
+## 2026-11-15 (pipeline integration tests and health-state fix)
+
+### Completed
+- Added `tests/Flow.Application.Tests/UsageIngestionPipelineTests.cs` with fake monitors/stores to validate ingestion pipeline behavior without privileged providers or SQLite:
+  - event ingestion + 1-minute aggregation + periodic flush produces expected bucket deltas and diagnostics (received/aggregated/batches/flush timestamps),
+  - same logical bucket arriving across separate flush cycles is written as repeated deltas for the same key (store-level coalescing/idempotent accumulation model),
+  - flush failure records write errors and surfaces degraded state/last error.
+- Fixed `UsageIngestionPipeline.PauseMonitoringAsync` to preserve `Degraded`/`Unavailable` health states on pause/stop instead of overwriting them with `Paused`, so fault conditions remain visible (honest health reporting).
+
+### Test results
+- `dotnet test tests/Flow.Application.Tests/Flow.Application.Tests.csproj -v minimal` → **passed** (3 tests).
+- `dotnet test Flow.slnx -v minimal` → **passed** (11 tests total: Domain 1, Application 3, Infrastructure 4, Linux 1, Daemon 1, System 1).
+
+### Notes / remaining gaps
+- Failed flushes are still dropped after being marked degraded (no retry/backoff/durable queue); idempotent upserts make safe retries possible but retry policy is not implemented.
+- Metadata/session persistence paths and end-to-end pipeline+SQLite behavior under sustained load/restart remain lightly tested; broader provider identity hardening, IPC, rollups/retention, exports, GUI, and packaging still pending.
+
+## 2026-11-15 (flush retry on transient failure)
+
+### Completed
+- Updated `UsageIngestionPipeline.FlushAsync` to snapshot pending usage deltas/metadata, write them, and only commit (subtract/remove) flushed amounts on success. On write failure the pipeline now **retains buffered deltas/metadata for retry** on subsequent flush cycles instead of dropping them, increments write errors, and marks degraded; retries are safe because bucket writes are idempotent/additive (`ON CONFLICT` upsert) and metadata upserts are idempotent.
+- Added test `FailedFlushIsRetriedAndPersistsAfterTransientError` (fake store fails once, then succeeds) confirming data is eventually persisted.
+
+### Test results
+- `dotnet test tests/Flow.Application.Tests/Flow.Application.Tests.csproj -v minimal` → **passed** (4 tests).
+- `dotnet test Flow.slnx -v minimal` → **passed** (12 tests total: Domain 1, Application 4, Infrastructure 4, Linux 1, Daemon 1, System 1).
+
+### Notes / remaining gaps
+- Retry is in-memory and timer/flush-driven (no explicit backoff policy, bounded queue beyond existing buffering, or durable write-ahead queue). Sustained outage can grow buffered state; degraded health remains signaled but state is not automatically restored to `Monitoring` after recovery.
+- Further correctness/integration work still pending: pipeline+SQLite end-to-end/idempotency under restart, provider/identity hardening and gate validation, daemon query/health services + D-Bus, rollups/retention/exports, GUI, packaging.
+
+## 2026-11-15 (pipeline + SQLite integration coverage)
+
+### Completed
+- Added `tests/Flow.Infrastructure.Tests/UsageIngestionPipelineSqliteTests.cs` exercising `UsageIngestionPipeline` end-to-end with a scripted fake monitor and real `SqliteConnectionFactory`/`DbMigrator`/`UsageRepository` (as both `IUsageBucketStore` and `IMonitoringMetadataStore`).
+- Verifies: attributed usage, metadata (application/process/interface), and monitoring session rows are persisted; unattributed NULL-dimension deltas emitted across separate flush cycles coalesce into a single logical 1-minute row in SQLite with correct totals (NULL-safe upsert path).
+
+### Test results
+- `dotnet test tests/Flow.Infrastructure.Tests/Flow.Infrastructure.Tests.csproj -v minimal` → **passed** (5 tests).
+- `dotnet test Flow.slnx -v minimal` → **passed** (13 tests total: Domain 1, Application 4, Infrastructure 5, Linux 1, Daemon 1, System 1).
+
+### Notes / remaining gaps
+- Monitoring session records currently store `provider_name` as null (pipeline does not set diagnostics provider name); session lifecycle persistence is covered but provider/version labeling remains a small gap.
+- Still pending: health-state recovery after successful retry, durable/backoff flush policy, restart/recovery scenarios, provider/identity hardening and attribution gate evidence, daemon query/health services + versioned D-Bus, rollups/retention/exports, GUI, and packaging.
+
+## 2026-11-15 (reliability fixes and interface preparation)
+
+### Completed
+- **Pipeline diagnostics/health:** set `MonitoringDiagnostics.ProviderName` from the monitor implementation when the read loop starts (persisted in monitoring session records) and restore state to `Monitoring` on successful flush after a write-error `Degraded` state (while running), so recovery is reflected honestly. Updated retry integration test to assert recovery/provider labeling.
+- **Interface scaffolding:** added `Flow.Application.Queries.IUsageQueryService` and implemented it on `Flow.Infrastructure.Sqlite.UsageRepository`; registered in daemon DI for future IPC/query endpoints. Added `docs/interface-preparation.md` outlining transport-agnostic contract approach, proposed v1 IPC/query/health surface, Avalonia MVVM structure, incremental build order, and open verification items (D-Bus library/topology, Wayland smoke test) consistent with ADR 0002.
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 1 pre-existing warning in `Flow.Application.Tests`).
+- `dotnet test Flow.slnx -v minimal` → **passed** (13 tests total).
+
+### Notes / next steps
+- D-Bus library and bus/authorization topology remain unverified (ADR 0002 pending); spike before committing to IPC implementation details.
+- Next implementation steps: expose daemon read-only status/query service over a thin IPC adapter, add `IDaemonClient` + mock in `Flow.Desktop`, and build read-only Overview/Apps views with explicit health/attribution/measurement caveats.
+
+## 2026-11-15 (interface start: real status/query services and desktop shell)
+
+### Completed
+- **Daemon/application services (real, not mocked):** added `IMonitoringDiagnosticsSource` on `UsageIngestionPipeline`, `IMonitoringStatusService`/`MonitoringStatusService` returning `MonitoringStatusDto` (state, provider, last event/flush, counters, last error, health message) from live pipeline diagnostics; registered in daemon DI alongside `IUsageQueryService`.
+- **Contracts:** extended `MonitoringStatusDto` with optional diagnostics fields (timestamps, counters, last error) while preserving existing fields.
+- **Desktop (Avalonia) initial shell:** added `Flow.Desktop` references to Infrastructure and wired real local SQLite reads via `SqliteConnectionFactory`/`UsageRepository`/`IUsageQueryService` -> `IUsageQueryClient` (`LocalUsageQueryClient`) using the same default DB path/env var as the daemon. This surfaces **real persisted historical data** (last 24h summary and top applications) when present.
+- **Live daemon status (truthful, no fabricated metrics):** added `IDaemonStatusClient` with `PendingIpcDaemonStatusClient` reporting `Unavailable`/"daemon IPC not connected" until versioned IPC is implemented; no live in-process daemon metrics are invented.
+- **UI:** replaced template window with initial Overview layout showing daemon status (truthful), last-24h range/summary with attributed vs unattributed totals, top applications from DB, and explicit attribution/measurement caveats; refresh command and empty-state messaging included.
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 1 pre-existing warning in `Flow.Application.Tests`).
+- `dotnet test Flow.slnx -v minimal` → **passed** (13 tests total).
+
+### Notes / next steps
+- Desktop currently reads historical data directly from the local DB file (read path) and cannot observe live daemon pipeline diagnostics without IPC; this is intentional and explicit. Next: spike/choose D-Bus transport (ADR 0002), expose daemon status+query over versioned IPC, and replace `PendingIpcDaemonStatusClient` with a real IPC client while keeping data real.
+- UI needs follow-up for proper byte formatting in app rows, time-range selection, process/interface views, charts, and GNOME/Wayland accessibility/visual polish.
+
+## 2026-11-15 (D-Bus IPC scaffolding: daemon service and desktop client)
+
+### Completed
+- **Versioned IPC contract (real, not mocked):** added `Flow.Contracts.Ipc` with `FlowIpc` (service/object/interface names, contract version), `IpcJson` serializer settings, and shared Tmds.DBus interface `IFlowDaemonDbus` (`GetContractVersionAsync`, `GetStatusJsonAsync`, `GetUsageSummaryJsonAsync`, `GetTopApplicationsJsonAsync`, `GetUsageTimeSeriesJsonAsync`) using JSON-serialized DTO payloads for transport stability.
+- **Daemon IPC host:** added `FlowDaemonDbusService` backed by real `IMonitoringStatusService` and `IUsageQueryService`, and `DbusIpcHostedService` (registered in daemon) that connects to session/system bus when available, registers `org.flow.Daemon` at `/org/flow/Daemon` (`org.flow.Daemon1`), and degrades gracefully with warnings if D-Bus is unavailable or registration fails.
+- **Desktop IPC client:** added `DbusDaemonClient` (real D-Bus proxy calls), `HybridDaemonStatusClient` (real daemon status via IPC or truthful unavailable when unreachable), and `HybridUsageQueryClient` (prefers real daemon IPC query API, falls back to direct local SQLite reads of the same persisted data if IPC is unavailable). `App.axaml.cs` now uses these clients.
+- **Dependencies:** added `Tmds.DBus` (0.95.2) to `Flow.Contracts`, `Flow.Daemon`, and `Flow.Desktop`.
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 1 pre-existing warning in `Flow.Application.Tests`).
+- `dotnet test Flow.slnx -v minimal` → **passed** (13 tests total).
+
+### Notes / limitations
+- IPC is a first scaffold: JSON-over-D-Bus methods, no signals/subscriptions yet, no Polkit/authorization on control operations (none exposed), and session-bus registration may conflict in multi-instance scenarios. Desktop falls back to local DB reads for historical queries when daemon IPC is unavailable (same real data, different access path) and reports live status as unavailable rather than fabricating it.
+- Needs on-target validation (Ubuntu 26.04 GNOME Wayland, session/system bus behavior, service naming/policy files) and ADR 0002 follow-up to confirm/pin the D-Bus approach.
+
+## 2026-11-15 (on-target IPC validation - user reported)
+
+### Completed
+- User reported D-Bus IPC appears to be working on-target (daemon registration/calls and desktop connectivity path). Detailed command outputs/evidence and final session-vs-system bus/activation/policy decision should still be captured in `docs/progress.md` and used to supersede ADR 0002.

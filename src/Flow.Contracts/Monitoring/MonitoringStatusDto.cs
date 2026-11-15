@@ -9,4 +9,12 @@ public sealed record MonitoringStatusDto(
     string? MeasurementDescription,
     string? HealthMessage,
     long? AttributedEvents,
-    long? UnattributedEvents);
+    long? UnattributedEvents,
+    DateTimeOffset? LastEventAtUtc = null,
+    DateTimeOffset? LastFlushAtUtc = null,
+    string? LastError = null,
+    long EventsReceived = 0,
+    long EventsDropped = 0,
+    long EventsAggregated = 0,
+    long BatchesWritten = 0,
+    long WriteErrors = 0);

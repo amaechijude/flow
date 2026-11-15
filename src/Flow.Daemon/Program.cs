@@ -1,6 +1,8 @@
 using Flow.Application.Monitoring;
 using Flow.Application.Persistence;
+using Flow.Application.Queries;
 using Flow.Daemon;
+using Flow.Daemon.Ipc;
 using Flow.Infrastructure.Sqlite;
 using Flow.Linux.Monitoring;
 
@@ -25,6 +27,7 @@ builder.Services.AddSingleton(connectionFactory);
 builder.Services.AddSingleton<UsageRepository>();
 builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
+builder.Services.AddSingleton<IUsageQueryService>(sp => sp.GetRequiredService<UsageRepository>());
 
 var monitorKind = builder.Configuration["Flow:Monitor"];
 if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
@@ -51,7 +54,10 @@ else
 
 builder.Services.AddSingleton<UsageIngestionPipeline>();
 builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
+builder.Services.AddSingleton<IMonitoringDiagnosticsSource>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
+builder.Services.AddSingleton<IMonitoringStatusService, MonitoringStatusService>();
 builder.Services.AddHostedService<Worker>();
+builder.Services.AddHostedService<DbusIpcHostedService>();
 
 var host = builder.Build();
 host.Run();

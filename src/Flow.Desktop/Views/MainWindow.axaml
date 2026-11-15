@@ -1,22 +1,66 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Flow.Desktop.ViewModels"
+        xmlns:usage="using:Flow.Contracts.Usage"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
         x:Class="Flow.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="Flow.Desktop">
+        Title="Flow">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainViewModel />
-    </Design.DataContext>
+    <ScrollViewer>
+        <StackPanel Margin="24" Spacing="12">
+            <TextBlock Text="Flow — Network Usage" FontSize="24" FontWeight="SemiBold" />
+            <TextBlock Text="Overview (historical data from local database; live daemon status requires IPC)" Opacity="0.8" />
 
-    <TextBox Text="{Binding Greeting}"
-             HorizontalAlignment="Center"
-             VerticalAlignment="Center" />
+            <Border Padding="12" CornerRadius="8" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Daemon status" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Overview.StatusText}" />
+                    <TextBlock Text="{Binding Overview.StatusDetail}" TextWrapping="Wrap" />
+                    <Button Content="Refresh" Command="{Binding Overview.RefreshCommand}" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
 
+            <Border Padding="12" CornerRadius="8" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Usage summary" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Overview.RangeText}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding Overview.SummaryText}" TextWrapping="Wrap" FontFamily="monospace" />
+                    <TextBlock Text="{Binding Overview.AttributionNote}" TextWrapping="Wrap" Opacity="0.8" />
+                </StackPanel>
+            </Border>
+
+            <Border Padding="12" CornerRadius="8" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Top applications (last 24h, by total bytes)" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding Overview.TopApplications}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="usage:ApplicationUsageDto">
+                                <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding ApplicationKey}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding DisplayName}" Opacity="0.8" />
+                                        <TextBlock>
+                                            <TextBlock.Text>
+                                                <MultiBinding StringFormat="Attributed ↓ {0} ↑ {1} | Unattributed ↓ {2} ↑ {3}">
+                                                    <Binding Path="RxBytes" />
+                                                    <Binding Path="TxBytes" />
+                                                    <Binding Path="UnattributedRxBytes" />
+                                                    <Binding Path="UnattributedTxBytes" />
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="No data yet. Run the daemon with a monitor (e.g. procfs or ebpf with privileges) to collect usage." IsVisible="{Binding Overview.HasNoApplications}" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </Window>

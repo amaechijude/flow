@@ -74,6 +74,49 @@ public sealed class SqliteUsageRepositoryTests
     }
 
     [Fact]
+    public async Task RepeatedWritesWithNullDimensionsCoalesceIntoSingleLogicalBucket()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");
+        try
+        {
+            var factory = new SqliteConnectionFactory(dbPath);
+            using (var conn = factory.CreateOpenConnection())
+                DbMigrator.Migrate(conn);
+
+            var repo = new UsageRepository(factory);
+            var bucket = new DateTimeOffset(2026, 11, 15, 10, 5, 0, TimeSpan.Zero);
+
+            await repo.WriteMinuteDeltasAsync(new[]
+            {
+                new UsageBucketDelta(bucket, null, null, null, 100, 10, false, "unattributed", "ebpf-tcp", "tcp_sendmsg/recvmsg"),
+            });
+            await repo.WriteMinuteDeltasAsync(new[]
+            {
+                new UsageBucketDelta(bucket.AddSeconds(30), null, null, null, 50, 5, false, "unattributed", "ebpf-tcp", "tcp_sendmsg/recvmsg"),
+            });
+
+            var summary = await repo.GetSummaryAsync(bucket, bucket.AddMinutes(1));
+            Assert.Equal(150, summary.UnattributedRxBytes);
+            Assert.Equal(15, summary.UnattributedTxBytes);
+            Assert.Equal(0, summary.RxBytes);
+            Assert.Equal(0, summary.TxBytes);
+
+            using (var conn = factory.CreateOpenConnection())
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT COUNT(*) FROM usage_buckets WHERE bucket_start_utc = $s AND granularity = '1m' AND is_attributed = 0;";
+                cmd.Parameters.AddWithValue("$s", bucket.ToString("O"));
+                var count = (long)(cmd.ExecuteScalar() ?? 0L);
+                Assert.Equal(1, count);
+            }
+        }
+        finally
+        {
+            TryDeleteDb(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task TopApplicationsAndTimeSeriesQueriesReturnExpectedData()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");

@@ -18,6 +18,7 @@ public static class DbMigrator
             """);
 
         Apply(connection, tx, 1, "initial_schema", InitialSchemaSql);
+        Apply(connection, tx, 2, "usage_buckets_null_safe_uniqueness", UsageBucketsNullSafeUniquenessSql);
 
         tx.Commit();
     }
@@ -137,5 +138,59 @@ public static class DbMigrator
         CREATE INDEX IF NOT EXISTS idx_usage_buckets_iface_time ON usage_buckets(interface_id, bucket_start_utc);
         CREATE INDEX IF NOT EXISTS idx_iface_usage_time ON interface_usage_buckets(interface_id, bucket_start_utc, granularity);
         CREATE INDEX IF NOT EXISTS idx_processes_app ON processes(application_key);
+        """;
+
+    // SQLite UNIQUE treats NULLs as distinct, so the v1 table-level UNIQUE could not prevent duplicates when
+    // app/process/interface dimensions were NULL (unattributed or missing attribution). v2 consolidates existing rows
+    // by logical bucket key and enforces a NULL-safe unique index used by ON CONFLICT upserts.
+    private const string UsageBucketsNullSafeUniquenessSql = """
+        CREATE TEMP TABLE usage_buckets_dedup AS
+        SELECT
+            MIN(id) AS id,
+            bucket_start_utc,
+            bucket_seconds,
+            granularity,
+            application_key,
+            process_stable_key,
+            interface_id,
+            SUM(rx_bytes) AS rx_bytes,
+            SUM(tx_bytes) AS tx_bytes,
+            is_attributed,
+            MAX(attribution_note) AS attribution_note,
+            MAX(measurement_provider) AS measurement_provider,
+            MAX(measurement_hook) AS measurement_hook
+        FROM usage_buckets
+        GROUP BY
+            bucket_start_utc,
+            bucket_seconds,
+            granularity,
+            COALESCE(application_key, ''),
+            COALESCE(process_stable_key, ''),
+            COALESCE(interface_id, ''),
+            is_attributed;
+
+        DELETE FROM usage_buckets;
+
+        INSERT INTO usage_buckets (
+            id, bucket_start_utc, bucket_seconds, granularity, application_key, process_stable_key, interface_id,
+            rx_bytes, tx_bytes, is_attributed, attribution_note, measurement_provider, measurement_hook
+        )
+        SELECT
+            id, bucket_start_utc, bucket_seconds, granularity, application_key, process_stable_key, interface_id,
+            rx_bytes, tx_bytes, is_attributed, attribution_note, measurement_provider, measurement_hook
+        FROM usage_buckets_dedup;
+
+        DROP TABLE usage_buckets_dedup;
+
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_usage_buckets_logical
+        ON usage_buckets (
+            bucket_start_utc,
+            bucket_seconds,
+            granularity,
+            COALESCE(application_key, ''),
+            COALESCE(process_stable_key, ''),
+            COALESCE(interface_id, ''),
+            is_attributed
+        );
         """;
 }

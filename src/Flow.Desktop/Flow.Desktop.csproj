@@ -21,11 +21,13 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Tmds.DBus" Version="0.95.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Flow.Application\Flow.Application.csproj" />
     <ProjectReference Include="..\Flow.Contracts\Flow.Contracts.csproj" />
     <ProjectReference Include="..\Flow.Domain\Flow.Domain.csproj" />
+    <ProjectReference Include="..\Flow.Infrastructure\Flow.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 using Flow.Application.Persistence;
+using Flow.Application.Queries;
 using Flow.Contracts.Usage;
 using Flow.Domain.Identity;
 using Flow.Domain.Monitoring;
@@ -6,7 +7,7 @@ using Microsoft.Data.Sqlite;
 
 namespace Flow.Infrastructure.Sqlite;
 
-public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStore
+public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStore, IUsageQueryService
 {
     private readonly SqliteConnectionFactory _factory;
 
@@ -150,7 +151,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             ) VALUES (
                 $start, 60, '1m', $app, $proc, $iface, $rx, $tx, $attr, $note, $prov, $hook
             )
-            ON CONFLICT(bucket_start_utc, bucket_seconds, granularity, application_key, process_stable_key, interface_id, is_attributed)
+            ON CONFLICT(bucket_start_utc, bucket_seconds, granularity, COALESCE(application_key,''), COALESCE(process_stable_key,''), COALESCE(interface_id,''), is_attributed)
             DO UPDATE SET
                 rx_bytes = rx_bytes + excluded.rx_bytes,
                 tx_bytes = tx_bytes + excluded.tx_bytes,
@@ -189,7 +190,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             ) VALUES (
                 $start, 60, '1m', $app, $proc, $iface, $rx, $tx, $attr, $note, $prov, $hook
             )
-            ON CONFLICT(bucket_start_utc, bucket_seconds, granularity, application_key, process_stable_key, interface_id, is_attributed)
+            ON CONFLICT(bucket_start_utc, bucket_seconds, granularity, COALESCE(application_key,''), COALESCE(process_stable_key,''), COALESCE(interface_id,''), is_attributed)
             DO UPDATE SET
                 rx_bytes = rx_bytes + excluded.rx_bytes,
                 tx_bytes = tx_bytes + excluded.tx_bytes,

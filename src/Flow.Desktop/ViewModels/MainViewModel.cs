@@ -1,9 +1,11 @@
-using CommunityToolkit.Mvvm.ComponentModel;
-
 namespace Flow.Desktop.ViewModels;
 
 public partial class MainViewModel : ViewModelBase
 {
-    [ObservableProperty]
-    public partial string Greeting { get; set; } = "Welcome to Avalonia!";
+    public OverviewViewModel Overview { get; }
+
+    public MainViewModel(OverviewViewModel overview)
+    {
+        Overview = overview;
+    }
 }

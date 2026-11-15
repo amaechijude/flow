@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Flow.Application.Monitoring;
 
-public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsyncDisposable
+public sealed partial class UsageIngestionPipeline : IMonitoringController, IMonitoringDiagnosticsSource, IAsyncDisposable
 {
     private readonly INetworkMonitor _monitor;
     private readonly IUsageBucketStore _store;
@@ -46,6 +46,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
     public string? LastError => _diagnostics.LastError;
     public DateTimeOffset? LastEventAtUtc => _diagnostics.LastEventAtUtc;
     public MonitoringDiagnosticsSnapshot Diagnostics => _diagnostics.Snapshot();
+    public MonitoringDiagnosticsSnapshot GetDiagnosticsSnapshot() => _diagnostics.Snapshot();
 
     public Task StartMonitoringAsync(CancellationToken cancellationToken = default)
     {
@@ -64,7 +65,8 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
         if (Interlocked.CompareExchange(ref _startState, 0, 1) != 1)
             return;
 
-        _diagnostics.State = MonitoringState.Paused;
+        if (_diagnostics.State is not MonitoringState.Degraded and not MonitoringState.Unavailable)
+            _diagnostics.State = MonitoringState.Paused;
         try { await _monitor.StopAsync(cancellationToken).ConfigureAwait(false); } catch { /* best effort */ }
         if (_metadataStore is not null && _sessionId.HasValue)
         {
@@ -89,6 +91,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
     {
         try
         {
+            _diagnostics.ProviderName ??= _monitor.GetType().Name;
             await _monitor.StartAsync(ct).ConfigureAwait(false);
             _diagnostics.State = MonitoringState.Monitoring;
             if (_metadataStore is not null)
@@ -219,64 +222,112 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
         if (buffer.Count == 0 && (apps?.Count ?? 0) == 0 && (procs?.Count ?? 0) == 0 && (ifaces?.Count ?? 0) == 0)
             return;
 
+        // Snapshot current state so we can safely retain/retry on failure while allowing new events to accumulate.
+        List<(string Key, DateTimeOffset Seen)>? ifaceBatch = null;
+        if (_metadataStore is not null && ifaces is not null && ifaces.Count > 0)
+            ifaceBatch = ifaces.Select(kv => (kv.Key, kv.Value)).ToList();
+        List<(ApplicationIdentity App, DateTimeOffset Seen)>? appBatch = null;
+        if (_metadataStore is not null && apps is not null && apps.Count > 0)
+            appBatch = apps.Values.ToList();
+        List<(ProcessIdentity Proc, string? AppKey, DateTimeOffset Seen)>? procBatch = null;
+        if (_metadataStore is not null && procs is not null && procs.Count > 0)
+            procBatch = procs.Values.ToList();
+
+        List<UsageBucketDelta>? deltaBatch = null;
+        if (buffer.Count > 0)
+        {
+            deltaBatch = new List<UsageBucketDelta>(buffer.Count);
+            foreach (var (key, acc) in buffer)
+            {
+                deltaBatch.Add(new UsageBucketDelta(
+                    key.BucketStartUtc,
+                    key.ApplicationKey,
+                    key.ProcessStableKey,
+                    key.InterfaceId,
+                    acc.RxBytes,
+                    acc.TxBytes,
+                    key.IsAttributed,
+                    acc.AttributionNote,
+                    acc.MeasurementProvider,
+                    acc.MeasurementHook));
+            }
+        }
+
         try
         {
             if (_metadataStore is not null)
             {
-                if (ifaces is not null && ifaces.Count > 0)
+                if (ifaceBatch is not null)
                 {
-                    foreach (var kv in ifaces)
-                        await _metadataStore.UpsertInterfaceAsync(kv.Key, null, kv.Value, ct).ConfigureAwait(false);
-                    ifaces.Clear();
+                    foreach (var kv in ifaceBatch)
+                        await _metadataStore.UpsertInterfaceAsync(kv.Key, null, kv.Seen, ct).ConfigureAwait(false);
                 }
-                if (apps is not null && apps.Count > 0)
+                if (appBatch is not null)
                 {
-                    foreach (var kv in apps.Values)
+                    foreach (var kv in appBatch)
                         await _metadataStore.UpsertApplicationAsync(kv.App, kv.Seen, ct).ConfigureAwait(false);
-                    apps.Clear();
                 }
-                if (procs is not null && procs.Count > 0)
+                if (procBatch is not null)
                 {
-                    foreach (var kv in procs.Values)
+                    foreach (var kv in procBatch)
                         await _metadataStore.UpsertProcessAsync(kv.Proc, kv.AppKey, kv.Seen, ct).ConfigureAwait(false);
-                    procs.Clear();
                 }
             }
 
-            if (buffer.Count > 0)
+            if (deltaBatch is not null && deltaBatch.Count > 0)
+                await _store.WriteMinuteDeltasAsync(deltaBatch, ct).ConfigureAwait(false);
+
+            // Commit: remove flushed snapshots (preserve any newer arrivals accumulated during async writes).
+            if (ifaceBatch is not null && ifaces is not null)
             {
-                var batch = new List<UsageBucketDelta>(buffer.Count);
-                foreach (var (key, acc) in buffer)
+                foreach (var kv in ifaceBatch)
                 {
-                    batch.Add(new UsageBucketDelta(
-                        key.BucketStartUtc,
-                        key.ApplicationKey,
-                        key.ProcessStableKey,
-                        key.InterfaceId,
-                        acc.RxBytes,
-                        acc.TxBytes,
-                        key.IsAttributed,
-                        acc.AttributionNote,
-                        acc.MeasurementProvider,
-                        acc.MeasurementHook));
+                    if (ifaces.TryGetValue(kv.Key, out var seen) && seen <= kv.Seen)
+                        ifaces.Remove(kv.Key);
                 }
-                buffer.Clear();
-                await _store.WriteMinuteDeltasAsync(batch, ct).ConfigureAwait(false);
+            }
+            if (appBatch is not null && apps is not null)
+            {
+                foreach (var kv in appBatch)
+                {
+                    if (apps.TryGetValue(kv.App.ApplicationKey, out var cur) && cur.Seen <= kv.Seen)
+                        apps.Remove(kv.App.ApplicationKey);
+                }
+            }
+            if (procBatch is not null && procs is not null)
+            {
+                foreach (var kv in procBatch)
+                {
+                    if (procs.TryGetValue(kv.Proc.StableKey, out var cur) && cur.Seen <= kv.Seen)
+                        procs.Remove(kv.Proc.StableKey);
+                }
+            }
+            if (deltaBatch is not null)
+            {
+                foreach (var d in deltaBatch)
+                {
+                    var key = new BucketKey(d.BucketStartUtc, d.ApplicationKey, d.ProcessStableKey, d.InterfaceId, d.IsAttributed);
+                    if (buffer.TryGetValue(key, out var acc))
+                    {
+                        acc.Subtract(d.RxBytesDelta, d.TxBytesDelta);
+                        if (acc.IsEmpty)
+                            buffer.Remove(key);
+                    }
+                }
                 _diagnostics.IncrementBatchesWritten();
             }
 
             _diagnostics.LastFlushAtUtc = DateTimeOffset.UtcNow;
+            if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
+                _diagnostics.State = MonitoringState.Monitoring;
         }
         catch (Exception ex)
         {
             _diagnostics.IncrementWriteErrors();
             _diagnostics.State = MonitoringState.Degraded;
             _diagnostics.LastError = ex.Message;
-            LogFlushFailed(_logger, ex, buffer.Count);
-            buffer.Clear();
-            apps?.Clear();
-            procs?.Clear();
-            ifaces?.Clear();
+            LogFlushFailed(_logger, ex, deltaBatch?.Count ?? 0);
+            // Retain buffered deltas/metadata for retry on next flush cycle (upserts are idempotent/additive-safe).
         }
     }
 
@@ -314,6 +365,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
         public string? AttributionNote { get; private set; }
         public string? MeasurementProvider { get; private set; }
         public string? MeasurementHook { get; private set; }
+        public bool IsEmpty => RxBytes == 0 && TxBytes == 0;
 
         public void Add(long rx, long tx, string? note, string? provider, string? hook)
         {
@@ -322,6 +374,12 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
             AttributionNote ??= note;
             MeasurementProvider ??= provider;
             MeasurementHook ??= hook;
+        }
+
+        public void Subtract(long rx, long tx)
+        {
+            RxBytes = checked(RxBytes - rx);
+            TxBytes = checked(TxBytes - tx);
         }
     }
 
