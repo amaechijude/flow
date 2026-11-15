@@ -216,6 +216,16 @@
 - Integration is subprocess-based and requires privileges to load/attach BPF; not an in-process libbpf implementation.
 - Attribution is TCP-only (sendmsg/recvmsg return bytes), no per-interface mapping in events, and identity persistence/PID-reuse lifecycle hardening in production storage remains incomplete. Further controlled accuracy/overhead/gate validation still required.
 
+## 2026-11-15 (eBPF daemon ingestion verification)
+
+### Completed
+- Fixed ingestion flush-loop bug: `PeriodicTimer.WaitForNextTickAsync` was awaited concurrently across iterations, causing `InvalidOperationException`, degraded state, and no DB flushes despite received/aggregated events (`fdc602a`).
+- User-verified end-to-end run with `Flow__Monitor=ebpf` (privileged): per-process attributed TCP usage persisted to SQLite (`usage_buckets` with `measurement_provider='ebpf-tcp'`, process/app keys populated, e.g. `msedge` and `opencode`).
+
+### Observations / follow-ups
+- Some 1-minute bucket/process combinations appeared as multiple rows in observed output; investigate aggregation/upsert key behavior and flush coalescing to ensure expected idempotent consolidation.
+- Continue gate work: controlled counter/overhead validation, broader protocol/namespace/VPN coverage, and robust PID-reuse-safe persisted identity lifecycle.
+
 ## 2026-11-13 (metadata persistence, session tracking, and infrastructure tests)
 
 ### Completed
