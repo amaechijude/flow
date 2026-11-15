@@ -171,4 +171,49 @@ public sealed class SqliteUsageRepositoryTests
         }
         catch { }
     }
+
+    [Fact]
+    public async Task InterfaceAndProcessUsageQueriesReturnAggregatedData()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");
+        try
+        {
+            var factory = new SqliteConnectionFactory(dbPath);
+            using (var conn = factory.CreateOpenConnection())
+                DbMigrator.Migrate(conn);
+
+            var repo = new UsageRepository(factory);
+            var now = DateTimeOffset.UtcNow;
+            var b1 = new DateTimeOffset(2026, 11, 15, 10, 0, 0, TimeSpan.Zero);
+            var pStart = new DateTimeOffset(2026, 11, 15, 9, 0, 0, TimeSpan.Zero);
+            var proc = new ProcessIdentity(4242, pStart, "/usr/bin/app", 1000);
+
+            await repo.UpsertApplicationAsync(new ApplicationIdentity("app.test", "Test App", null, "/usr/bin/app", null), now);
+            await repo.UpsertProcessAsync(proc, "app.test", now);
+            await repo.UpsertInterfaceAsync("eth0", "ethernet", now);
+
+            await repo.WriteMinuteDeltasAsync(new[]
+            {
+                new UsageBucketDelta(b1, "app.test", proc.StableKey, "eth0", 100, 10, true, null, "test", "hook"),
+                new UsageBucketDelta(b1, null, null, "eth0", 7, 1, false, "unattributed", "test", "hook"),
+            });
+
+            var ifaces = await repo.GetInterfaceUsageAsync(b1, b1.AddMinutes(2));
+            Assert.Single(ifaces);
+            Assert.Equal("eth0", ifaces[0].InterfaceKey);
+            Assert.Equal(100, ifaces[0].RxBytes);
+            Assert.Equal(10, ifaces[0].TxBytes);
+            Assert.Equal(7, ifaces[0].UnattributedRxBytes);
+            Assert.Equal(1, ifaces[0].UnattributedTxBytes);
+
+            var procs = await repo.GetTopProcessesAsync(b1, b1.AddMinutes(2), "eth0", 10);
+            Assert.Equal(2, procs.Count); // attributed process + unattributed bucket key
+            Assert.Contains(procs, p => p.ProcessStableKey == proc.StableKey && p.RxBytes == 100 && p.TxBytes == 10);
+            Assert.Contains(procs, p => p.ProcessStableKey == "(unattributed)" && p.UnattributedRxBytes == 7 && p.UnattributedTxBytes == 1);
+        }
+        finally
+        {
+            TryDeleteDb(dbPath);
+        }
+    }
 }

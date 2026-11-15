@@ -73,4 +73,16 @@ public sealed class HybridUsageQueryClient : IUsageQueryClient
         try { return await _dbus.GetUsageTimeSeriesAsync(startUtc, endUtc, interfaceId, applicationKey, cancellationToken).ConfigureAwait(false); }
         catch { return await _local.GetUsageTimeSeriesAsync(startUtc, endUtc, interfaceId, applicationKey, cancellationToken).ConfigureAwait(false); }
     }
+
+    public async Task<IReadOnlyList<InterfaceUsageDto>> GetInterfaceUsageAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+    {
+        try { return await _dbus.GetInterfaceUsageAsync(startUtc, endUtc, cancellationToken).ConfigureAwait(false); }
+        catch { return await _local.GetInterfaceUsageAsync(startUtc, endUtc, cancellationToken).ConfigureAwait(false); }
+    }
+
+    public async Task<IReadOnlyList<ProcessUsageDto>> GetTopProcessesAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        try { return await _dbus.GetTopProcessesAsync(startUtc, endUtc, interfaceId, limit, cancellationToken).ConfigureAwait(false); }
+        catch { return await _local.GetTopProcessesAsync(startUtc, endUtc, interfaceId, limit, cancellationToken).ConfigureAwait(false); }
+    }
 }

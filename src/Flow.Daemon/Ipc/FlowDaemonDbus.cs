@@ -48,6 +48,20 @@ public sealed class FlowDaemonDbusService : IFlowDaemonDbus
         return IpcJson.Serialize(result);
     }
 
+    public async Task<string> GetInterfaceUsageJsonAsync(string startUtcIso, string endUtcIso)
+    {
+        var (start, end, _) = ParseRange(startUtcIso, endUtcIso, string.Empty);
+        var result = await _queries.GetInterfaceUsageAsync(start, end).ConfigureAwait(false);
+        return IpcJson.Serialize(result);
+    }
+
+    public async Task<string> GetTopProcessesJsonAsync(string startUtcIso, string endUtcIso, string interfaceId, int limit)
+    {
+        var (start, end, iface) = ParseRange(startUtcIso, endUtcIso, interfaceId);
+        var result = await _queries.GetTopProcessesAsync(start, end, iface, limit <= 0 ? 20 : limit).ConfigureAwait(false);
+        return IpcJson.Serialize(result);
+    }
+
     private static (DateTimeOffset start, DateTimeOffset end, string? iface) ParseRange(string startUtcIso, string endUtcIso, string interfaceId)
     {
         var start = DateTimeOffset.Parse(startUtcIso, null, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime();

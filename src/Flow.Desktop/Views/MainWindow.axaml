@@ -1,26 +1,36 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Flow.Desktop.ViewModels"
-        xmlns:usage="using:Flow.Contracts.Usage"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="800"
         x:Class="Flow.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
         Title="Flow">
 
     <ScrollViewer>
-        <StackPanel Margin="24" Spacing="12">
+        <StackPanel Margin="20" Spacing="12">
             <TextBlock Text="Flow — Network Usage" FontSize="24" FontWeight="SemiBold" />
-            <TextBlock Text="Overview (historical data from local database; live daemon status requires IPC)" Opacity="0.8" />
+            <TextBlock Text="Real daemon status via IPC when available; historical usage from persisted data (daemon query or local DB fallback). No fabricated metrics." Opacity="0.8" TextWrapping="Wrap" />
 
             <Border Padding="12" CornerRadius="8" BorderThickness="1">
                 <StackPanel Spacing="6">
                     <TextBlock Text="Daemon status" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding Overview.StatusText}" />
-                    <TextBlock Text="{Binding Overview.StatusDetail}" TextWrapping="Wrap" />
-                    <Button Content="Refresh" Command="{Binding Overview.RefreshCommand}" HorizontalAlignment="Left" />
+                    <TextBlock Text="{Binding Overview.StatusDetail}" TextWrapping="Wrap" FontSize="12" Opacity="0.9" />
+                    <TextBlock Text="{Binding Overview.DataSourceNote}" TextWrapping="Wrap" FontSize="12" Opacity="0.8" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <ComboBox ItemsSource="{Binding Overview.Ranges}" SelectedItem="{Binding Overview.SelectedRange}" MinWidth="160">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:RangeOption">
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <Button Content="Refresh" Command="{Binding Overview.RefreshCommand}" />
+                        <TextBlock Text="Loading..." IsVisible="{Binding Overview.IsBusy}" VerticalAlignment="Center" />
+                    </StackPanel>
                 </StackPanel>
             </Border>
 
@@ -29,36 +39,85 @@
                     <TextBlock Text="Usage summary" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding Overview.RangeText}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Overview.SummaryText}" TextWrapping="Wrap" FontFamily="monospace" />
-                    <TextBlock Text="{Binding Overview.AttributionNote}" TextWrapping="Wrap" Opacity="0.8" />
+                    <TextBlock Text="{Binding Overview.AttributionNote}" TextWrapping="Wrap" FontSize="12" Opacity="0.8" />
                 </StackPanel>
             </Border>
 
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <Border Grid.Column="0" Padding="12" CornerRadius="8" BorderThickness="1">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Top applications" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding Overview.TopApplications}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ApplicationUsageRow">
+                                    <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Key}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding DisplayName}" Opacity="0.8" IsVisible="{Binding DisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
+                                            <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
+                                            <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No application usage in range." IsVisible="{Binding Overview.HasNoApplications}" Opacity="0.7" />
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="1" Padding="12" CornerRadius="8" BorderThickness="1">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Top processes" FontWeight="SemiBold" />
+                        <TextBlock Text="Includes historical process keys when available; identity/lifecycle hardening is ongoing." FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding Overview.TopProcesses}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProcessUsageRow">
+                                    <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Application}" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Key}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding Executable}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" IsVisible="{Binding Executable, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
+                                            <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
+                                            <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No process usage in range." IsVisible="{Binding Overview.HasNoProcesses}" Opacity="0.7" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
             <Border Padding="12" CornerRadius="8" BorderThickness="1">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Top applications (last 24h, by total bytes)" FontWeight="SemiBold" />
-                    <ItemsControl ItemsSource="{Binding Overview.TopApplications}">
+                    <TextBlock Text="Interfaces" FontWeight="SemiBold" />
+                    <TextBlock Text="Per-interface mapping may be unavailable for some providers (e.g. ebpf-tcp events currently lack interface attribution)." FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+                    <ItemsControl ItemsSource="{Binding Overview.Interfaces}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="usage:ApplicationUsageDto">
+                            <DataTemplate x:DataType="vm:InterfaceUsageRow">
                                 <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding ApplicationKey}" FontWeight="SemiBold" />
-                                        <TextBlock Text="{Binding DisplayName}" Opacity="0.8" />
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold" />
                                         <TextBlock>
                                             <TextBlock.Text>
-                                                <MultiBinding StringFormat="Attributed ↓ {0} ↑ {1} | Unattributed ↓ {2} ↑ {3}">
-                                                    <Binding Path="RxBytes" />
-                                                    <Binding Path="TxBytes" />
-                                                    <Binding Path="UnattributedRxBytes" />
-                                                    <Binding Path="UnattributedTxBytes" />
+                                                <MultiBinding StringFormat="Name: {0}  Type: {1}">
+                                                    <Binding Path="Name" TargetNullValue="(unknown)" FallbackValue="(unknown)" />
+                                                    <Binding Path="Type" TargetNullValue="(unknown)" FallbackValue="(unknown)" />
                                                 </MultiBinding>
                                             </TextBlock.Text>
                                         </TextBlock>
+                                        <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
+                                        <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
+                                        <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
-                    <TextBlock Text="No data yet. Run the daemon with a monitor (e.g. procfs or ebpf with privileges) to collect usage." IsVisible="{Binding Overview.HasNoApplications}" Opacity="0.7" TextWrapping="Wrap" />
+                    <TextBlock Text="No interface usage in range." IsVisible="{Binding Overview.HasNoInterfaces}" Opacity="0.7" />
                 </StackPanel>
             </Border>
         </StackPanel>

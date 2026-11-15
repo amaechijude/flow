@@ -411,3 +411,19 @@
 ### Notes / follow-ups
 - Earlier parallel validation attempt killed the daemon during in-flight query calls, producing `recipient disconnected` for those calls; sequential re-run confirmed query methods work. Desktop connected-vs-disconnected behavior is evidenced by hybrid client design + user UI evidence + `ServiceUnknown` on stopped daemon; automated IPC integration tests remain a follow-up.
 - IPC remains request/response only (no signals), no control operations/Polkit, and no system-bus policy/activation artifacts yet.
+
+## 2026-11-15 (step 2: interface usefulness - ranges, formatting, interfaces/processes)
+
+### Completed
+- **UI (real data, no fabricated metrics):** added rolling time-range selection (1h/6h/24h/7d/30d, UTC), consistent byte formatting, and clearer status/data-source/attribution notes in `Flow.Desktop` Overview. Top applications now show formatted attributed/unattributed/total values.
+- **Query/API expansion (end-to-end):** added `InterfaceUsageDto` and `ProcessUsageDto`, extended `IUsageQueryService`/`UsageRepository` with interface and process aggregations (joined to metadata tables where available), and exposed them through daemon D-Bus service, desktop D-Bus client, and local-DB fallback path. Bumped IPC `ContractVersion` to **2** and added `GetInterfaceUsageJsonAsync` / `GetTopProcessesJsonAsync`.
+- **UI views:** added Interfaces and Top Processes sections backed by real query results, with explicit caveats (per-interface mapping may be unavailable for some providers; process identity/lifecycle hardening ongoing).
+- **Tests:** added `InterfaceAndProcessUsageQueriesReturnAggregatedData` in `Flow.Infrastructure.Tests`.
+
+### Test results
+- `dotnet test tests/Flow.Infrastructure.Tests/Flow.Infrastructure.Tests.csproj -v minimal` → **passed** (6 tests).
+- `dotnet test Flow.slnx -v minimal` → **passed** (14 tests total: Domain 1, Application 4, Infrastructure 6, Linux 1, Daemon 1, System 1).
+
+### Notes / caveats
+- ebpf-tcp events currently do not provide per-interface attribution, so interface breakdowns may show unknown/unmapped buckets depending on provider; process identity remains stable-key based but full PID-reuse/lifecycle hardening and richer process metadata are still pending.
+- Desktop still prefers daemon IPC for live status/queries and falls back to direct local DB reads for historical data when IPC is unreachable (same persisted data, disclosed). No live metrics are fabricated.

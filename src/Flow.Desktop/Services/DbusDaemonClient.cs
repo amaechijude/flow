@@ -46,6 +46,20 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
         return IpcJson.Deserialize<IReadOnlyList<UsageTimePointDto>>(json) ?? Array.Empty<UsageTimePointDto>();
     }
 
+    public async Task<IReadOnlyList<InterfaceUsageDto>> GetInterfaceUsageAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+    {
+        var proxy = await GetProxyAsync().ConfigureAwait(false);
+        var json = await proxy.GetInterfaceUsageJsonAsync(ToIso(startUtc), ToIso(endUtc)).ConfigureAwait(false);
+        return IpcJson.Deserialize<IReadOnlyList<InterfaceUsageDto>>(json) ?? Array.Empty<InterfaceUsageDto>();
+    }
+
+    public async Task<IReadOnlyList<ProcessUsageDto>> GetTopProcessesAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        var proxy = await GetProxyAsync().ConfigureAwait(false);
+        var json = await proxy.GetTopProcessesJsonAsync(ToIso(startUtc), ToIso(endUtc), interfaceId ?? string.Empty, limit).ConfigureAwait(false);
+        return IpcJson.Deserialize<IReadOnlyList<ProcessUsageDto>>(json) ?? Array.Empty<ProcessUsageDto>();
+    }
+
     private async Task<IFlowDaemonDbus> GetProxyAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);

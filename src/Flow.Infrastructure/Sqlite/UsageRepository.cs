@@ -346,6 +346,91 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<InterfaceUsageDto>> GetInterfaceUsageAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT
+              COALESCE(b.interface_id, '(unknown)') AS iface_key,
+              ni.interface_name,
+              ni.interface_type,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.rx_bytes ELSE 0 END), 0) AS rx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.tx_bytes ELSE 0 END), 0) AS tx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.rx_bytes ELSE 0 END), 0) AS rx_unattr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.tx_bytes ELSE 0 END), 0) AS tx_unattr,
+              COALESCE(SUM(b.rx_bytes + b.tx_bytes), 0) AS total
+            FROM usage_buckets b
+            LEFT JOIN network_interfaces ni ON ni.interface_id = b.interface_id
+            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+            GROUP BY COALESCE(b.interface_id, '(unknown)'), ni.interface_name, ni.interface_type
+            ORDER BY total DESC;
+            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
+        using var reader = cmd.ExecuteReader();
+        var list = new List<InterfaceUsageDto>();
+        while (reader.Read())
+        {
+            list.Add(new InterfaceUsageDto(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? 0 : reader.GetInt64(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt64(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
+                reader.IsDBNull(6) ? 0 : reader.GetInt64(6)));
+        }
+        return Task.FromResult<IReadOnlyList<InterfaceUsageDto>>(list);
+    }
+
+    public Task<IReadOnlyList<ProcessUsageDto>> GetTopProcessesAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, int limit = 20, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT
+              COALESCE(b.process_stable_key, '(unattributed)') AS proc_key,
+              b.application_key,
+              COALESCE(a.display_name, a.application_key) AS display_name,
+              p.executable_path,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.rx_bytes ELSE 0 END), 0) AS rx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 1 THEN b.tx_bytes ELSE 0 END), 0) AS tx_attr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.rx_bytes ELSE 0 END), 0) AS rx_unattr,
+              COALESCE(SUM(CASE WHEN b.is_attributed = 0 THEN b.tx_bytes ELSE 0 END), 0) AS tx_unattr,
+              COALESCE(SUM(b.rx_bytes + b.tx_bytes), 0) AS total
+            FROM usage_buckets b
+            LEFT JOIN processes p ON p.process_stable_key = b.process_stable_key
+            LEFT JOIN applications a ON a.application_key = COALESCE(b.application_key, p.application_key)
+            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+              AND ($iface IS NULL OR b.interface_id = $iface)
+            GROUP BY COALESCE(b.process_stable_key, '(unattributed)'), b.application_key, a.display_name, a.application_key, p.executable_path
+            ORDER BY total DESC
+            LIMIT $limit;
+            """;
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$limit", Math.Max(1, limit));
+        using var reader = cmd.ExecuteReader();
+        var list = new List<ProcessUsageDto>();
+        while (reader.Read())
+        {
+            list.Add(new ProcessUsageDto(
+                reader.GetString(0),
+                reader.IsDBNull(1) ? null : reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.IsDBNull(4) ? 0 : reader.GetInt64(4),
+                reader.IsDBNull(5) ? 0 : reader.GetInt64(5),
+                reader.IsDBNull(6) ? 0 : reader.GetInt64(6),
+                reader.IsDBNull(7) ? 0 : reader.GetInt64(7)));
+        }
+        return Task.FromResult<IReadOnlyList<ProcessUsageDto>>(list);
+    }
+
     public static string NormalizeInterfaceId(string interfaceName) => interfaceName.Trim().ToLowerInvariant();
 
     public static DateTimeOffset AlignToMinuteUtc(DateTimeOffset valueUtc)
