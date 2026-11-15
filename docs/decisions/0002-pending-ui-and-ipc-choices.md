@@ -20,18 +20,12 @@ The plan specifies Avalonia UI for `Flow.Desktop` and D-Bus for GUI↔daemon IPC
 - **Interim decision:** do not pin Avalonia packages until a minimal Wayland smoke test app is built and run on target.
 
 ### D-Bus (.NET)
-- **Candidate direction:** a maintained .NET D-Bus library with clear Linux support (commonly **Tmds.DBus** in .NET/Linux projects) or equivalent; final choice depends on current maintenance, API fit, and .NET 10 compatibility.
-- **Verification required:**
-  - Contract modeling (methods/signals/properties), async patterns, and versioning strategy.
-  - System vs session bus usage, service activation with systemd, and integration with Polkit/authorization flows where needed.
-  - Compatibility with AOT/trimming goals if relevant (likely not required initially).
-- **Interim decision:** define `Flow.Contracts` DTOs independently of transport library; implement a thin adapter once library is selected.
+- **Superseded by ADR 0003:** `Tmds.DBus` 0.95.2, session-bus per-user v1 (`org.flow.Daemon` / `/org/flow/Daemon` / `org.flow.Daemon1`, contract v1, JSON-over-D-Bus request/response) validated on-target. Follow-ups (signals, reconnect/contract tests, system-bus policy/activation/auth) tracked in ADR 0003 and progress.
 
 ## Consequences
-- Defers dependency lock-in until evidence exists, reducing rework risk.
-- Requires small spike projects during Phase 0/6 prep (Avalonia Wayland smoke test, D-Bus echo/prototype) and follow-up ADRs recording final selections and versions.
+- IPC choice is now pinned for v1 per-user/session use with captured evidence; system-bus deployment remains deferred.
+- Avalonia dependency/Wayland behavior still requires verification before lock-in.
 
 ## Next actions
-1. Create and run an Avalonia "hello world" smoke test on the current GNOME Wayland session; capture results in `docs/progress.md`.
-2. Prototype a minimal D-Bus service/client pair using candidate library; validate method call + signal + reconnect basics.
-3. Replace this ADR with accepted decisions (or superseding ADRs) including pinned versions and rationale.
+1. Create and run an Avalonia smoke test on the current GNOME Wayland session; capture results in `docs/progress.md`.
+2. Record remaining IPC hardening items (signals, reconnect/contract tests, policy/activation) and supersede UI portion with an accepted decision including pinned versions and rationale.
