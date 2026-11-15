@@ -386,3 +386,7 @@
 
 ### Completed
 - User reported D-Bus IPC appears to be working on-target (daemon registration/calls and desktop connectivity path). Detailed command outputs/evidence and final session-vs-system bus/activation/policy decision should still be captured in `docs/progress.md` and used to supersede ADR 0002.
+
+### User-provided UI evidence (2026-11-15, converted from screenshot)
+- Desktop Overview showed: **State: Monitoring (provider: ProcNetDevMonitor)**, "Monitoring", refresh available; **Last 24 hours (UTC): 2026-11-14 04:18:48Z – 2026-11-15 04:18:48Z**; **Attributed ↓ 0 B ↑ 0 B | Unattributed ↓ 15.52 MiB ↑ 7.97 MiB | Total ↓ 15.52 MiB ↑ 7.97 MiB**; top application **(unattributed)** with `Attributed ↓ 0 ↑ 0 | Unattributed ↓ 16276344 ↑ 8357416`.
+- Interpretation: confirms daemon↔desktop status/query path working and displaying real persisted data with honest attribution semantics for `procfs` (interface-level totals reported as unattributed). Detailed `busctl`/introspection command outputs and final session-vs-system bus/activation/policy decision still to be captured for ADR 0002 supersession.
