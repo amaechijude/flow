@@ -390,3 +390,24 @@
 ### User-provided UI evidence (2026-11-15, converted from screenshot)
 - Desktop Overview showed: **State: Monitoring (provider: ProcNetDevMonitor)**, "Monitoring", refresh available; **Last 24 hours (UTC): 2026-11-14 04:18:48Z – 2026-11-15 04:18:48Z**; **Attributed ↓ 0 B ↑ 0 B | Unattributed ↓ 15.52 MiB ↑ 7.97 MiB | Total ↓ 15.52 MiB ↑ 7.97 MiB**; top application **(unattributed)** with `Attributed ↓ 0 ↑ 0 | Unattributed ↓ 16276344 ↑ 8357416`.
 - Interpretation: confirms daemon↔desktop status/query path working and displaying real persisted data with honest attribution semantics for `procfs` (interface-level totals reported as unattributed). Detailed `busctl`/introspection command outputs and final session-vs-system bus/activation/policy decision still to be captured for ADR 0002 supersession.
+
+## 2026-11-15 (step 1: D-Bus IPC on-target validation and shutdown fix)
+
+### Completed
+- **On-target validation (Ubuntu 26.04.1 LTS, GNOME Wayland, session bus `unix:path=/run/user/1000/bus`, .NET 11.0.100):** ran daemon with `Flow__Monitor=procfs` (temp DB) and confirmed session-bus IPC:
+  - Log: `Flow D-Bus IPC started at ... service=org.flow.Daemon path=/org/flow/Daemon`.
+  - `busctl --user list` showed `org.flow.Daemon` owned; `busctl --user introspect org.flow.Daemon /org/flow/Daemon` exposed `org.flow.Daemon1` methods (`GetContractVersion`, `GetStatusJson`, `GetUsageSummaryJson(sss)->s`, `GetTopApplicationsJson(sssi)->s`, `GetUsageTimeSeriesJson(ssss)->s`) plus standard D-Bus interfaces.
+  - `GetContractVersion` returned `i 1`.
+  - `GetStatusJson` returned real pipeline diagnostics JSON (e.g. `state=Monitoring`, `providerName=ProcNetDevMonitor`, event/flush counters/timestamps, `writeErrors=0`) — not fabricated.
+  - `GetUsageSummaryJson`/`GetTopApplicationsJson`/`GetUsageTimeSeriesJson` returned real query JSON (`{"...rxBytes":0,...}` / `[]` for a fresh DB/window) via the daemon query path.
+  - After daemon stop, name was absent and calls failed with `ServiceUnknown` (truthful unreachable state); user-provided desktop evidence (earlier entry) showed connected Monitoring/procfs status and real unattributed historical totals.
+- **Shutdown fix (discovered during validation):** made `UsageIngestionPipeline` stop/dispose idempotent (guard `_cts` cancel/dispose), and treat flush cancellation during shutdown as normal (retain buffered state without marking degraded/write-error) to avoid noisy/unhandled shutdown exceptions.
+- **Decision recorded:** added `docs/decisions/0003-dbus-ipc-session-bus-v1.md` (supersedes ADR 0002 IPC choice) selecting `Tmds.DBus` 0.95.2, session-bus per-user v1 topology/names, JSON-over-D-Bus request/response contract; system-bus activation/policy/auth remain follow-up.
+
+### Test results
+- `dotnet test tests/Flow.Application.Tests/Flow.Application.Tests.csproj -v minimal` → **passed** (4 tests).
+- `dotnet build Flow.slnx -v minimal` / `dotnet test Flow.slnx -v minimal` run before commit (see commit verification).
+
+### Notes / follow-ups
+- Earlier parallel validation attempt killed the daemon during in-flight query calls, producing `recipient disconnected` for those calls; sequential re-run confirmed query methods work. Desktop connected-vs-disconnected behavior is evidenced by hybrid client design + user UI evidence + `ServiceUnknown` on stopped daemon; automated IPC integration tests remain a follow-up.
+- IPC remains request/response only (no signals), no control operations/Polkit, and no system-bus policy/activation artifacts yet.

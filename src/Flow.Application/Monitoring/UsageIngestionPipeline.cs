@@ -19,6 +19,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
     private Task? _readerTask;
     private Task? _writerTask;
     private int _startState; // 0 stopped, 1 running
+    private int _disposeState; // 0 active, 1 disposed
     private long? _sessionId;
 
     public UsageIngestionPipeline(
@@ -79,7 +80,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
     {
         await PauseMonitoringAsync(cancellationToken).ConfigureAwait(false);
         _channel.Writer.TryComplete();
-        await _cts.CancelAsync().ConfigureAwait(false);
+        try { if (!_cts.IsCancellationRequested) await _cts.CancelAsync().ConfigureAwait(false); } catch (ObjectDisposedException) { }
         var tasks = new[] { _readerTask, _writerTask }.Where(t => t is not null)!.Cast<Task>().ToArray();
         if (tasks.Length > 0)
         {
@@ -321,6 +322,10 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
             if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
                 _diagnostics.State = MonitoringState.Monitoring;
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _cts.IsCancellationRequested)
+        {
+            // Shutdown/cancellation: retain buffered deltas/metadata; do not mark degraded or count as write error.
+        }
         catch (Exception ex)
         {
             _diagnostics.IncrementWriteErrors();
@@ -341,6 +346,8 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposeState, 1) == 1)
+            return;
         await StopAsync().ConfigureAwait(false);
         _cts.Dispose();
     }

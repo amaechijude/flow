@@ -1,11 +1,13 @@
 # ADR 0002: Pending UI and IPC technology choices (verification required)
 
 - **Date:** 2026-11-13
-- **Status:** Proposed / pending verification
+- **Status:** Partially superseded (IPC by ADR 0003) / UI pending verification
 - **Deciders:** Flow implementation (to be confirmed with evidence)
 
 ## Context
 The plan specifies Avalonia UI for `Flow.Desktop` and D-Bus for GUI↔daemon IPC on Ubuntu 26.04 (GNOME/Wayland, .NET 10). Current environment provides .NET 10/11 SDKs and a Wayland session, but upstream compatibility and maintained library APIs must be verified before pinning dependencies.
+
+**Update (2026-11-15):** IPC library/topology v1 selected and validated on session bus; see **ADR 0003**. Avalonia/Wayland UI verification remains pending.
 
 ## Options to evaluate
 
