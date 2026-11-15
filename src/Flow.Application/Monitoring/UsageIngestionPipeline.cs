@@ -131,15 +131,16 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IAsy
         var timer = new PeriodicTimer(_flushInterval);
         try
         {
+            var tickTask = timer.WaitForNextTickAsync(ct).AsTask();
             while (true)
             {
                 var readTask = _channel.Reader.WaitToReadAsync(ct).AsTask();
-                var tickTask = timer.WaitForNextTickAsync(ct).AsTask();
                 var completed = await Task.WhenAny(readTask, tickTask).ConfigureAwait(false);
                 if (completed == tickTask)
                 {
                     await tickTask.ConfigureAwait(false);
                     await FlushAsync(buffer, apps, procs, ifaces, ct).ConfigureAwait(false);
+                    tickTask = timer.WaitForNextTickAsync(ct).AsTask();
                     continue;
                 }
 
