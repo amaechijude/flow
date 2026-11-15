@@ -1,0 +1,50 @@
+using Flow.Contracts.Ipc;
+using Flow.Contracts.Monitoring;
+using Flow.Contracts.Usage;
+using Flow.Domain.Monitoring;
+
+namespace Flow.Infrastructure.Tests;
+
+public sealed class IpcContractSerializationTests
+{
+    [Fact]
+    public void MonitoringStatusRoundTripsAsJson()
+    {
+        var dto = new MonitoringStatusDto(
+            MonitoringState.Monitoring,
+            new DateTimeOffset(2026, 11, 15, 4, 0, 0, TimeSpan.Zero),
+            "ProcNetDevMonitor",
+            "desc",
+            "Monitoring",
+            10,
+            2,
+            new DateTimeOffset(2026, 11, 15, 3, 59, 0, TimeSpan.Zero),
+            new DateTimeOffset(2026, 11, 15, 4, 0, 0, TimeSpan.Zero),
+            null,
+            20, 1, 10, 5, 0);
+
+        var json = IpcJson.Serialize(dto);
+        var back = IpcJson.Deserialize<MonitoringStatusDto>(json);
+        Assert.NotNull(back);
+        Assert.Equal(dto.State, back.State);
+        Assert.Equal(dto.ProviderName, back.ProviderName);
+        Assert.Equal(dto.EventsAggregated, back.EventsAggregated);
+        Assert.Equal(dto.BatchesWritten, back.BatchesWritten);
+    }
+
+    [Fact]
+    public void UsageDtosRoundTripAsJson()
+    {
+        var summary = new UsageSummaryDto(new DateTimeOffset(2026,11,15,0,0,0,TimeSpan.Zero), new DateTimeOffset(2026,11,15,1,0,0,TimeSpan.Zero), null, 1,2,3,4);
+        var apps = new[] { new ApplicationUsageDto("app", "App", 1,2,3,4) };
+        var ifaces = new[] { new InterfaceUsageDto("eth0", "eth0", "ethernet", 1,2,3,4) };
+        var procs = new[] { new ProcessUsageDto("p1", "app", "App", "/bin/app", 1,2,3,4) };
+        var series = new[] { new UsageTimePointDto(new DateTimeOffset(2026,11,15,0,0,0,TimeSpan.Zero), 5,6) };
+
+        Assert.NotNull(IpcJson.Deserialize<UsageSummaryDto>(IpcJson.Serialize(summary)));
+        Assert.NotNull(IpcJson.Deserialize<ApplicationUsageDto[]>(IpcJson.Serialize(apps)));
+        Assert.NotNull(IpcJson.Deserialize<InterfaceUsageDto[]>(IpcJson.Serialize(ifaces)));
+        Assert.NotNull(IpcJson.Deserialize<ProcessUsageDto[]>(IpcJson.Serialize(procs)));
+        Assert.NotNull(IpcJson.Deserialize<UsageTimePointDto[]>(IpcJson.Serialize(series)));
+    }
+}

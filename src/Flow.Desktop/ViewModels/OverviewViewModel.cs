@@ -12,6 +12,8 @@ using Flow.Desktop.Services;
 namespace Flow.Desktop.ViewModels;
 
 public sealed record RangeOption(string Label, TimeSpan Duration);
+public sealed record InterfaceFilterOption(string Label, string? InterfaceId);
+public sealed record TimeSeriesRow(string Bucket, string Usage, string Total);
 
 internal static class ByteFormat
 {
@@ -58,6 +60,7 @@ public partial class OverviewViewModel : ViewModelBase
 {
     private readonly IDaemonStatusClient _statusClient;
     private readonly IUsageQueryClient _usageClient;
+    private bool _suppressRefresh;
 
     [ObservableProperty] public partial string StatusText { get; set; } = "Loading…";
     [ObservableProperty] public partial string StatusDetail { get; set; } = "";
@@ -69,32 +72,43 @@ public partial class OverviewViewModel : ViewModelBase
     [ObservableProperty] public partial bool HasNoApplications { get; set; } = true;
     [ObservableProperty] public partial bool HasNoInterfaces { get; set; } = true;
     [ObservableProperty] public partial bool HasNoProcesses { get; set; } = true;
+    [ObservableProperty] public partial bool HasNoSeries { get; set; } = true;
     [ObservableProperty] public partial RangeOption? SelectedRange { get; set; }
+    [ObservableProperty] public partial InterfaceFilterOption? SelectedInterfaceFilter { get; set; }
 
     public ObservableCollection<RangeOption> Ranges { get; } = new(
     [
         new RangeOption("Last 1 hour", TimeSpan.FromHours(1)),
         new RangeOption("Last 6 hours", TimeSpan.FromHours(6)),
+        new RangeOption("Last 12 hours", TimeSpan.FromHours(12)),
         new RangeOption("Last 24 hours", TimeSpan.FromHours(24)),
         new RangeOption("Last 7 days", TimeSpan.FromDays(7)),
         new RangeOption("Last 30 days", TimeSpan.FromDays(30)),
     ]);
 
+    public ObservableCollection<InterfaceFilterOption> InterfaceFilters { get; } = new([new InterfaceFilterOption("All interfaces", null)]);
     public ObservableCollection<ApplicationUsageRow> TopApplications { get; } = new();
     public ObservableCollection<InterfaceUsageRow> Interfaces { get; } = new();
     public ObservableCollection<ProcessUsageRow> TopProcesses { get; } = new();
+    public ObservableCollection<TimeSeriesRow> TimeSeries { get; } = new();
 
     public OverviewViewModel(IDaemonStatusClient statusClient, IUsageQueryClient usageClient)
     {
         _statusClient = statusClient;
         _usageClient = usageClient;
-        SelectedRange = Ranges[2];
+        SelectedRange = Ranges.First(r => r.Label == "Last 24 hours");
+        SelectedInterfaceFilter = InterfaceFilters[0];
         _ = RefreshAsync();
     }
 
     partial void OnSelectedRangeChanged(RangeOption? value)
     {
-        if (value is not null) _ = RefreshAsync();
+        if (!_suppressRefresh && value is not null) _ = RefreshAsync();
+    }
+
+    partial void OnSelectedInterfaceFilterChanged(InterfaceFilterOption? value)
+    {
+        if (!_suppressRefresh && value is not null) _ = RefreshAsync();
     }
 
     [RelayCommand]
@@ -115,29 +129,38 @@ public partial class OverviewViewModel : ViewModelBase
             var end = DateTimeOffset.UtcNow;
             var duration = SelectedRange?.Duration ?? TimeSpan.FromHours(24);
             var start = end - duration;
-            RangeText = $"{SelectedRange?.Label ?? "Range"} (UTC): {start.ToString("u", CultureInfo.InvariantCulture)} – {end.ToString("u", CultureInfo.InvariantCulture)}";
+            var ifaceId = SelectedInterfaceFilter?.InterfaceId;
+            RangeText = $"{SelectedRange?.Label ?? "Range"} (UTC): {start:u} – {end:u}" + (ifaceId is null ? "" : $" | Interface filter: {ifaceId}");
 
-            var summary = await _usageClient.GetSummaryAsync(start, end);
-            var totalRx = summary.RxBytes + summary.UnattributedRxBytes;
-            var totalTx = summary.TxBytes + summary.UnattributedTxBytes;
-            SummaryText = $"Attributed ↓ {FormatBytes(summary.RxBytes)} ↑ {FormatBytes(summary.TxBytes)}   |   " +
-                          $"Unattributed ↓ {FormatBytes(summary.UnattributedRxBytes)} ↑ {FormatBytes(summary.UnattributedTxBytes)}   |   " +
-                          $"Total ↓ {FormatBytes(totalRx)} ↑ {FormatBytes(totalTx)}";
-
-            var apps = await _usageClient.GetTopApplicationsAsync(start, end, limit: 15);
-            TopApplications.Clear();
-            foreach (var a in apps) TopApplications.Add(ApplicationUsageRow.From(a));
-            HasNoApplications = TopApplications.Count == 0;
-
+            // Interface breakdown is always unfiltered for the range (shows all interfaces observed).
             var ifaces = await _usageClient.GetInterfaceUsageAsync(start, end);
             Interfaces.Clear();
             foreach (var i in ifaces) Interfaces.Add(InterfaceUsageRow.From(i));
             HasNoInterfaces = Interfaces.Count == 0;
+            UpdateInterfaceFilters(ifaces);
 
-            var procs = await _usageClient.GetTopProcessesAsync(start, end, limit: 15);
+            var summary = await _usageClient.GetSummaryAsync(start, end, ifaceId);
+            var totalRx = summary.RxBytes + summary.UnattributedRxBytes;
+            var totalTx = summary.TxBytes + summary.UnattributedTxBytes;
+            SummaryText = $"Attributed ↓ {ByteFormat.Bytes(summary.RxBytes)} ↑ {ByteFormat.Bytes(summary.TxBytes)}   |   " +
+                          $"Unattributed ↓ {ByteFormat.Bytes(summary.UnattributedRxBytes)} ↑ {ByteFormat.Bytes(summary.UnattributedTxBytes)}   |   " +
+                          $"Total ↓ {ByteFormat.Bytes(totalRx)} ↑ {ByteFormat.Bytes(totalTx)}";
+
+            var apps = await _usageClient.GetTopApplicationsAsync(start, end, ifaceId, limit: 15);
+            TopApplications.Clear();
+            foreach (var a in apps) TopApplications.Add(ApplicationUsageRow.From(a));
+            HasNoApplications = TopApplications.Count == 0;
+
+            var procs = await _usageClient.GetTopProcessesAsync(start, end, ifaceId, limit: 15);
             TopProcesses.Clear();
             foreach (var p in procs) TopProcesses.Add(ProcessUsageRow.From(p));
             HasNoProcesses = TopProcesses.Count == 0;
+
+            var series = await _usageClient.GetUsageTimeSeriesAsync(start, end, ifaceId);
+            TimeSeries.Clear();
+            foreach (var p in series.TakeLast(48))
+                TimeSeries.Add(new TimeSeriesRow(p.BucketStartUtc.ToString("MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture), ByteFormat.Pair(p.RxBytes, p.TxBytes), ByteFormat.Bytes(p.RxBytes + p.TxBytes)));
+            HasNoSeries = TimeSeries.Count == 0;
         }
         catch (Exception ex)
         {
@@ -150,5 +173,24 @@ public partial class OverviewViewModel : ViewModelBase
         }
     }
 
-    private static string FormatBytes(long bytes) => ByteFormat.Bytes(bytes);
+    private void UpdateInterfaceFilters(IReadOnlyList<InterfaceUsageDto> ifaces)
+    {
+        var desired = new List<InterfaceFilterOption> { new("All interfaces", null) };
+        desired.AddRange(ifaces.Select(i => new InterfaceFilterOption(string.IsNullOrWhiteSpace(i.InterfaceName) ? i.InterfaceKey : $"{i.InterfaceName} ({i.InterfaceKey})", i.InterfaceKey)));
+        var currentId = SelectedInterfaceFilter?.InterfaceId;
+        var same = InterfaceFilters.Count == desired.Count && InterfaceFilters.Zip(desired).All(z => z.First.InterfaceId == z.Second.InterfaceId && z.First.Label == z.Second.Label);
+        if (same) return;
+
+        _suppressRefresh = true;
+        try
+        {
+            InterfaceFilters.Clear();
+            foreach (var o in desired) InterfaceFilters.Add(o);
+            SelectedInterfaceFilter = InterfaceFilters.FirstOrDefault(o => o.InterfaceId == currentId) ?? InterfaceFilters[0];
+        }
+        finally
+        {
+            _suppressRefresh = false;
+        }
+    }
 }

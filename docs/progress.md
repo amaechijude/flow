@@ -427,3 +427,18 @@
 ### Notes / caveats
 - ebpf-tcp events currently do not provide per-interface attribution, so interface breakdowns may show unknown/unmapped buckets depending on provider; process identity remains stable-key based but full PID-reuse/lifecycle hardening and richer process metadata are still pending.
 - Desktop still prefers daemon IPC for live status/queries and falls back to direct local DB reads for historical data when IPC is unreachable (same persisted data, disclosed). No live metrics are fabricated.
+
+## 2026-11-15 (next UI/IPC increments: filtering, time series, reconnect, contract tests)
+
+### Completed
+- **Desktop (real data):** added interface filter (applies to summary/apps/processes/time series; interface breakdown remains unfiltered for the selected range), additional rolling ranges, and a "Usage over time" view showing recent 1-minute bucket points (real persisted data) with totals/rx/tx formatting.
+- **IPC client hardening:** `DbusDaemonClient` now retries a call once after resetting the connection/proxy on failure to improve reconnect behavior when the daemon restarts or the bus connection drops (no fabricated data; failures still surface as truthful unavailable/fallback behavior in hybrid clients).
+- **Tests:** added `IpcContractSerializationTests` to verify JSON round-tripping of key IPC DTO payloads.
+
+### Test results
+- `dotnet test Flow.slnx -v minimal` → **passed** (16 tests total: Domain 1, Application 4, Infrastructure 8, Linux 1, Daemon 1, System 1).
+
+### Notes / remaining next steps
+- No live D-Bus change/status signals yet (poll/refresh model), no automated daemon↔client IPC integration test, and no custom calendar date picker/time-zone-aware calendar range UX.
+- Charting is textual/list-based (real buckets), not a graphical chart library (Avalonia charting dependency/Wayland fit still to verify if added).
+- Provider/identity/gate hardening (interface mapping for ebpf, PID-reuse/event-time identity, UDP/namespace/VPN/virtual-interface semantics, controlled accuracy/overhead evidence) and rollups/retention/exports/packaging remain pending.
