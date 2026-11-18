@@ -90,10 +90,19 @@ claims that are not observed.
   interfaces in the controlled case. The BPF key is unchanged, so identical
   keys in different namespaces would still merge; the run distinguishes them
   only at observation time via the emitted netns id.
-- **Byte accuracy, the loopback interface fix, and controlled two-interface
-  separation are validated.** Physical NICs, VPN/tunnel paths, wildcard
-  multi-interface sockets, cross-namespace key merging, and load behavior
-  remain unproven (`docs/attribution.md`).
+- **60 s soak 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T115504Z.md`):**
+  the parent TGID matched 70×1 MiB exactly for TCP and UDP, one verified
+  generation, all rows on `lo`, 0 unattributed. Loader CPU was ~0.2% of one
+  core and peak RSS constant at 3,916 KiB. BPF map entries grew 6→34 over the
+  run with no expiry; this is the first sustained datapoint and an observation
+  of growth, not a bounded-memory or production-load claim. Short-lived child
+  generations appeared as background rows, some without `/proc` enrichment
+  after exit.
+- **Byte accuracy, the loopback interface fix, controlled two-interface
+  separation, and a 60 s overhead/map-growth observation are validated.**
+  Physical NICs, VPN/tunnel paths, wildcard multi-interface sockets,
+  cross-namespace key merging, and long-duration/high-churn behavior remain
+  unproven (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
 - The first controlled run showed unconnected UDP RX resolving to `ifindex=0`

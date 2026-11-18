@@ -730,3 +730,21 @@
 ```bash
 sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
 ```
+
+## 2026-11-18 (accepted 60-second soak)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 60 --soak-size-mib 1` produced `docs/measurements/ebpf-controlled-20261118T115504Z.md`.
+- Parent TGID 84922: TCP and UDP each exactly **73,400,320 TX/RX** (70 iterations × 1 MiB), one verified generation, all rows `lo`, 0 unresolved/unattributed bytes; all checks true.
+- 14 short-lived child transfers produced distinct process-generation background rows (some `netns=0`/`exe=-` after exit).
+- Loader CPU: 0.038 s → 0.152 s cumulative over ~63 s (~0.2% of one core); reported average 0.189%. Peak RSS constant at 3,916 KiB across all 12 samples.
+- BPF map entries: 6 → 34 over the run; no expiry, so growth is an observation, not a bounded-memory claim.
+
+### Interpretation
+- First sustained datapoint for low CPU and stable RSS under repeated transfers plus process churn. Byte accounting stayed exact for the parent and unattributed stayed zero.
+- Not production-load evidence: 60 s, low churn, no map-capacity/expiry test, and no high-connection workload. Child churn rows had incomplete post-exit enrichment, which is already documented.
+
+### Changes
+- Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
+- Fixed a missing prose line in the harness report generator and in the generated report.
+- No product code changed; build/test baseline remains 36/36 passing.

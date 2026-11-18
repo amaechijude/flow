@@ -156,13 +156,19 @@ rows. This accepts controlled two-interface separation across two virtual
 interfaces only; physical NICs, VPN/tunnel paths, wildcard multi-interface
 sockets, and namespace-level key merging remain unmeasured.
 
-`--mode soak` (not yet privileged-run) repeats `--soak-size-mib` transfers for
-`--duration` seconds and spawns a short-lived child every `--soak-child-every`
-iterations. It samples loader CPU/RSS and loader-emitted map-entry counts to
-provide steady-state overhead and map-growth evidence. Byte-exactness checks
-cover only the parent TGID; child churn and unresolved background rows are
-reported separately. The BPF map has no expiry, so growth is an observation,
-not a claim of bounded memory. The script writes a Markdown report under
+`--mode soak` repeats `--soak-size-mib` transfers for `--duration` seconds and
+spawns a short-lived child every `--soak-child-every` iterations. It samples
+loader CPU/RSS and loader-emitted map-entry counts to provide steady-state
+overhead and map-growth evidence. Byte-exactness checks cover only the parent
+TGID; child churn and unresolved background rows are reported separately. The
+BPF map has no expiry, so growth is an observation, not a claim of bounded
+memory.
+
+Accepted 60 s run (`docs/measurements/ebpf-controlled-20261118T115504Z.md`): 70
+iterations × 1 MiB per protocol matched exactly, all checks passed, loader CPU
+~0.2% of one core, peak RSS constant 3,916 KiB, map entries grew 6→34 with no
+expiry. Child churn rows were background only; some exited before `/proc`
+enrichment. This is a first sustained datapoint, not production-load evidence. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
