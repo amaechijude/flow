@@ -580,3 +580,22 @@
 
 ### Next
 - Rerun `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. Expect the UDP RX row to resolve to `lo` and `check_interface` to pass. If `skb_iif` is still unavailable, record that failure and keep UDP RX interface attribution explicitly unproven.
+
+## 2026-11-18 (accepted TCP+UDP per-interface rerun)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` produced `docs/measurements/ebpf-controlled-20261118T084900Z.md`.
+- TCP: **16,777,216 TX / 16,777,216 RX**, interface `lo`.
+- UDP: **16,777,216 TX / 16,777,216 RX**, interface `lo` (previously unresolved before the `skb_iif` fix).
+- One verified process generation for the expected TGID; 0 unresolved-interface bytes; 0 unattributed bytes.
+- Background traffic correctly separated: two `opencode` rows (18 RX / 18 TX), both identity-verified, on `lo`.
+- All harness checks passed, including `check_interface`.
+- Loader overhead: 0.005 s CPU (0.075% of one core), peak RSS 3,880 KiB (short-run only).
+
+### Interpretation
+- The controlled loopback case now validates TCP and UDP byte accuracy **and** per-interface attribution for TX and RX, including the unconnected UDP receive path.
+- Scope remains narrow: no physical interface, namespace/container, VPN/tunnel, virtual-interface, wildcard multi-interface socket, high-connection-count, or sustained-overhead evidence. Persisted minute buckets still aggregate TCP+UDP (protocol is not a persistence dimension).
+
+### Changes recorded
+- Accepted/annotated the new report, updated `docs/measurements/README.md`, `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md` accordingly.
+- No product code changed in this documentation/evidence step; the build/test baseline remains **35/35 passing**.

@@ -154,8 +154,16 @@ background traffic separated, 0 unattributed bytes, and 0.004 s loader CPU /
 The CPU/RSS sample is short-run only; do not treat it as steady-state overhead
 evidence.
 
-TCP+UDP run (`docs/measurements/ebpf-controlled-20261118T050933Z.md`): TCP and
-UDP each produced exactly 16,777,216 TX/RX with one verified generation and 0
+TCP+UDP run without per-datagram RX correlation
+(`docs/measurements/ebpf-controlled-20261118T050933Z.md`): TCP and UDP each
+produced exactly 16,777,216 TX/RX with one verified generation and 0
 unattributed bytes. TCP and UDP TX resolved to `lo`; UDP RX did not resolve an
-interface via socket state. The `__skb_recv_udp`/`skb_iif` path was added in
-response and has **not** been privileged-run yet.
+interface via socket state.
+
+Accepted rerun after the `__skb_recv_udp`/`skb_iif` fix
+(`docs/measurements/ebpf-controlled-20261118T084900Z.md`): all four
+protocol/direction rows for the expected process resolved to `lo`, all harness
+checks passed, and byte totals again matched exactly. Background `opencode`
+traffic (18 bytes each direction) was separated and identity-verified. This
+accepts the loopback case only; physical interfaces, namespaces, containers,
+VPN/tunnel and virtual-interface paths, and sustained overhead remain unmeasured.

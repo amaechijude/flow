@@ -67,23 +67,24 @@ claims that are not observed.
 - The provider now has source-level coverage for TCP and UDP, including QUIC
   bytes as UDP payload, and per-interface event attribution when the socket
   route is resolvable.
-- **Controlled run 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T050933Z.md`):**
-  TCP and UDP each accounted for exactly 16,777,216 TX/RX bytes with one
-  verified process generation and 0 unattributed bytes. TCP and UDP TX resolved
-  to `lo`, but UDP RX (all 16,777,216 bytes) resolved to `ifindex=0`. The
-  socket-route path alone is therefore insufficient for unconnected UDP RX;
-  the `__skb_recv_udp`/`skb_iif` correlation above was added in response and
-  requires a rerun.
-- **Byte accuracy is validated for one loopback run; the interface fix is not.**
-  The follow-up `__skb_recv_udp` correlation compiles and is unit-covered only
-  indirectly, but it has not been privileged-run. Do not claim UDP RX interface
-  coverage or broader per-interface behavior until the rerun is reviewed.
+- **Controlled rerun 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T084900Z.md`):**
+  after the `skb_iif` change, TCP and UDP again accounted for exactly
+  16,777,216 TX/RX bytes with one verified process generation and 0
+  unattributed bytes, and all four protocol/direction rows resolved to `lo`.
+  This accepts per-interface attribution for controlled loopback TCP and UDP,
+  including the previously failing unconnected UDP RX case. It does not cover
+  physical interfaces, namespaces, VPN/tunnel paths, wildcard sockets
+  receiving on multiple interfaces, or sustained load.
+- **Byte accuracy and the loopback interface fix are validated for one
+  controlled run.** Broader per-interface behavior, protocols, and load
+  conditions remain unproven (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
-- The controlled run showed unconnected UDP RX resolving to `ifindex=0` via
-  socket state alone (16,777,216 bytes). The new per-datagram `skb_iif` path is
-  meant to close that gap, but it remains unmeasured until rerun; unresolved
-  bytes are still counted without an interface and noted rather than guessed.
+- The first controlled run showed unconnected UDP RX resolving to `ifindex=0`
+  via socket state alone (16,777,216 bytes). The per-datagram `skb_iif` path was
+  added and validated for loopback UDP RX in the rerun. Other cases where an
+  interface cannot be resolved are still counted without an interface and
+  noted rather than guessed.
 - The unattributed fallback (`tgid==0`) remains a single aggregate; it is not
   split by protocol or interface, so unresolved hook-context bytes cannot be
   attributed to TCP vs UDP.
