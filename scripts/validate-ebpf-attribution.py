@@ -353,7 +353,12 @@ def spawn_client_helper(proto: str, host: str, port: int, size: int) -> tuple[su
 def run_tcp_transfer_netns(
     size_bytes: int, host: str
 ) -> tuple[int, int, float, subprocess.Popen[str], int]:
-    """Server in this namespace; client helper sends from the peer namespace."""
+    """Server binds the root-namespace veth address; helper sends from flowvns.
+
+    ``host`` is the root-side address (192.0.2.1 / flowvA), which is the only
+    endpoint address present in this namespace; the client helper in the peer
+    namespace connects to it over the veth pair.
+    """
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((host, 0))
@@ -379,6 +384,7 @@ def run_tcp_transfer_netns(
 def run_udp_transfer_netns(
     size_bytes: int, host: str
 ) -> tuple[int, int, float, subprocess.Popen[str], int]:
+    """UDP counterpart of run_tcp_transfer_netns; host is the root-side address."""
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((host, 0))
     server.settimeout(0.25)
@@ -862,8 +868,10 @@ def main() -> int:
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
         if veth:
             expected_tgids.add(os.getpid())
+            # The server runs in the root namespace, where only flowvA
+            # (192.0.2.1) exists; 192.0.2.2 lives in flowvns.
             tcp_sent, tcp_received, tcp_s, helper, helper_pid = run_tcp_transfer_netns(
-                size_bytes, VETH_SERVER_IP
+                size_bytes, VETH_CLIENT_IP
             )
             helpers.append(helper)
             expected_tgids.add(helper_pid)
@@ -871,7 +879,7 @@ def main() -> int:
                 helper_netns = os.stat(f"/proc/{helper_pid}/ns/net").st_ino
             time.sleep(max(1.0, args.interval * 1.5))
             udp_sent, udp_received, udp_s, helper, helper_pid = run_udp_transfer_netns(
-                size_bytes, VETH_SERVER_IP
+                size_bytes, VETH_CLIENT_IP
             )
             helpers.append(helper)
             expected_tgids.add(helper_pid)

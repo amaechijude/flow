@@ -662,3 +662,14 @@
 ### Pending
 - `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth`.
 - Expectation: exact TCP/UDP byte totals, one generation per TGID, root RX on `flowvA`, helper TX on `<ifindex>@<netns>`, all checks true. Any other result must be recorded as measured rather than claimed as two-interface coverage.
+
+## 2026-11-18 (cross-netns veth bind-address fix)
+
+### Measured failure
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth` failed at `server.bind((host, 0))` with `OSError [Errno 99] Cannot assign requested address`.
+- Cause: the netns topology leaves 192.0.2.2 (flowvB) inside `flowvns`; the root namespace only has 192.0.2.1 (flowvA). The harness was binding the root server to the peer-namespace address.
+
+### Fix (not yet rerun)
+- Root TCP/UDP servers now bind to `VETH_CLIENT_IP` (192.0.2.1); the client helper in `flowvns` connects to that address over the veth pair.
+- Docstrings clarify that `host` is the root-side address.
+- No BPF/loader change; `py_compile` passed; baseline remains 36/36 passing.
