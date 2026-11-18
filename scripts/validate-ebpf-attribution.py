@@ -389,6 +389,8 @@ def summarize(
         "expected_by_proto": by_proto,
         "expected_resolved_ifnames": resolved_ifnames,
         "expected_unresolved_rows": len(unresolved_expected),
+        "expected_unresolved_tx": sum(int(p["tx"]) for p in unresolved_expected),
+        "expected_unresolved_rx": sum(int(p["rx"]) for p in unresolved_expected),
         "unattributed_tx": unattributed_tx,
         "unattributed_rx": unattributed_rx,
     }
@@ -487,6 +489,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         f"- Expected-process resolved interface(s): {', '.join(s['expected_resolved_ifnames']) or '(none)'}",
         f"- Expected-process rows with unresolved interface: {s['expected_unresolved_rows']}",
+        f"- Expected-process unresolved-interface bytes: TX {s['expected_unresolved_tx']}, RX {s['expected_unresolved_rx']}",
         f"- Expected-process TCP interface name(s): {', '.join(by_proto[1]['ifnames']) or '(none)'}",
         f"- Expected-process UDP interface name(s): {', '.join(by_proto[2]['ifnames']) or '(none)'}",
         "",
