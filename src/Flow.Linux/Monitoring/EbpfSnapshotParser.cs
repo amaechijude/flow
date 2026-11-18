@@ -89,6 +89,13 @@ internal static class EbpfSnapshotParser
 
         var interfaceName = p.Length > 14 ? NormalizeInterface(p[14]) : null;
 
+        // netns id is appended after proto/ifname. Interfaces in other network
+        // namespaces are emitted as ifindex@netns because ifindex is scoped to
+        // a namespace and cannot be named from the loader's namespace.
+        ulong netnsId = 0;
+        if (p.Length > 15)
+            _ = ulong.TryParse(p[15], NumberStyles.Integer, CultureInfo.InvariantCulture, out netnsId);
+
         var startTimeUtc = DeriveStartTimeUtc(startNs, startTicks, clockTicksPerSecond, bootUnixMs);
         var proc = new ProcessIdentity(
             tgid,
@@ -121,7 +128,8 @@ internal static class EbpfSnapshotParser
                 exePath is not null,
                 comm is not null,
                 proto,
-                interfaceName));
+                interfaceName,
+                netnsId));
     }
 
     /// <summary>
@@ -206,12 +214,15 @@ internal static class EbpfSnapshotParser
         bool hasExecutable,
         bool hasComm,
         int proto,
-        string? interfaceName)
+        string? interfaceName,
+        ulong netnsId)
     {
         var identityNote = BuildIdentityNote(identityVerified, hasEventTimeStart, hasExecutable, hasComm);
         var interfaceNote = interfaceName is null && proto is ProtoTcp or ProtoUdp
             ? "Socket interface could not be resolved at observation time (ifindex 0); bytes are counted without interface attribution."
-            : null;
+            : netnsId > 0 && interfaceName?.Contains('@') == true
+                ? "Interface belongs to a different network namespace and is reported as ifindex@netns; ifindex values are namespace-scoped."
+                : null;
 
         return (identityNote, interfaceNote) switch
         {

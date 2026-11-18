@@ -57,7 +57,13 @@ claims that are not observed.
    dimension. Splitting protocols would require a schema/key migration and is
    deferred; this ADR records the aggregation explicitly rather than implying
    protocol-level history exists.
-7. **Rename the provider to `ebpf` and the C# type to `EbpfMonitor`.** The old
+7. **Netns-scoped interfaces are reported honestly.** The loader emits the
+   process's network-namespace id; when it differs from the loader's namespace,
+   the interface is emitted as `ifindex@netns` instead of being named from the
+   wrong namespace. This is an observation/format decision only: the BPF key is
+   unchanged, so distinct namespaces with identical keys would still merge;
+   that limitation is documented rather than hidden.
+8. **Rename the provider to `ebpf` and the C# type to `EbpfMonitor`.** The old
    provider name `ebpf-tcp` is now inaccurate. `ebpf-tcp` remains a
    configuration alias for continuity. Prototype file names
    (`flow_tcp_bytes*`) are retained as historical artifacts.

@@ -640,3 +640,25 @@
 - Removed the `onlink` flag (verified plain `ip route add ... dev ...` syntax is accepted by this iproute2).
 - Added permanent neighbor entries using each veth peer's MAC from `/sys/class/net/<dev>/address`, so local addresses do not depend on ARP replies.
 - Docs updated; no BPF/loader change; baseline remains 35/35 passing.
+
+## 2026-11-18 (multi-interface probe: netns topology + namespace-scoped interfaces)
+
+### Measured failures of the same-namespace veth approach
+- First attempt: `client.connect()` → `OSError [Errno 113] No route to host` (duplicate /24 connected routes on two veth devices in one namespace).
+- Second attempt: `ip route add ... onlink` → `Invalid flags for nexthop - PERVASIVE and ONLINK can not be set` on this kernel.
+- Third attempt with /32 routes and static neighbors: controlled transfer timed out. Local delivery short-circuits traffic addressed to a local IP, so the server socket bound to the peer device never received it. Same-namespace veth cannot reliably exercise two interfaces for local addresses.
+
+### Current implementation (not yet privileged-run)
+- `--mode veth` now creates a temporary namespace `flowvns` and veth pair: `flowvA` 192.0.2.1/24 stays in the root namespace with the server; `flowvB` 192.0.2.2/24 moves into `flowvns` with a client helper. Traffic must traverse the veth pair.
+- Loader emits a 16th `E` field `netns_id` (from `/proc/<pid>/ns/net`) and reports interfaces in other namespaces as `ifindex@netns`, since `ifindex` is namespace-scoped. The BPF key is unchanged; identical keys in different namespaces would still merge (documented limitation).
+- Parser accepts the optional field, records `ifindex@netns` as the interface id, and adds an explicit attribution note.
+- Harness groups expected rows across the root server and both client helpers, checks one generation per TGID, and verifies RX on `flowvA` in the root netns plus TX on `flowvB`'s netns-local ifindex for the helper. Helpers stay alive for snapshots via a stdin hold.
+- Cleanup deletes the namespace and veth pair in `finally`.
+
+### Verification (non-privileged)
+- BPF object unchanged; loader recompiled with 0 errors; `py_compile` and synthetic report/summarize checks passed.
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → **36/36 passed** (Linux 17).
+
+### Pending
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth`.
+- Expectation: exact TCP/UDP byte totals, one generation per TGID, root RX on `flowvA`, helper TX on `<ifindex>@<netns>`, all checks true. Any other result must be recorded as measured rather than claimed as two-interface coverage.

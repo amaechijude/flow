@@ -157,6 +157,19 @@ public class EbpfSnapshotParserTests
     }
 
     [Fact]
+    public void ParseEntryMarksNamespaceScopedInterface()
+    {
+        var line = "E\t1400\t1000\t100\t200\t100\t200\tclient\t/usr/bin/client\t1000\t1\t5000000000\t55\t2\t7@4026532000\t4026532000";
+
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(ev);
+        Assert.Equal("7@4026532000", ev!.InterfaceName);
+        Assert.NotNull(ev.AttributionNote);
+        Assert.Contains("different network namespace", ev.AttributionNote);
+    }
+
+    [Fact]
     public void ParseUnattributedReturnsExplicitUnattributedEvent()
     {
         var ev = EbpfSnapshotParser.ParseUnattributed("U\t100\t200\t10\t20\t1\t2", Point);

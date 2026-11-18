@@ -7,8 +7,10 @@ counters. It also verifies interface attribution and records loader CPU time and
 peak RSS as a first overhead datapoint.
 
 Default mode uses loopback `lo` for both directions. `--mode veth` creates a
-temporary veth pair and binds the client to 192.0.2.1 (flowvA) and the server to
-192.0.2.2 (flowvB), so TX and RX must resolve to two distinct interfaces.
+temporary veth pair split across two network namespaces; the server runs in the
+root namespace on flowvA (192.0.2.1) and a client helper runs in `flowvns` on
+flowvB (192.0.2.2). This forces traffic over two distinct interfaces. Because
+`ifindex` is namespace-scoped, the helper side is reported as `ifindex@netns`.
 
 This script MUST run as root (or with CAP_BPF/CAP_PERFMON/CAP_SYS_ADMIN) because
 it loads and attaches BPF programs. It does not modify the system beyond loading
@@ -99,7 +101,6 @@ VETH_CLIENT = "flowvA"
 VETH_SERVER = "flowvB"
 VETH_CLIENT_IP = "192.0.2.1"
 VETH_SERVER_IP = "192.0.2.2"
-VETH_PREFIX = 32  # /32 + explicit peer routes avoid ambiguous duplicate subnet routes
 
 
 def _ip(*args: str) -> None:
@@ -112,14 +113,26 @@ def _ip(*args: str) -> None:
         )
 
 
-class VethPair:
-    """Temporary veth pair for controlled two-interface transfers.
+VETH_NS = "flowvns"
 
-    Only creates/deletes the two dedicated device names; refuses to touch an
-    existing interface with either name.
+
+class VethPair:
+    """Temporary veth pair split across two network namespaces.
+
+    flowvA stays in the root namespace with 192.0.2.1/24; flowvB moves into
+    flowvns with 192.0.2.2/24. Traffic between them must traverse the veth
+    pair, so TX and RX genuinely use distinct interfaces.
     """
 
+    def __init__(self) -> None:
+        self.server_ifindex = 0
+
     def start(self) -> None:
+        namespaces = subprocess.run(
+            ["ip", "-o", "netns", "list"], capture_output=True, text=True, check=False
+        ).stdout
+        if any(line.split(":")[0].strip() == VETH_NS for line in namespaces.splitlines()):
+            raise SystemExit(f"netns {VETH_NS} already exists; refusing to modify it")
         for name in (VETH_CLIENT, VETH_SERVER):
             existing = subprocess.run(
                 ["ip", "-o", "link", "show", name],
@@ -133,28 +146,33 @@ class VethPair:
                 )
         _ip("link", "add", VETH_CLIENT, "type", "veth", "peer", "name", VETH_SERVER)
         try:
-            # Both addresses are local to this namespace. /32 plus explicit peer
-            # routes give SO_BINDTODEVICE one valid egress route per side;
-            # duplicate /24 connected routes caused EHOSTUNREACH in attempt 1.
-            _ip("addr", "add", f"{VETH_CLIENT_IP}/{VETH_PREFIX}", "dev", VETH_CLIENT)
-            _ip("addr", "add", f"{VETH_SERVER_IP}/{VETH_PREFIX}", "dev", VETH_SERVER)
+            _ip("netns", "add", VETH_NS)
+            _ip("link", "set", VETH_SERVER, "netns", VETH_NS)
+            _ip("addr", "add", f"{VETH_CLIENT_IP}/24", "dev", VETH_CLIENT)
             _ip("link", "set", VETH_CLIENT, "up")
-            _ip("link", "set", VETH_SERVER, "up")
-            _ip("route", "add", f"{VETH_SERVER_IP}/32", "dev", VETH_CLIENT)
-            _ip("route", "add", f"{VETH_CLIENT_IP}/32", "dev", VETH_SERVER)
-            # Static neighbor entries avoid relying on ARP for addresses that
-            # are local to this namespace (some kernels will not answer).
-            client_mac = Path(f"/sys/class/net/{VETH_CLIENT}/address").read_text().strip()
-            server_mac = Path(f"/sys/class/net/{VETH_SERVER}/address").read_text().strip()
-            _ip("neigh", "add", VETH_SERVER_IP, "lladdr", server_mac, "dev", VETH_CLIENT, "nud", "permanent")
-            _ip("neigh", "add", VETH_CLIENT_IP, "lladdr", client_mac, "dev", VETH_SERVER, "nud", "permanent")
+            _ip("netns", "exec", VETH_NS, "ip", "link", "set", "lo", "up")
+            _ip("netns", "exec", VETH_NS, "ip", "addr", "add", f"{VETH_SERVER_IP}/24", "dev", VETH_SERVER)
+            _ip("netns", "exec", VETH_NS, "ip", "link", "set", VETH_SERVER, "up")
         except SystemExit:
             self.stop()
             raise
-        # Let the kernel install connected routes before transfers start.
+        detail = subprocess.run(
+            ["ip", "netns", "exec", VETH_NS, "ip", "-o", "link", "show", VETH_SERVER],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if detail.returncode == 0 and detail.stdout.strip():
+            self.server_ifindex = int(detail.stdout.split(":", 1)[0].strip())
         time.sleep(0.2)
 
     def stop(self) -> None:
+        subprocess.run(
+            ["ip", "netns", "delete", VETH_NS],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
         subprocess.run(
             ["ip", "link", "del", VETH_CLIENT],
             capture_output=True,
@@ -231,6 +249,8 @@ class LoaderRun:
                         # proto/ifname were added with UDP/per-interface accounting.
                         "proto": int(p[13]) if len(p) > 13 and p[13].isdigit() else 0,
                         "ifname": p[14] if len(p) > 14 else "",
+                        # netns id (16th field) distinguishes namespace-scoped ifindexes.
+                        "netns_id": int(p[15]) if len(p) > 15 and p[15].isdigit() else 0,
                     }
                 )
             elif line.startswith("U\t"):
@@ -269,6 +289,123 @@ class LoaderRun:
                 self.proc.wait(timeout=5)
         for t in self._threads:
             t.join(timeout=5)
+
+
+def run_client_helper(params: list[str]) -> int:
+    """Client side of the netns veth probe. Runs inside the helper namespace."""
+    proto, host, port, size = params
+    print(f"HELPER_PID {os.getpid()}", flush=True)
+    size_int = int(size)
+    port_int = int(port)
+
+    if proto == "tcp":
+        with socket.create_connection((host, port_int), timeout=30) as client:
+            chunk = b"x" * (1 << 20)
+            sent = 0
+            while sent < size_int:
+                n = min(len(chunk), size_int - sent)
+                client.sendall(chunk[:n])
+                sent += n
+            client.shutdown(socket.SHUT_WR)
+    else:
+        client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            client.connect((host, port_int))
+            payload = b"u" * 4096
+            sent = 0
+            datagrams = 0
+            while sent < size_int:
+                n = min(len(payload), size_int - sent)
+                sent += client.send(payload[:n])
+                datagrams += 1
+                if datagrams % 64 == 0:
+                    time.sleep(0.001)
+        finally:
+            client.close()
+
+    # Stay alive until the parent has sampled snapshots, so identity enrichment
+    # can verify this process generation.
+    sys.stdin.readline()
+    return 0
+
+
+def spawn_client_helper(proto: str, host: str, port: int, size: int) -> tuple[subprocess.Popen[str], int]:
+    command = [
+        "ip", "netns", "exec", VETH_NS,
+        sys.executable, str(Path(__file__).resolve()),
+        "--client-helper", proto, host, str(port), str(size),
+    ]
+    proc = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    line = proc.stdout.readline().strip() if proc.stdout else ""
+    if not line.startswith("HELPER_PID "):
+        proc.kill()
+        raise SystemExit(f"client helper failed to start: {(line or 'no output')!r}")
+    return proc, int(line.split()[1])
+
+
+def run_tcp_transfer_netns(
+    size_bytes: int, host: str
+) -> tuple[int, int, float, subprocess.Popen[str], int]:
+    """Server in this namespace; client helper sends from the peer namespace."""
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((host, 0))
+    server.listen(1)
+    server.settimeout(30)
+    port = server.getsockname()[1]
+    started = time.monotonic()
+    helper, helper_pid = spawn_client_helper("tcp", host, port, size_bytes)
+    received = 0
+    try:
+        conn, _ = server.accept()
+        with conn:
+            while received < size_bytes:
+                chunk = conn.recv(min(1 << 20, size_bytes - received))
+                if not chunk:
+                    break
+                received += len(chunk)
+    finally:
+        server.close()
+    return size_bytes, received, time.monotonic() - started, helper, helper_pid
+
+
+def run_udp_transfer_netns(
+    size_bytes: int, host: str
+) -> tuple[int, int, float, subprocess.Popen[str], int]:
+    server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    server.bind((host, 0))
+    server.settimeout(0.25)
+    port = server.getsockname()[1]
+    started = time.monotonic()
+    helper, helper_pid = spawn_client_helper("udp", host, port, size_bytes)
+    received = 0
+    deadline = time.monotonic() + 30
+    stable_since = time.monotonic()
+    last = 0
+    try:
+        while time.monotonic() < deadline:
+            try:
+                data, _ = server.recvfrom(1 << 16)
+            except socket.timeout:
+                if received >= size_bytes and time.monotonic() - stable_since > 0.5:
+                    break
+                continue
+            if not data:
+                continue
+            received += len(data)
+            if received != last:
+                last = received
+                stable_since = time.monotonic()
+    finally:
+        server.close()
+    return size_bytes, received, time.monotonic() - started, helper, helper_pid
 
 
 def run_tcp_transfer(
@@ -417,17 +554,20 @@ def run_udp_transfer(
 def summarize(
     entries: list[dict[str, object]],
     unattributed: list[dict[str, int]],
-    expected_tgid: int,
+    expected_tgid: int | set[int],
 ) -> dict[str, object]:
-    processes: dict[tuple[int, int, int, int, str], dict[str, object]] = {}
+    expected_set = {expected_tgid} if isinstance(expected_tgid, int) else set(expected_tgid)
+    processes: dict[tuple[int, int, int, int, str, int], dict[str, object]] = {}
     for e in entries:
         ifname = str(e.get("ifname") or "")
+        netns_id = int(e.get("netns_id") or 0)
         key = (
             int(e["tgid"]),
             int(e["start_ns"]),
             int(e["uid"]),
             int(e.get("proto") or 0),
             ifname,
+            netns_id,
         )
         cur = processes.setdefault(
             key,
@@ -437,6 +577,7 @@ def summarize(
                 "uid": key[2],
                 "proto": key[3],
                 "ifname": key[4],
+                "netns_id": key[5],
                 "tx": 0,
                 "rx": 0,
                 "comm": e["comm"],
@@ -452,7 +593,7 @@ def summarize(
         if e.get("identity_verified"):
             cur["identity_verified"] = True
 
-    expected_rows = [p for p in processes.values() if int(p["tgid"]) == expected_tgid]
+    expected_rows = [p for p in processes.values() if int(p["tgid"]) in expected_set]
     expected_tx = sum(int(p["tx"]) for p in expected_rows)
     expected_rx = sum(int(p["rx"]) for p in expected_rows)
     attributed_tx = sum(int(p["tx"]) for p in processes.values())
@@ -493,12 +634,19 @@ def summarize(
         "processes": sorted(processes.values(), key=lambda p: int(p["tx"]) + int(p["rx"]), reverse=True),
         "attributed_tx": attributed_tx,
         "attributed_rx": attributed_rx,
-        "expected_tgid": expected_tgid,
+        "expected_tgid": min(expected_set) if expected_set else 0,
+        "expected_tgids": sorted(expected_set),
         "expected_tx": expected_tx,
         "expected_rx": expected_rx,
         "background_tx": attributed_tx - expected_tx,
         "background_rx": attributed_rx - expected_rx,
-        "expected_generations": len({int(p["start_ns"]) for p in expected_rows}),
+        "expected_generations": len(
+            {(int(p["tgid"]), int(p["start_ns"])) for p in expected_rows}
+        ),
+        "expected_generations_by_tgid": {
+            tid: len({int(p["start_ns"]) for p in expected_rows if int(p["tgid"]) == tid})
+            for tid in expected_set
+        },
         "expected_start_ns": sorted({int(p["start_ns"]) for p in expected_rows}),
         "expected_identity_verified": bool(expected_rows) and all(
             bool(p["identity_verified"]) for p in expected_rows
@@ -598,15 +746,16 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         "## Per-process rows (TGID + event-time start_ns + UID + proto + interface)",
         "",
-        "| TGID | UID | Proto | Interface | TX | RX | comm | exe | start_ns | cgroup | identity verified | expected process |",
-        "| ---: | ---: | --- | --- | ---: | ---: | --- | --- | ---: | --- | --- | --- |",
+        "| TGID | UID | Proto | Interface | Netns | TX | RX | comm | exe | start_ns | cgroup | identity verified | expected process |",
+        "| ---: | ---: | --- | --- | ---: | ---: | ---: | --- | --- | ---: | --- | --- | --- |",
     ]
+    expected_tgids = set(s.get("expected_tgids", [s["expected_tgid"]]))
     for p in s["processes"]:
         lines.append(
             f"| {p['tgid']} | {p['uid']} | {PROTO_NAMES.get(int(p['proto']), '?')} | "
-            f"{fmt_ifname(str(p['ifname']))} | {p['tx']} | {p['rx']} | {p['comm']} | {p['exe']} | "
+            f"{fmt_ifname(str(p['ifname']))} | {p.get('netns_id', 0)} | {p['tx']} | {p['rx']} | {p['comm']} | {p['exe']} | "
             f"{p['start_ns']} | {p['cgroup_id']} | {'yes' if p['identity_verified'] else 'no'} | "
-            f"{'yes' if p['tgid'] == s['expected_tgid'] else 'no'} |"
+            f"{'yes' if int(p['tgid']) in expected_tgids else 'no'} |"
         )
     lines += [
         "",
@@ -656,6 +805,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
     parser.add_argument("--size-mib", type=float, default=16.0, help="payload per protocol")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
@@ -668,6 +818,9 @@ def main() -> int:
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
     args = parser.parse_args()
+
+    if args.client_helper:
+        return run_client_helper(args.client_helper)
 
     if os.geteuid() != 0:
         print("error: this validation loads BPF programs and must run as root", file=sys.stderr)
@@ -683,16 +836,22 @@ def main() -> int:
     )
 
     veth = VethPair() if args.mode == "veth" else None
-    loader = LoaderRun(args.loader, args.interval)
+    loader: LoaderRun | None = None
+    helpers: list[subprocess.Popen[str]] = []
     started = time.monotonic()
     cpu_before = None
     lo_before = None
     lo_after = None
     veth_before: dict[str, dict[str, int] | None] = {}
     veth_after: dict[str, dict[str, int] | None] = {}
+    tcp_sent = udp_sent = tcp_received = udp_received = 0
+    tcp_s = udp_s = 0.0
+    expected_tgids: set[int] = set()
+    helper_netns = 0
     try:
         if veth:
             veth.start()
+        loader = LoaderRun(args.loader, args.interval)
         loader.start()
         cpu_before = loader.cpu_seconds()
         # Let the first snapshot establish a baseline (and prove the loader attached).
@@ -700,51 +859,57 @@ def main() -> int:
 
         lo_before = read_net_dev("lo")
         if veth:
-            veth_before = {
-                "client": read_net_dev(VETH_CLIENT),
-                "server": read_net_dev(VETH_SERVER),
-            }
-        transfer_kwargs = (
-            {
-                "host": VETH_SERVER_IP,
-                "server_bind": VETH_SERVER_IP,
-                "client_bind": VETH_CLIENT_IP,
-                "server_device": VETH_SERVER,
-                "client_device": VETH_CLIENT,
-            }
-            if veth
-            else {"host": "127.0.0.1"}
-        )
-        try:
-            tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes, **transfer_kwargs)
+            veth_before = {"client": read_net_dev(VETH_CLIENT)}
+        if veth:
+            expected_tgids.add(os.getpid())
+            tcp_sent, tcp_received, tcp_s, helper, helper_pid = run_tcp_transfer_netns(
+                size_bytes, VETH_SERVER_IP
+            )
+            helpers.append(helper)
+            expected_tgids.add(helper_pid)
+            if not helper_netns:
+                helper_netns = os.stat(f"/proc/{helper_pid}/ns/net").st_ino
             time.sleep(max(1.0, args.interval * 1.5))
-            udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes, **transfer_kwargs)
-        except OSError as exc:
-            raise SystemExit(
-                f"controlled transfer failed: {exc}. In veth mode, check that flowvA/flowvB "
-                "have /32 addresses and explicit peer routes."
-            ) from exc
+            udp_sent, udp_received, udp_s, helper, helper_pid = run_udp_transfer_netns(
+                size_bytes, VETH_SERVER_IP
+            )
+            helpers.append(helper)
+            expected_tgids.add(helper_pid)
+        else:
+            tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes)
+            time.sleep(max(1.0, args.interval * 1.5))
+            udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes)
+            expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
         lo_after = read_net_dev("lo") if not veth else None
         if veth:
-            veth_after = {
-                "client": read_net_dev(VETH_CLIENT),
-                "server": read_net_dev(VETH_SERVER),
-            }
+            veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
-        cpu_after = loader.cpu_seconds()
-        rss_kb = loader.peak_rss_kb()
-        loader.stop()
+        cpu_after = loader.cpu_seconds() if loader else None
+        rss_kb = loader.peak_rss_kb() if loader else None
+        if loader:
+            loader.stop()
+        for helper in helpers:
+            try:
+                if helper.stdin and not helper.stdin.closed:
+                    helper.stdin.write("\n")
+                    helper.stdin.flush()
+            except OSError:
+                pass
+            try:
+                helper.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                helper.kill()
+                helper.wait(timeout=5)
         if veth:
             veth.stop()
 
     elapsed = time.monotonic() - started
     for role, counters in veth_before.items():
         if counters is not None:
-            counters["name"] = VETH_CLIENT if role == "client" else VETH_SERVER  # type: ignore[assignment]
-    expected_tgid = os.getpid()
-    summary = summarize(loader.entries, loader.unattributed, expected_tgid)
+            counters["name"] = VETH_CLIENT  # type: ignore[assignment]
+    summary = summarize(loader.entries if loader else [], loader.unattributed if loader else [], expected_tgids)
     cpu_s = round(cpu_after - cpu_before, 3) if cpu_before is not None and cpu_after is not None else None
     cpu_pct = round(cpu_s * 100.0 / elapsed, 3) if cpu_s is not None and elapsed > 0 else None
 
@@ -758,29 +923,45 @@ def main() -> int:
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
     check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
     check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
-    check_single_generation = int(summary["expected_generations"]) == 1
+    generations = summary.get("expected_generations_by_tgid", {})
+    check_single_generation = bool(expected_tgids) and all(
+        int(v) == 1 for v in generations.values()
+    ) and len(generations) == len(expected_tgids)
     check_identity = bool(summary["expected_identity_verified"])
     if veth:
+        root_netns = os.stat("/proc/self/ns/net").st_ino
+        helper_tgids = expected_tgids - {os.getpid()}
+        expected_helper_ifname = f"{veth.server_ifindex}@{helper_netns}"
         expected_interface_description = (
-            f"TCP/UDP TX `{VETH_CLIENT}`, TCP/UDP RX `{VETH_SERVER}`"
+            f"RX via `{VETH_CLIENT}` in the root netns; TX via flowvB ifindex "
+            f"{veth.server_ifindex} in netns {helper_netns}"
         )
         interface_caveat = (
-            "A temporary veth pair exercises two distinct non-loopback interfaces "
-            "in one network namespace. This does not cover physical NICs, multiple "
-            "simultaneous interface pairs, namespaces/containers, VPN/tunnel paths, "
-            "or virtual-interface double-counting."
+            "A temporary veth pair spans two network namespaces, forcing packets over "
+            "both interfaces. ifindex is namespace-scoped, so the helper namespace's "
+            "interface is reported as ifindex@netns rather than a resolved name. This "
+            "does not cover physical NICs, VPN/tunnel paths, or virtual-interface "
+            "double-counting."
         )
 
-        def direction_ok(proto: int) -> bool:
-            p = by_proto[proto]
+        def veth_direction_ok(proto: int) -> bool:
+            rows = [p for p in summary["processes"] if int(p["proto"]) == proto]
+            parent = [p for p in rows if int(p["tgid"]) == os.getpid() and int(p["rx"]) > 0]
+            helper = [p for p in rows if int(p["tgid"]) in helper_tgids and int(p["tx"]) > 0]
             return (
-                p["tx_ifnames"] == [VETH_CLIENT]
-                and p["rx_ifnames"] == [VETH_SERVER]
-                and int(p["unresolved_tx"]) == 0
-                and int(p["unresolved_rx"]) == 0
+                len(parent) == 1
+                and parent[0]["ifname"] == VETH_CLIENT
+                and int(parent[0]["netns_id"]) == root_netns
+                and int(parent[0]["tx"]) == 0
+                and len(helper) == 1
+                and helper[0]["ifname"] == expected_helper_ifname
+                and int(helper[0]["netns_id"]) == helper_netns
+                and int(helper[0]["rx"]) == 0
+                and int(by_proto[proto]["unresolved_tx"]) == 0
+                and int(by_proto[proto]["unresolved_rx"]) == 0
             )
 
-        check_interface = direction_ok(1) and direction_ok(2)
+        check_interface = veth_direction_ok(1) and veth_direction_ok(2)
     else:
         expected_interface_description = "all expected-process rows on `lo`"
         interface_caveat = (
@@ -802,12 +983,14 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "temporary veth pair (192.0.2.1/32 <-> 192.0.2.2/32 with explicit peer routes and static neighbors)"
+            "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
             if veth
             else "loopback `lo`"
         ),
         "expected_interface_description": expected_interface_description,
         "interface_caveat": interface_caveat,
+        "root_netns_id": os.stat("/proc/self/ns/net").st_ino,
+        "helper_netns_id": helper_netns,
         "size_bytes": size_bytes,
         "size_mib": args.size_mib,
         "tcp_sent": tcp_sent,

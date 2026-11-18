@@ -45,6 +45,7 @@ struct prev_entry {
     char exe[256];
     unsigned long long startticks;
     unsigned long long cgroup_id;
+    unsigned long long netns_id;
 };
 
 struct unattributed_val {
@@ -138,10 +139,32 @@ static const char *proto_name(__u32 proto)
     return proto == 2 ? "udp" : (proto == 1 ? "tcp" : "?");
 }
 
-static void resolve_ifname(__u32 ifindex, char *buf, size_t buflen)
+static unsigned long long g_own_netns = 0;
+
+static void resolve_ifname(__u32 ifindex, unsigned long long row_netns, char *buf, size_t buflen)
 {
-    if (ifindex == 0 || !if_indextoname(ifindex, buf))
+    if (ifindex == 0) {
         snprintf(buf, buflen, "-");
+        return;
+    }
+    /* ifindex is namespace-scoped. Naming it from the loader's namespace
+     * would be wrong, so report raw ifindex@netns for other namespaces. */
+    if (row_netns != 0 && g_own_netns != 0 && row_netns != g_own_netns) {
+        snprintf(buf, buflen, "%u@%llu", ifindex, row_netns);
+        return;
+    }
+    if (!if_indextoname(ifindex, buf))
+        snprintf(buf, buflen, "-");
+}
+
+static unsigned long long read_netns_id(pid_t pid)
+{
+    char path[64];
+    struct stat st;
+    snprintf(path, sizeof(path), "/proc/%d/ns/net", (int)pid);
+    if (stat(path, &st) == 0)
+        return (unsigned long long)st.st_ino;
+    return 0;
 }
 
 static int startticks_match(__u64 start_ns, unsigned long long st, long clk_tck)
@@ -176,11 +199,12 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             char bpf_comm[17] = {0};
             memcpy(bpf_comm, val.comm, sizeof(val.comm));
             bpf_comm[sizeof(bpf_comm) - 1] = 0;
-            char ifname[IF_NAMESIZE] = {0};
-            resolve_ifname(next_key.ifindex, ifname, sizeof(ifname));
+            char ifname[64] = {0};
             struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid,
                                               next_key.start_ns ? next_key.start_ns : st,
                                               next_key.ifindex, next_key.proto);
+            unsigned long long netns_id = (pe && pe->netns_id) ? pe->netns_id : read_netns_id(next_key.tgid);
+            resolve_ifname(next_key.ifindex, netns_id, ifname, sizeof(ifname));
             unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
             char live_comm[64] = {0}, live_exe[256] = {0};
             int have_live = 0;
@@ -217,6 +241,8 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                 if (bpf_comm[0] && (pe->comm[0] == '?' || pe->comm[0] == 0))
                     snprintf(pe->comm, sizeof(pe->comm), "%s", bpf_comm);
                 pe->cgroup_id = val.cgroup_id;
+                if (netns_id)
+                    pe->netns_id = netns_id;
             }
             const char *comm = pe ? pe->comm : (bpf_comm[0] ? bpf_comm : live_comm);
             const char *exe = pe ? pe->exe : live_exe;
@@ -233,18 +259,18 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                        dtx, drx, comm, extra);
             } else {
-                char comm2[64], exe2[256], ifname2[IF_NAMESIZE];
+                char comm2[64], exe2[256], ifname2[64];
                 snprintf(comm2, sizeof(comm2), "%s", comm);
                 snprintf(exe2, sizeof(exe2), "%s", exe);
                 snprintf(ifname2, sizeof(ifname2), "%s", ifname);
                 tsv_sanitize(comm2);
                 tsv_sanitize(exe2);
                 tsv_sanitize(ifname2);
-                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\t%u\t%s\n",
+                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\t%u\t%s\t%llu\n",
                        next_key.tgid, next_key.uid,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                        dtx, drx, comm2, exe2, show_st, identity_verified ? 1 : 0,
-                       show_ns, show_cgroup, next_key.proto, ifname2);
+                       show_ns, show_cgroup, next_key.proto, ifname2, netns_id);
             }
         }
         key = next_key;
@@ -308,6 +334,7 @@ int main(int argc, char **argv)
     if (rounds <= 0) rounds = 10;
 
     libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+    g_own_netns = read_netns_id(getpid());
 
     struct flow_tcp_bytes_bpf *skel = flow_tcp_bytes_bpf__open();
     if (!skel) {

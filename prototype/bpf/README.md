@@ -104,7 +104,7 @@ argument for machine-readable output.
 ```
 M  <clk_tck>  <boot_unix_ms>
 S  <snapshot_index>
-E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id> <proto> <ifname>
+E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id> <proto> <ifname> <netns_id>
 U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
 ```
 
@@ -113,9 +113,12 @@ U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
   kernel-captured fallback.
 - `proto` is `1` (TCP) or `2` (UDP). `ifname` is the resolved interface or
   `-` when `ifindex==0`.
+- `netns_id` is the network namespace inode of the owning process. When it
+  differs from the loader's namespace, `ifname` is `ifindex@netns_id` because
+  `ifindex` is namespace-scoped and cannot be named from the loader's namespace.
 - `start_ns`/`cgroup_id` are appended after event-time identity;
-  `proto`/`ifname` are appended after UDP/interface support. Consumers must
-  accept 11-field and 13-field `E` lines from older loaders.
+  `proto`/`ifname` after UDP/interface support; `netns_id` last. Consumers must
+  accept 11-field, 13-field, and 15-field `E` lines from older loaders.
 - Fields are tab-separated; tabs/newlines inside `comm`/`exe`/`ifname` are
   sanitized to spaces.
 
@@ -141,15 +144,12 @@ sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over
-TCP then 16 MiB over UDP). `--mode veth` (not yet privileged-run) creates a
-temporary veth pair (`flowvA` 192.0.2.1/32, `flowvB` 192.0.2.2/32), binds the
-client sockets to `flowvA` and the server sockets to `flowvB` via
-`SO_BINDTODEVICE`, and requires TX to attribute to `flowvA` and RX to `flowvB`
-for both protocols. /32 addresses, explicit peer routes, and static neighbor
-entries avoid the route/ARP issues seen with duplicate /24 connected routes and
-the unsupported `onlink` flag on this kernel. The devices are deleted after the
-run; an existing device with either name causes an error instead of being
-modified. The script writes a Markdown report under
+TCP then 16 MiB over UDP). `--mode veth` (not yet privileged-run with the namespace topology) creates a
+temporary `flowvns` namespace and veth pair: the server runs in the root
+namespace on `flowvA` (192.0.2.1), while a client helper runs in `flowvns` on
+`flowvB` (192.0.2.2). Traffic must traverse both interfaces. The gate requires
+RX on `flowvA` and TX as `ifindex@netns` for the helper namespace, for both
+protocols. The namespace and devices are deleted after the run. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
