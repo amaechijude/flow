@@ -20,7 +20,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
     sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
-    sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --interface wlp0s20f3
+    sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -30,11 +30,12 @@ process churn. It samples loader CPU, peak RSS, and BPF map entry count (emitted
 by the loader as `X` lines) to provide steady-state overhead/map-growth evidence.
 Exactness checks cover only the parent TGID; child rows are reported as background.
 
-NIC mode sends a known TCP payload through the default-route physical interface
-to a peer listener (e.g. a phone hotspot gateway running a TCP echo server) and
-requires the expected rows to resolve to that interface in the root netns. It is
-TCP-only; UDP through the hotspot is not exercised. If the peer reports a byte
-count, pass it with `--peer-bytes` to include it as a check.
+NIC mode sends known TCP and UDP payloads through the default-route physical
+interface to a peer echo listener (e.g. a phone hotspot gateway running TCP and
+UDP echo servers) and requires the expected rows to resolve to that interface in
+the root netns. Peer/interface are inferred from the default route or supplied
+with `--peer-host`/`--interface`. If the peer reports byte counts, pass them with
+`--peer-bytes`/`--peer-udp-bytes` to include them as checks.
 """
 
 from __future__ import annotations
@@ -417,6 +418,64 @@ def run_tcp_transfer_remote(
     finally:
         sock.close()
     return sent, received, time.monotonic() - started
+
+
+def run_udp_transfer_remote(
+    size_bytes: int, host: str, port: int, datagram_size: int = 4096
+) -> tuple[int, int, float]:
+    """Send size_bytes to a remote UDP echo server; return sent, received, elapsed.
+
+    UDP may drop datagrams or be NAT-limited. eBPF TX is compared to bytes
+    accepted by send(); eBPF RX and the peer byte count are compared to bytes
+    actually echoed back.
+    """
+    started = time.monotonic()
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 << 20)
+    sock.settimeout(0.5)
+    sock.connect((host, port))
+    payload = b"u" * datagram_size
+    sent = 0
+    datagrams = 0
+    received = [0]
+    stop = threading.Event()
+
+    def receive_echoes() -> None:
+        while not stop.is_set():
+            try:
+                data = sock.recv(1 << 16)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if data:
+                received[0] += len(data)
+
+    threading.Thread(target=receive_echoes, daemon=True).start()
+    try:
+        while sent < size_bytes:
+            n = min(datagram_size, size_bytes - sent)
+            sent += sock.send(payload[:n])
+            datagrams += 1
+            if datagrams % 64 == 0:
+                time.sleep(0.001)
+
+        # Wait for echoed datagrams; stops early if delivery has settled.
+        deadline = time.monotonic() + 30
+        stable_since = time.monotonic()
+        last = received[0]
+        while received[0] < sent and time.monotonic() < deadline:
+            time.sleep(0.05)
+            if received[0] != last:
+                last = received[0]
+                stable_since = time.monotonic()
+            elif time.monotonic() - stable_since > 3:
+                break
+    finally:
+        stop.set()
+        time.sleep(0.1)
+        sock.close()
+    return sent, received[0], time.monotonic() - started
 
 
 def run_soak_child(size_bytes: int) -> int:
@@ -902,13 +961,19 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- No unattributed bytes in a fully controlled transfer: {ctx['check_unattributed']}",
     ]
     if ctx.get("nic"):
-        peer_note = (
+        tcp_note = (
             f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
             if ctx.get("nic_peer_bytes") is not None
-            else "not supplied; compare manually with the phone listener output"
+            else "not supplied; compare manually with the phone TCP listener output"
+        )
+        udp_note = (
+            f"{ctx['nic_peer_udp_bytes']} bytes supplied via --peer-udp-bytes"
+            if ctx.get("nic_peer_udp_bytes") is not None
+            else "not supplied; compare manually with the phone UDP listener output"
         )
         lines += [
-            f"- Peer listener byte count ({peer_note}): {ctx['check_peer_bytes'] if ctx['check_peer_bytes'] is not None else 'n/a'}",
+            f"- Peer TCP listener byte count ({tcp_note}): {ctx['check_peer_bytes'] if ctx['check_peer_bytes'] is not None else 'n/a'}",
+            f"- Peer UDP listener byte count ({udp_note}): {ctx['check_peer_udp_bytes'] if ctx['check_peer_udp_bytes'] is not None else 'n/a'}",
         ]
     lines += [
         "",
@@ -939,9 +1004,13 @@ def main() -> int:
     parser.add_argument("--peer-host", help="nic mode: peer address (default: default-route gateway)")
     parser.add_argument("--peer-port", type=int, default=9000,
                         help="nic mode: peer TCP echo port (default: 9000)")
+    parser.add_argument("--peer-udp-port", type=int, default=9001,
+                        help="nic mode: peer UDP echo port (default: 9001)")
     parser.add_argument("--interface", help="nic mode: physical interface to assert (default: default-route device)")
     parser.add_argument("--peer-bytes", type=int,
-                        help="nic mode: optional byte count reported by the peer listener")
+                        help="nic mode: optional TCP byte count reported by the peer listener")
+    parser.add_argument("--peer-udp-bytes", type=int,
+                        help="nic mode: optional UDP byte count reported by the peer listener")
     parser.add_argument("--size-mib", type=float, default=16.0, help="payload per protocol")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
@@ -1081,9 +1150,10 @@ def main() -> int:
             tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
                 size_bytes, peer_host, args.peer_port
             )
-            # nic mode is TCP echo only; no local UDP listener is implied.
-            udp_sent = udp_received = 0
-            udp_s = 0.0
+            time.sleep(max(1.0, args.interval * 1.5))
+            udp_sent, udp_received, udp_s = run_udp_transfer_remote(
+                size_bytes, peer_host, args.peer_udp_port
+            )
             time.sleep(max(1.0, args.interval * 1.5))
             nic_after = read_net_dev(peer_interface)
         elif veth:
@@ -1153,16 +1223,17 @@ def main() -> int:
 
     check_tcp_tx = abs(tcp_attributed_tx - tcp_sent) <= tcp_sent * 0.01
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
-    if nic:
-        check_udp_tx = None
-        check_udp_rx = None
-    else:
-        check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
-        check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
+    check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
+    check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
     check_peer_bytes = (
         None
         if not nic or args.peer_bytes is None
         else abs(int(args.peer_bytes) - tcp_sent) <= tcp_sent * 0.01
+    )
+    check_peer_udp_bytes = (
+        None
+        if not nic or args.peer_udp_bytes is None
+        else abs(int(args.peer_udp_bytes) - udp_sent) <= udp_sent * 0.01
     )
     generations = summary.get("expected_generations_by_tgid", {})
     check_single_generation = bool(expected_tgids) and all(
@@ -1172,35 +1243,39 @@ def main() -> int:
     if nic:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         expected_interface_description = (
-            f"TCP TX and RX on `{peer_interface}` in the root netns via peer {peer_host}:{args.peer_port}"
+            f"TCP and UDP TX/RX on `{peer_interface}` in the root netns via peer {peer_host}"
         )
         transfer_scope = (
-            f"TCP echo through {peer_interface} to {peer_host}:{args.peer_port} (TCP only; no UDP)"
+            f"TCP echo to {peer_host}:{args.peer_port} and UDP echo to {peer_host}:{args.peer_udp_port} via {peer_interface}"
         )
         counter_caveat = f"`{peer_interface}` counters include IP/link and Wi-Fi overhead."
         process_scope_caveat = (
-            "The expected row is the parent client process; the peer listener's byte "
-            "count is reported separately when supplied via --peer-bytes."
+            "The expected rows are the parent client process; peer byte counts are "
+            "reported separately when supplied via --peer-bytes/--peer-udp-bytes."
         )
         interface_caveat = (
-            f"TCP echo through physical {peer_interface} to a peer on the phone hotspot. "
+            f"TCP and UDP echo through physical {peer_interface} to a peer on the phone hotspot. "
             "This validates hardware-interface attribution only; it does not cover VPN/tunnel "
             "paths, multiple simultaneous interfaces, or wildcard multi-interface sockets. "
             "Traffic terminates at the phone, so no cellular payload is used for this test."
         )
-        tcp_rows = [
-            p for p in summary["processes"]
-            if int(p["proto"]) == 1 and int(p["tgid"]) in expected_tgids
-        ]
-        check_interface = (
-            len(tcp_rows) == 1
-            and tcp_rows[0]["ifname"] == peer_interface
-            and int(tcp_rows[0]["netns_id"]) == root_netns
-            and int(tcp_rows[0]["tx"]) > 0
-            and int(tcp_rows[0]["rx"]) > 0
-            and int(by_proto[1]["unresolved_tx"]) == 0
-            and int(by_proto[1]["unresolved_rx"]) == 0
-        )
+
+        def nic_proto_ok(proto: int) -> bool:
+            rows = [
+                p for p in summary["processes"]
+                if int(p["proto"]) == proto and int(p["tgid"]) in expected_tgids
+            ]
+            return (
+                len(rows) == 1
+                and rows[0]["ifname"] == peer_interface
+                and int(rows[0]["netns_id"]) == root_netns
+                and int(rows[0]["tx"]) > 0
+                and int(rows[0]["rx"]) > 0
+                and int(by_proto[proto]["unresolved_tx"]) == 0
+                and int(by_proto[proto]["unresolved_rx"]) == 0
+            )
+
+        check_interface = nic_proto_ok(1) and nic_proto_ok(2)
     elif veth:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         helper_tgids = expected_tgids - {os.getpid()}
@@ -1311,7 +1386,9 @@ def main() -> int:
         "nic_interface": peer_interface if nic else None,
         "nic_peer_host": peer_host if nic else None,
         "nic_peer_port": args.peer_port if nic else None,
+        "nic_peer_udp_port": args.peer_udp_port if nic else None,
         "nic_peer_bytes": args.peer_bytes if nic else None,
+        "nic_peer_udp_bytes": args.peer_udp_bytes if nic else None,
         "nic_before": nic_before,
         "nic_after": nic_after,
         "soak": soak,
@@ -1350,6 +1427,7 @@ def main() -> int:
         "check_interface": check_interface,
         "check_unattributed": check_unattributed,
         "check_peer_bytes": check_peer_bytes,
+        "check_peer_udp_bytes": check_peer_udp_bytes,
     }
 
     write_report(report_path, ctx)
@@ -1366,6 +1444,7 @@ def main() -> int:
         and check_identity
         and check_interface
         and (check_peer_bytes if check_peer_bytes is not None else True)
+        and (check_peer_udp_bytes if check_peer_udp_bytes is not None else True)
     )
     return 0 if passed else 1
 

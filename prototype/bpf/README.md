@@ -143,7 +143,7 @@ It also asserts that the expected TGID maps to exactly one process generation
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
 sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
-sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --interface wlp0s20f3
+sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3 --peer-bytes 16777216 --peer-udp-bytes 16777216
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over
@@ -177,17 +177,23 @@ iterations × 1 MiB per protocol matched exactly, all checks passed, loader CPU
 no expiry, 69 child-churn background rows. These are sustained observations,
 not capacity/high-churn/production-load evidence.
 
-`--mode nic` sends a known TCP payload through the default-route physical
-interface to a peer TCP echo listener (e.g. Termux on an Android phone hotspot)
-and requires the expected rows to resolve to that interface in the root netns.
+`--mode nic` sends known TCP and UDP payloads through the default-route physical
+interface to peer echo listeners (e.g. Termux on an Android phone hotspot) and
+requires the expected rows to resolve to that interface in the root netns.
 Peer/interface are inferred from the default route or supplied with
-`--peer-host`/`--interface`. It is TCP-only; pass `--peer-bytes` if the peer
-listener reports a byte count. Accepted run
-(`docs/measurements/ebpf-controlled-20261118T131724Z.md`): 16 MiB TCP echo
-through `wlp0s20f3` matched exactly, expected row on `wlp0s20f3`, peer reported
-16,777,216 bytes, all applicable checks passed. This validates hardware-interface
-attribution for TCP only; VPN/tunnel, multiple simultaneous interfaces, and
-wildcard multi-interface sockets remain unmeasured. The script writes a Markdown report under
+`--peer-host`/`--interface`; TCP uses `--peer-port` (9000) and UDP uses
+`--peer-udp-port` (9001). Pass peer-reported counts with `--peer-bytes` and
+`--peer-udp-bytes` to include them as checks.
+
+A combined Termux listener helper is in `scripts/termux_echo_listener.py`. Copy
+it to the phone and run `python3 termux_echo_listener.py` with `termux-wake-lock`
+so the screen/session stays alive. It prints `tcp <bytes>` and `udp <bytes>`.
+
+The previous accepted TCP-only run is still recorded at
+`docs/measurements/ebpf-controlled-20261118T131724Z.md`. It validates hardware-interface
+attribution for TCP only; the TCP+UDP version is implemented but not yet privileged-run.
+VPN/tunnel, multiple simultaneous interfaces, and wildcard multi-interface sockets
+remain unmeasured. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,

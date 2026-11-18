@@ -795,3 +795,22 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Changes
 - Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
 - Fixed report wording for nic mode (TCP-only, no misleading "TCP then UDP" line). No BPF/loader change; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (physical-NIC UDP extension added, not yet run)
+
+### Implementation
+- Extended `--mode nic` from TCP-only to TCP+UDP echo through the physical interface.
+- Added `scripts/termux_echo_listener.py`: one Termux session runs a TCP echo listener on port 9000 and a UDP echo listener on port 9001, printing `tcp <bytes>` and `udp <bytes>`.
+- Added `--peer-udp-port` (default 9001) and `--peer-udp-bytes`; the harness now checks UDP TX/RX and peer-reported UDP bytes in addition to TCP.
+- UDP client reads echoes concurrently with sending to avoid receive-buffer drops; local 1 MiB TCP and UDP echo smoke tests passed.
+- Report wording now describes TCP+UDP NIC mode and both peer-count checks.
+
+### Pending
+- On the phone: `termux-wake-lock` then `python3 termux_echo_listener.py`.
+- On the laptop:
+  `sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host 10.61.133.76 --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3 --peer-bytes 16777216 --peer-udp-bytes 16777216`
+- Expectation: exact TCP and UDP TX/RX, expected rows for both protocols on `wlp0s20f3`, peer counts matching, all checks true. Any UDP drops or mismatches must be recorded as measured.
+
+### Verification
+- `py_compile` passed for harness and Termux helper; local TCP/UDP echo smoke tests passed; synthetic NIC report generation passed.
+- No BPF/loader change; build/test baseline remains 36/36 passing.
