@@ -6,11 +6,12 @@
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 /*
- * Process identity is captured at event time. Including the task start time in
- * the map key prevents two different processes that reused the same TGID from
- * being merged into one counter row (and therefore one stable Flow identity).
- * comm/cgroup/start-time are captured on first observation, so short-lived
- * processes retain attribution even if they exit before userspace enrichment.
+ * Process identity is captured at event time. Including the thread-group
+ * leader's start time in the map key prevents two different processes that
+ * reused the same TGID from being merged into one counter row (and therefore
+ * one stable Flow identity). comm/cgroup/start-time are captured on first
+ * observation, so short-lived processes retain attribution even if they exit
+ * before userspace enrichment.
  */
 struct traffic_key {
     __u64 start_ns;
@@ -66,12 +67,22 @@ static __always_inline void add_unattributed_rx(__u64 bytes)
     }
 }
 
-static __always_inline __u64 current_start_ns(void)
+static __always_inline __u64 current_process_start_ns(void)
 {
     struct task_struct *task = (struct task_struct *)bpf_get_current_task_btf();
     if (!task)
         return 0;
-    return BPF_CORE_READ(task, start_time);
+
+    /*
+     * task_struct.start_time is per-thread, not per-process. Attribution is
+     * per process (TGID), so use the thread-group leader's start time;
+     * otherwise worker threads get different keys and split one process into
+     * multiple identities.
+     */
+    struct task_struct *leader = BPF_CORE_READ(task, group_leader);
+    if (!leader)
+        leader = task;
+    return BPF_CORE_READ(leader, start_time);
 }
 
 static __always_inline struct traffic_val *get_or_create(struct traffic_key *key)
@@ -105,7 +116,7 @@ static __always_inline void add_bytes(__u64 bytes, int is_tx)
     }
 
     struct traffic_key k = {
-        .start_ns = current_start_ns(),
+        .start_ns = current_process_start_ns(),
         .tgid = tgid,
         .uid = uid,
     };

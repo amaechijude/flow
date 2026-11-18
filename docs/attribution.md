@@ -23,8 +23,9 @@ Where useful and supported, investigate **socket cookies** or equivalent identif
 ### Implemented identity behavior (development increment, ADR 0005)
 
 - The eBPF provider keys counters by `{start_ns, tgid, uid}` where `start_ns` is
-  `task_struct.start_time` captured at event time. PID reuse creates a separate
-  counter row/process generation instead of merging bytes.
+  the **thread-group leader's** `task_struct.start_time` captured at event time.
+  PID reuse creates a separate counter row/process generation instead of merging
+  bytes, while all threads of one process stay in one row.
 - `start_ns`, `cgroup_id`, and task `comm` are captured on first observation in
   the kernel, so short-lived processes retain event-time identity after exit.
 - `ProcessIdentity.StartTimeUtc` prefers `boot_unix_ms + start_ns`, then
@@ -101,17 +102,19 @@ Prototype and product must handle (to supported extent):
 - Parser tests cover: extended identity fields and cgroup propagation, PID reuse producing distinct stable keys, stable key ignoring mutable exe enrichment, legacy 11-field loader compatibility, exited-process comm fallback + attribution notes, malformed/zero-delta handling, unattributed events, and metadata defaults.
 - BPF program and loader were **compiled** with clang/bpftool/libbpf (`0` errors; only pre-existing vmlinux.h warnings). They were **not loaded/attached** in this increment because that requires root/CAP_BPF and no non-interactive privilege path is available here.
 
-### Controlled validation harness (added; not yet run with privileges)
-- `scripts/validate-ebpf-attribution.py` performs a known-size loopback TCP transfer while the loader samples, then compares per-process attributed TX/RX against userspace payload counts and `lo` counters from `/proc/net/dev`; it also records unattributed bytes, loader CPU time, and peak RSS and writes a Markdown report under `docs/measurements/`.
+### Controlled validation harness (first run recorded; identity fix needs rerun)
+- `scripts/validate-ebpf-attribution.py` performs a known-size loopback TCP transfer while the loader samples, then compares the expected process's attributed TX/RX against userspace payload counts and `lo` counters from `/proc/net/dev`; it also records background/unattributed bytes, loader CPU time, and peak RSS and writes a Markdown report under `docs/measurements/`.
 - Must be run as root: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`.
-- No result from this harness is recorded yet, so no accuracy/overhead claim is made.
+- **First run (2026-11-18, report `docs/measurements/ebpf-controlled-20261118T042842Z.md`):** 16 MiB payload was measured as 16,777,216 TX and 16,777,216 RX for the expected process (100.0%), with 0 unattributed bytes. `lo` deltas were 16,793,734 per direction (IP/link headers). Loader CPU was ~0.01 s (0.242% of one core) and peak RSS 3,592 KiB; the CPU sample is coarse and is not accepted as overhead evidence.
+- **Identity defect exposed by that run:** the same Python TGID appeared as two rows with different `start_ns` (main thread and server thread), and the server-thread row failed live `/proc` verification. Cause: `task_struct.start_time` is per-thread. The BPF program now reads `group_leader->start_time`, and the harness asserts one generation per expected TGID and verified identity. The recorded byte totals remain useful, but **the run is not accepted as gate evidence until the fixed program is rerun**.
+- Background traffic from other processes was also captured (18 bytes each direction), which is expected for a system-wide hook; the harness now reports it separately from the expected process.
 
 ### Not yet satisfied (gate still open)
-- **Privileged rerun of the identity changes:** the modified BPF/loader passed compilation and unit-level parser tests, but a privileged live run has not been recorded since the identity change.
-- **Controlled comparison:** the harness exists but has not produced evidence; no side-by-side accuracy numbers against `/proc/net/dev`/`ip -s link` are recorded yet.
+- **Privileged rerun after the thread-identity fix:** the modified BPF/loader compiles and the parser is unit-tested, but the group-leader start-time fix has not been rerun with privileges.
+- **Controlled comparison:** the first run matched payload bytes exactly but exposed the thread-split identity defect; no accepted accuracy/overhead numbers are recorded until the fixed program is rerun.
 - **Coverage:** UDP/QUIC, ICMP, non-TCP paths, traffic outside attach lifetime, and per-interface attribution are not counted by this provider.
 - **Namespaces/containers/VPNs:** cgroup id is captured but not mapped to a path/container; network namespaces and tunnel/VPN layers are not yet handled or measured.
-- **Overhead/edge cases:** CPU/memory overhead, map growth/expiry, short-lived process churn, virtual-interface double-counting, and provider start/stop gaps are not yet measured.
+- **Overhead/edge cases:** only a single coarse CPU/RSS datapoint exists; longer runs, map growth/expiry, short-lived process churn, virtual-interface double-counting, and provider start/stop gaps are not yet measured.
 - **Application grouping:** not implemented beyond exe/comm hints.
 
 

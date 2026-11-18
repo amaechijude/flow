@@ -17,9 +17,10 @@ identity from `/proc` at snapshot time. Two problems followed:
 ## Decision
 
 1. Capture identity **at event time in the kernel**. The BPF map key is
-   `{start_ns, tgid, uid}`, where `start_ns` is `task_struct.start_time`
-   (nanoseconds since boot, read with CO-RE). The value also stores the
-   first-observed `cgroup_id` and `comm` so attribution survives process exit.
+   `{start_ns, tgid, uid}`, where `start_ns` is the thread-group leader's
+   `task_struct.start_time` (nanoseconds since boot, read with CO-RE). The
+   value also stores the first-observed `cgroup_id` and `comm` so attribution
+   survives process exit.
 2. Emit these fields from the loader. The TSV `E` line is extended
    backward-compatibly to:
    `E  tgid  uid  tx_total  rx_total  tx_delta  rx_delta  comm  exe  startticks  verified  start_ns  cgroup_id`.
@@ -42,6 +43,12 @@ identity from `/proc` at snapshot time. Two problems followed:
 - A short-lived process retains event-time start time, comm, and cgroup; its
   executable may remain unknown. Attribution notes state this rather than
   guessing.
+- **Per-thread start times must not be used.** `task_struct.start_time` belongs
+  to the individual task/thread. A controlled run showed one Python process
+  splitting into two TGID rows with different `start_ns` (main thread and
+  server thread), and the thread row failed `/proc` verification. The key now
+  uses `group_leader->start_time`, so all threads of one process map to one
+  generation. The validation harness asserts one generation per expected TGID.
 - Rows can no longer be merged by `(tgid, uid)` alone; map capacity is shared
   across process generations until the loader detaches (no expiry yet).
 - Old loader output (11-field `E` lines) is still accepted by `Flow.Linux`.

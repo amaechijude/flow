@@ -500,3 +500,21 @@
 - Privileged live run of the modified BPF/loader was **not** performed in this increment (requires root/CAP_BPF; no non-interactive privilege path). Compile-only verification is recorded above.
 - Controlled accuracy/overhead evidence still requires running `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` (and variants) and reviewing the generated report.
 - UDP/QUIC, per-interface attribution, namespaces/container mapping, VPN/tunnel/virtual-interface behavior, map expiry for dead generations, and production packaging of the privileged provider remain open gate items.
+
+## 2026-11-18 (controlled validation run and thread-identity fix)
+
+### Completed
+- **First privileged controlled run recorded:** 16 MiB loopback TCP transfer measured 16,777,216 TX and 16,777,216 RX for the expected process (100.0% of payload), 0 unattributed bytes, `lo` deltas 16,793,734 per direction (IP/link headers), loader CPU ~0.01 s (0.242% of one core), peak RSS 3,592 KiB. Report: `docs/measurements/ebpf-controlled-20261118T042842Z.md`. CPU sampling is coarse and not accepted as overhead evidence.
+- **Found an identity defect:** the run split one Python TGID into two rows with different `start_ns` (main thread and server thread); the server-thread row failed live `/proc` verification. Root cause: `task_struct.start_time` is per-thread, while `/proc/<tgid>/stat` starttime is the thread-group leader's. This is exactly the kind of split the stable key must prevent.
+- **Fix:** BPF now keys `start_ns` by `task_struct.group_leader->start_time` (with a null-safe fallback), so all threads of one process share one generation. Rebuilt the BPF object/skeleton/loader successfully.
+- **Harness hardening:** `scripts/validate-ebpf-attribution.py` now identifies the expected load-generator TGID, compares only that process's attributed TX/RX to payload, reports background traffic separately, asserts exactly one process generation and verified identity for the expected TGID, uses `/proc/<pid>/schedstat` for higher-resolution CPU time, and chowns reports back to the invoking user when run via sudo.
+- **Docs:** ADR 0005, `prototype/bpf/README.md`, and `docs/attribution.md` now record the per-thread pitfall, the group-leader fix, the first-run result (useful byte totals, not accepted gate evidence), and the remaining rerun requirement.
+
+### Verification / test results
+- BPF object/skeleton/loader rebuilt with clang/bpftool/libbpf (0 errors; pre-existing `vmlinux.h` warnings).
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 6 `NU1900` offline warnings + 1 pre-existing `CA1859` test warning).
+- `dotnet test Flow.slnx -v minimal --no-build` → **passed 31/31**.
+
+### Not verified yet / next
+- Rerun the privileged validation after the group-leader fix: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. The run should now show one row for the expected TGID with `identity verified: yes`; commit that report before making accuracy/overhead claims.
+- The stale first report remains untracked evidence of the defect; ownership may need `sudo chown -R "$USER:$USER" docs/measurements`.

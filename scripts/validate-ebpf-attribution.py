@@ -54,6 +54,15 @@ def read_net_dev(interface: str = "lo") -> dict[str, int] | None:
     return None
 
 
+def read_proc_cpu_ns(pid: int) -> int | None:
+    """Return CPU time in nanoseconds from /proc/<pid>/schedstat (run time field)."""
+    try:
+        first = Path(f"/proc/{pid}/schedstat").read_text(encoding="utf-8").split()[0]
+        return int(first)
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def read_proc_cpu_seconds(pid: int) -> float | None:
     """Return utime+stime in seconds for a process, as reported by /proc/<pid>/stat."""
     try:
@@ -160,7 +169,12 @@ class LoaderRun:
             self.stderr.append(line.rstrip("\n"))
 
     def cpu_seconds(self) -> float | None:
-        return read_proc_cpu_seconds(self.proc.pid) if self.proc else None
+        if self.proc is None:
+            return None
+        cpu_ns = read_proc_cpu_ns(self.proc.pid)
+        if cpu_ns is not None:
+            return cpu_ns / 1_000_000_000.0
+        return read_proc_cpu_seconds(self.proc.pid)
 
     def peak_rss_kb(self) -> int | None:
         return read_proc_peak_rss_kb(self.proc.pid) if self.proc else None
@@ -216,7 +230,11 @@ def run_transfer(size_bytes: int, host: str = "127.0.0.1") -> tuple[int, int, fl
     return sent, received[0], time.monotonic() - started
 
 
-def summarize(entries: list[dict[str, object]], unattributed: list[dict[str, int]]) -> dict[str, object]:
+def summarize(
+    entries: list[dict[str, object]],
+    unattributed: list[dict[str, int]],
+    expected_tgid: int,
+) -> dict[str, object]:
     processes: dict[tuple[int, int, int], dict[str, object]] = {}
     for e in entries:
         key = (int(e["tgid"]), int(e["start_ns"]), int(e["uid"]))
@@ -241,6 +259,9 @@ def summarize(entries: list[dict[str, object]], unattributed: list[dict[str, int
         if e.get("identity_verified"):
             cur["identity_verified"] = True
 
+    expected_rows = [p for p in processes.values() if int(p["tgid"]) == expected_tgid]
+    expected_tx = sum(int(p["tx"]) for p in expected_rows)
+    expected_rx = sum(int(p["rx"]) for p in expected_rows)
     attributed_tx = sum(int(p["tx"]) for p in processes.values())
     attributed_rx = sum(int(p["rx"]) for p in processes.values())
     unattributed_tx = sum(u["tx_delta"] for u in unattributed)
@@ -249,6 +270,16 @@ def summarize(entries: list[dict[str, object]], unattributed: list[dict[str, int
         "processes": sorted(processes.values(), key=lambda p: int(p["tx"]) + int(p["rx"]), reverse=True),
         "attributed_tx": attributed_tx,
         "attributed_rx": attributed_rx,
+        "expected_tgid": expected_tgid,
+        "expected_tx": expected_tx,
+        "expected_rx": expected_rx,
+        "background_tx": attributed_tx - expected_tx,
+        "background_rx": attributed_rx - expected_rx,
+        "expected_generations": len({int(p["start_ns"]) for p in expected_rows}),
+        "expected_start_ns": sorted({int(p["start_ns"]) for p in expected_rows}),
+        "expected_identity_verified": bool(expected_rows) and all(
+            bool(p["identity_verified"]) for p in expected_rows
+        ),
         "unattributed_tx": unattributed_tx,
         "unattributed_rx": unattributed_rx,
     }
@@ -258,8 +289,21 @@ def pct(part: int, whole: int) -> float | None:
     return round(part * 100.0 / whole, 3) if whole else None
 
 
+def chown_to_invoker(path: Path) -> None:
+    """When run via sudo, keep generated artifacts owned by the invoking user."""
+    uid = os.environ.get("SUDO_UID")
+    gid = os.environ.get("SUDO_GID")
+    if uid is None or gid is None:
+        return
+    try:
+        os.chown(path, int(uid), int(gid))
+    except OSError:
+        pass
+
+
 def write_report(path: Path, ctx: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    chown_to_invoker(path.parent)
     s = ctx["summary"]
     assert isinstance(s, dict)
     lines = [
@@ -269,6 +313,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Kernel: `{ctx['kernel']}`",
         f"- Loader: `{ctx['loader']}` (interval {ctx['interval']} s)",
         f"- Transfer: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB) over loopback `lo`",
+        f"- Expected process TGID: {s['expected_tgid']}",
         f"- Loader wall time: {ctx['elapsed_s']:.2f} s",
         "",
         "## Results",
@@ -277,8 +322,12 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "| --- | ---: |",
         f"| Payload sent (userspace) | {ctx['sent']} |",
         f"| Payload received (userspace) | {ctx['received']} |",
-        f"| Attributed TX (eBPF, `tcp_sendmsg`) | {s['attributed_tx']} |",
-        f"| Attributed RX (eBPF, `tcp_recvmsg`) | {s['attributed_rx']} |",
+        f"| Attributed TX, expected process (eBPF, `tcp_sendmsg`) | {s['expected_tx']} |",
+        f"| Attributed RX, expected process (eBPF, `tcp_recvmsg`) | {s['expected_rx']} |",
+        f"| Other attributed TX (background traffic) | {s['background_tx']} |",
+        f"| Other attributed RX (background traffic) | {s['background_rx']} |",
+        f"| Total attributed TX | {s['attributed_tx']} |",
+        f"| Total attributed RX | {s['attributed_rx']} |",
         f"| Unattributed TX | {s['unattributed_tx']} |",
         f"| Unattributed RX | {s['unattributed_rx']} |",
     ]
@@ -293,17 +342,18 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         "| Ratio | Value |",
         "| --- | ---: |",
-        f"| Attributed TX / payload sent | {pct(int(s['attributed_tx']), int(ctx['sent']))}% |",
-        f"| Attributed RX / payload received | {pct(int(s['attributed_rx']), int(ctx['received']))}% |",
+        f"| Expected-process TX / payload sent | {pct(int(s['expected_tx']), int(ctx['sent']))}% |",
+        f"| Expected-process RX / payload received | {pct(int(s['expected_rx']), int(ctx['received']))}% |",
         "",
         "## Per-process rows (TGID + event-time start_ns + UID)", "",
-        "| TGID | UID | TX | RX | comm | exe | start_ns | cgroup | identity verified |",
-        "| ---: | ---: | ---: | ---: | --- | --- | ---: | --- | --- |",
+        "| TGID | UID | TX | RX | comm | exe | start_ns | cgroup | identity verified | expected process |",
+        "| ---: | ---: | ---: | ---: | --- | --- | ---: | --- | --- | --- |",
     ]
     for p in s["processes"]:
         lines.append(
             f"| {p['tgid']} | {p['uid']} | {p['tx']} | {p['rx']} | {p['comm']} | {p['exe']} | "
-            f"{p['start_ns']} | {p['cgroup_id']} | {'yes' if p['identity_verified'] else 'no'} |"
+            f"{p['start_ns']} | {p['cgroup_id']} | {'yes' if p['identity_verified'] else 'no'} | "
+            f"{'yes' if p['tgid'] == s['expected_tgid'] else 'no'} |"
         )
     lines += [
         "",
@@ -315,21 +365,25 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         "## Checks",
         "",
-        f"- Attributed TX within ±5% of payload: {ctx['check_tx']}",
-        f"- Attributed RX within ±5% of payload: {ctx['check_rx']}",
+        f"- Expected-process attributed TX within ±1% of payload: {ctx['check_tx']}",
+        f"- Expected-process attributed RX within ±1% of payload: {ctx['check_rx']}",
+        f"- Expected TGID has exactly one process generation (no thread/start-time split): {ctx['check_single_generation']}",
+        f"- Expected process identity verified against live `/proc`: {ctx['check_identity']}",
         f"- No unattributed bytes in a fully controlled single-process transfer: {ctx['check_unattributed']}",
         "",
         "## Interpretation and caveats",
         "",
         "- eBPF counts TCP payload bytes at `tcp_sendmsg`/`tcp_recvmsg` return; `lo` counters count",
         "  IP/link bytes including headers. Ratios near 100% are expected but exact equality is not.",
+        "- The expected-process rows are the load generator itself (its server thread shares the TGID);",
+        "  background traffic from other processes during the run is reported separately.",
         "- Loopback traffic appears once in each interface direction; this run does not exercise",
         "  physical-interface, UDP/QUIC, namespace, VPN, or container paths.",
-        "- The load generator runs in a single process, so its TX and RX rows are both expected.",
         "- This is a controlled sanity check, not a claim of complete attribution coverage.",
         "",
     ]
     path.write_text("\n".join(lines), encoding="utf-8")
+    chown_to_invoker(path)
 
 
 def main() -> int:
@@ -374,14 +428,17 @@ def main() -> int:
 
     elapsed = time.monotonic() - started
     lo_after = read_net_dev("lo")
-    summary = summarize(loader.entries, loader.unattributed)
+    expected_tgid = os.getpid()
+    summary = summarize(loader.entries, loader.unattributed, expected_tgid)
     cpu_s = round(cpu_after - cpu_before, 3) if cpu_before is not None and cpu_after is not None else None
     cpu_pct = round(cpu_s * 100.0 / elapsed, 3) if cpu_s is not None and elapsed > 0 else None
 
-    attributed_tx = int(summary["attributed_tx"])
-    attributed_rx = int(summary["attributed_rx"])
-    check_tx = abs(attributed_tx - sent) <= sent * 0.05
-    check_rx = abs(attributed_rx - received) <= received * 0.05
+    expected_tx = int(summary["expected_tx"])
+    expected_rx = int(summary["expected_rx"])
+    check_tx = abs(expected_tx - sent) <= sent * 0.01
+    check_rx = abs(expected_rx - received) <= received * 0.01
+    check_single_generation = int(summary["expected_generations"]) == 1
+    check_identity = bool(summary["expected_identity_verified"])
     check_unattributed = int(summary["unattributed_tx"]) == 0 and int(summary["unattributed_rx"]) == 0
 
     ctx = {
@@ -403,6 +460,8 @@ def main() -> int:
         "rss_kb": rss_kb,
         "check_tx": check_tx,
         "check_rx": check_rx,
+        "check_single_generation": check_single_generation,
+        "check_identity": check_identity,
         "check_unattributed": check_unattributed,
     }
 
@@ -411,7 +470,8 @@ def main() -> int:
     print(json.dumps(payload, indent=2))
     if not args.json:
         print(f"\nreport: {report_path}", file=sys.stderr)
-    return 0 if (check_tx and check_rx) else 1
+    passed = check_tx and check_rx and check_single_generation and check_identity
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

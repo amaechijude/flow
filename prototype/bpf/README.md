@@ -9,10 +9,11 @@ Counters are aggregated in a BPF hash map and printed periodically by a userspac
 
 ## Identity semantics (event-time)
 
-- **Key:** `{start_ns, tgid, uid}`. `start_ns` is the task's
+- **Key:** `{start_ns, tgid, uid}`. `start_ns` is the thread-group leader's
   `task_struct.start_time` (nanoseconds since boot, read with CO-RE), captured
-  when the byte event is processed. PID reuse therefore creates a distinct
-  counter row instead of merging two process generations.
+  when the byte event is processed. Using the leader (not the current thread)
+  keeps all threads of one process in one row. PID reuse therefore creates a
+  distinct counter row instead of merging two process generations.
 - **Value:** cumulative TX/RX bytes, plus the first-observed `cgroup_id` and
   task `comm`. These are captured in the kernel so short-lived processes keep
   attribution after they exit.
@@ -98,9 +99,13 @@ U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
 while the loader samples, then compares:
 
 - payload sent/received in userspace,
-- per-process attributed TX/RX from the loader (summed deltas),
+- expected-process attributed TX/RX from the loader (summed deltas),
 - `lo` RX/TX deltas from `/proc/net/dev`,
-- unattributed bytes, loader CPU time, and peak RSS.
+- unattributed and background traffic, loader CPU time, and peak RSS.
+
+It also asserts that the expected TGID maps to exactly one process generation
+(no thread/start-time split) and that its identity was verified against
+`/proc`.
 
 ```bash
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
