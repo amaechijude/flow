@@ -99,7 +99,7 @@ VETH_CLIENT = "flowvA"
 VETH_SERVER = "flowvB"
 VETH_CLIENT_IP = "192.0.2.1"
 VETH_SERVER_IP = "192.0.2.2"
-VETH_PREFIX = 24
+VETH_PREFIX = 32  # /32 + explicit peer routes avoid ambiguous duplicate subnet routes
 
 
 def _ip(*args: str) -> None:
@@ -137,6 +137,11 @@ class VethPair:
             _ip("addr", "add", f"{VETH_SERVER_IP}/{VETH_PREFIX}", "dev", VETH_SERVER)
             _ip("link", "set", VETH_CLIENT, "up")
             _ip("link", "set", VETH_SERVER, "up")
+            # Both addresses are local to this namespace. /32 plus explicit
+            # peer routes give SO_BINDTODEVICE a single valid egress route on
+            # each side; duplicate /24 connected routes caused EHOSTUNREACH.
+            _ip("route", "add", f"{VETH_SERVER_IP}/32", "dev", VETH_CLIENT, "onlink")
+            _ip("route", "add", f"{VETH_CLIENT_IP}/32", "dev", VETH_SERVER, "onlink")
         except SystemExit:
             self.stop()
             raise
@@ -704,9 +709,15 @@ def main() -> int:
             if veth
             else {"host": "127.0.0.1"}
         )
-        tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes, **transfer_kwargs)
-        time.sleep(max(1.0, args.interval * 1.5))
-        udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes, **transfer_kwargs)
+        try:
+            tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes, **transfer_kwargs)
+            time.sleep(max(1.0, args.interval * 1.5))
+            udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes, **transfer_kwargs)
+        except OSError as exc:
+            raise SystemExit(
+                f"controlled transfer failed: {exc}. In veth mode, check that flowvA/flowvB "
+                "have /32 addresses and explicit peer routes."
+            ) from exc
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
         lo_after = read_net_dev("lo") if not veth else None
@@ -785,7 +796,7 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "temporary veth pair (192.0.2.1/24 <-> 192.0.2.2/24)"
+            "temporary veth pair (192.0.2.1/32 <-> 192.0.2.2/32 with explicit peer routes)"
             if veth
             else "loopback `lo`"
         ),

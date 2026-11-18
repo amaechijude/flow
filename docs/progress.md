@@ -604,7 +604,7 @@
 
 ### Completed
 - Extended `scripts/validate-ebpf-attribution.py` with `--mode veth` (default remains the accepted `lo` mode).
-  - Creates a temporary veth pair `flowvA` (192.0.2.1/24) / `flowvB` (192.0.2.2/24) via `ip`, refuses to touch pre-existing device names, and deletes the pair in a `finally` block.
+  - Creates a temporary veth pair `flowvA` (192.0.2.1/32) / `flowvB` (192.0.2.2/32) via `ip`, refuses to touch pre-existing device names, and deletes the pair in a `finally` block.
   - Client sockets bind to `flowvA` / 192.0.2.1 and server sockets to `flowvB` / 192.0.2.2 using `SO_BINDTODEVICE`, so TX and RX exercise distinct interfaces while staying in one process and one network namespace.
   - Per-protocol summary now records TX and RX interface names separately and unresolved TX/RX bytes; the interface gate requires TCP and UDP TX on `flowvA` and RX on `flowvB`.
   - Report includes per-role `/proc/net/dev` deltas, expected-interface description, mode, and mode-specific caveats.
@@ -619,3 +619,14 @@
 - Privileged `--mode veth` run: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth`.
 - Expectation: expected-process TX rows on `flowvA`, RX rows on `flowvB`, both protocols exact payload, one verified generation, 0 unresolved/unattributed. If RX resolves to `lo` or `-`, record the measured result instead of claiming two-interface coverage; that would indicate local-delivery short-circuiting or interface-resolution scope limits.
 - Cross-network-namespace interface naming remains unhandled (`ifindex` is namespace-scoped); document rather than guess.
+
+## 2026-11-18 (veth mode first attempt failed: no route)
+
+### Measured failure
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth` failed at `client.connect()` with `OSError [Errno 113] No route to host`. The veth pair was cleaned up by the harness.
+- Cause: using two /24 addresses in the same subnet on two veth devices in one namespace created duplicate connected routes. With `SO_BINDTODEVICE` restricting egress to one device, route lookup could not select a valid path to the other endpoint.
+
+### Fix (not yet rerun)
+- Veth endpoints now use /32 addresses plus explicit onlink peer routes in both directions.
+- Transfer `OSError`s now produce a diagnostic SystemExit instead of a bare traceback.
+- No BPF/loader code changed; baseline remains 35/35 passing.
