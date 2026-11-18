@@ -824,3 +824,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - `scripts/termux_echo_listener.py`: UDP thread is non-daemon, stays alive while TCP runs, and only drains for 5 s after TCP completes; sets `SO_RCVBUF` to 8 MiB.
 - Harness: UDP sends are paced every 8 datagrams with a 5 ms pause; NIC transfer `OSError`s now produce a diagnostic instead of a bare traceback.
 - Local combined TCP+UDP echo smoke with the helper passed (1 MiB each, exact). No BPF/loader change; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (accepted physical-NIC TCP+UDP run)
+
+### Measured result
+- After fixing the Termux UDP listener lifecycle, `sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3 --peer-bytes 16777216 --peer-udp-bytes 16777216` produced `docs/measurements/ebpf-controlled-20261118T144214Z.md`.
+- Parent TGID 16534: TCP and UDP each exactly **16,777,216 TX/RX**, one verified generation, both expected rows on `wlp0s20f3` in the root netns, 0 unresolved/unattributed bytes, all checks true.
+- Peer byte counts were supplied via `--peer-bytes`/`--peer-udp-bytes` and matched payloads; the Termux `tcp`/`udp` lines were not archived for this run (the earlier TCP-only run did archive them).
+- Loader CPU 0.021 s (0.077%), peak RSS 3,808 KiB (short run). `wlp0s20f3` counter deltas exceeded payload due to IP/link/Wi-Fi overhead.
+
+### Interpretation
+- Accepts hardware-interface attribution for both TCP and UDP on one physical Wi-Fi path.
+- Scope: no VPN/tunnel, multiple simultaneous interfaces, wildcard multi-interface sockets, or cellular-offload behavior. Peer confirmation for this run is operator-supplied via flags rather than archived phone output.
+
+### Changes
+- Accepted/annotated the report and index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
+- Fixed report wording to say TCP+UDP NIC mode. No BPF/loader change; build/test baseline remains 36/36 passing.

@@ -110,13 +110,18 @@ claims that are not observed.
   matched exactly for TX/RX, the expected row resolved to `wlp0s20f3` in the
   root netns, one verified generation, 0 unattributed, and the peer reported
   the same 16,777,216 bytes. This accepts hardware-interface attribution for
-  TCP on this path. It does not cover UDP on physical NICs, VPN/tunnel paths,
-  multiple simultaneous interfaces, or wildcard multi-interface sockets.
+  TCP on this path. It does not cover VPN/tunnel paths, multiple simultaneous
+  interfaces, or wildcard multi-interface sockets.
+- **Physical NIC TCP+UDP 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T144214Z.md`):**
+  the extended probe matched exactly 16,777,216 TX/RX for both TCP and UDP,
+  both rows on `wlp0s20f3`, one verified generation, 0 unattributed, peer byte
+  counts supplied via flags matched payloads. This accepts hardware-interface
+  attribution for both protocols on this path. VPN/tunnel, multiple
+  simultaneous interfaces, and wildcard multi-interface sockets remain unproven.
 - **Byte accuracy, loopback/UDP fix, controlled two-interface separation, 60 s/300 s
-  overhead/map observations, and physical-NIC TCP attribution are validated.**
+  overhead/map observations, and physical-NIC TCP+UDP attribution are validated.**
   VPN/tunnel paths, wildcard multi-interface sockets, cross-namespace key
-  merging, map capacity/high churn, and physical-NIC UDP remain unproven
-  (`docs/attribution.md`).
+  merging, and map capacity/high churn remain unproven (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
 - The first controlled run showed unconnected UDP RX resolving to `ifindex=0`

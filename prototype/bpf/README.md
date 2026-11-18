@@ -189,15 +189,16 @@ A combined Termux listener helper is in `scripts/termux_echo_listener.py`. Copy
 it to the phone and run `python3 termux_echo_listener.py` with `termux-wake-lock`
 so the screen/session stays alive. It prints `tcp <bytes>` and `udp <bytes>`.
 
-The previous accepted TCP-only run is still recorded at
-`docs/measurements/ebpf-controlled-20261118T131724Z.md`. It validates hardware-interface
-attribution for TCP only; the TCP+UDP version is implemented but not yet privileged-run.
-VPN/tunnel, multiple simultaneous interfaces, and wildcard multi-interface sockets
-remain unmeasured. The script writes a Markdown report under
-`docs/measurements/` and prints a JSON summary. It must run as root because it
-loads BPF programs. It is a controlled sanity check, not proof of complete
-attribution: it does not exercise physical interfaces, namespaces, containers,
-VPNs/tunnels, or virtual-interface double-counting.
+Accepted physical-NIC runs are recorded at
+`docs/measurements/ebpf-controlled-20261118T131724Z.md` (TCP, with archived
+Termux peer output) and `docs/measurements/ebpf-controlled-20261118T144214Z.md`
+(TCP+UDP, peer byte counts supplied via flags). Both matched exact payloads with
+expected rows on `wlp0s20f3`; the TCP+UDP run extends hardware-interface
+attribution to UDP. VPN/tunnel, multiple simultaneous interfaces, and wildcard
+multi-interface sockets remain unmeasured. The script writes a Markdown report
+under `docs/measurements/` and prints a JSON summary. It must run as root
+because it loads BPF programs. It is a controlled sanity check, not proof of
+complete attribution.
 
 Accepted TCP-loopback result (2026-11-18, kernel `7.0.0-43-generic`, TCP-only
 harness before the UDP/per-interface change): one verified process generation

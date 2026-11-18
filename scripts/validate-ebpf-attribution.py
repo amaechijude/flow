@@ -1373,7 +1373,7 @@ def main() -> int:
             "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
             if veth
             else (
-                f"TCP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port}"
+                f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
                 if nic
                 else (
                     f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
