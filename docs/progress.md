@@ -931,3 +931,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1`
 - Expectation: `check_wildcard: True`, exact per-source bytes, distinct interfaces for the same wildcard-bound server socket, 0 unattributed.
+
+## 2026-11-19 (accepted wildcard multi-interface and near-cap runs)
+
+### Wildcard multi-interface
+- `docs/measurements/ebpf-controlled-20261118T225010Z.md`: one wildcard UDP server (TGID 56339) produced two RX rows on `lo` and `flowvA`, each exactly 1,048,576 bytes; loopback and peer-netns client TX rows exact; `check_wildcard: True`, 0 unresolved/unattributed. Accepts per-datagram interface attribution for a wildcard-bound socket.
+- Fixed report payload wording (1 MiB per source, not 16 MiB) in the generator.
+
+### Hard-capacity approach
+- `docs/measurements/ebpf-controlled-20261118T225153Z.md`: 5,056 short-lived children grew map entries 128→10,107/10,240; byte totals exact, `check_churn_bytes: True`, map target reached, 0 unattributed. CPU 10.142%, RSS 3,788→7,224 KiB. Hard cap itself remains untested.
+
+### Changes
+- Accepted/annotated both reports and index; updated `docs/attribution.md`, `HANDOFF.md`. No BPF/loader change; baseline 38/38 passing.

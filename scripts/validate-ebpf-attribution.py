@@ -1958,8 +1958,10 @@ def main() -> int:
         "soak_map_entries": [s["map_entries"] for s in soak_samples if s["map_entries"] is not None],
         "soak_cpu_samples": [s["cpu_s"] for s in soak_samples if s["cpu_s"] is not None],
         "soak_rss_samples": [s["rss_kb"] for s in soak_samples if s["rss_kb"] is not None],
-        "size_bytes": churn_child_bytes if map_churn else size_bytes,
-        "size_mib": (args.churn_child_size_kib / 1024.0) if map_churn else args.size_mib,
+        "size_bytes": wildcard_bytes if wildcard else (churn_child_bytes if map_churn else size_bytes),
+        "size_mib": (
+            (args.wildcard_size_mib if wildcard else (args.churn_child_size_kib / 1024.0 if map_churn else args.size_mib))
+        ),
         "tcp_sent": tcp_sent,
         "tcp_received": tcp_received,
         "tcp_elapsed_s": round(tcp_s, 3),
