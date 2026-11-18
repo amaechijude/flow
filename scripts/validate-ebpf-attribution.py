@@ -22,6 +22,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3
     sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
+    sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -42,6 +43,12 @@ Netns-key mode creates two temporary netns with loopback and runs one helper
 process in both via setns(), keeping TGID/start/UID identical. It requires two
 distinct counter rows with exact bytes, proving netns participates in the
 identity key. It is TCP-only and privileged.
+
+Map-churn mode spawns many short-lived TCP+UDP children in batches until the
+BPF map reaches `--churn-target` or `--churn-timeout` expires. It samples map
+entries, CPU, and RSS, and checks that child byte totals still match expected
+payloads. It is an observation of map capacity behavior, not a bounded-memory
+claim.
 """
 
 from __future__ import annotations
@@ -1054,6 +1061,24 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         lines += [
             "- The rows must differ only by netns id; a single merged row would mean the identity key still merges namespaces.",
         ]
+    if ctx.get("map_churn"):
+        entries = [s["entries"] for s in ctx["churn_samples"] if s["entries"] is not None]
+        cpu_samples = [s["cpu_s"] for s in ctx["churn_samples"] if s["cpu_s"] is not None]
+        rss_samples = [s["rss_kb"] for s in ctx["churn_samples"] if s["rss_kb"] is not None]
+        expected_bytes = ctx["churn_successes"] * ctx["churn_child_bytes"]
+        lines += [
+            "",
+            "## Map churn observation",
+            "",
+            f"- Target map entries: {ctx['churn_target']}; reached: {ctx['check_map_target']}",
+            f"- Children spawned: {ctx['churn_children']}; successful: {ctx['churn_successes']}; batches: {ctx['churn_batches']}",
+            f"- Expected bytes per protocol/direction (successes × child payload): {expected_bytes}",
+            f"- Attributed expected TX/RX: {s['expected_tx']} / {s['expected_rx']}",
+            f"- BPF map entries: first {entries[0] if entries else 'n/a'}, last {entries[-1] if entries else 'n/a'}, max {max(entries) if entries else 'n/a'}",
+            f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",
+            f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
+            "- The map has no expiry; growth and any accounting shortfall near capacity are observations, not a bounded-memory claim.",
+        ]
     lines += [
         "",
         "## Loader overhead (first datapoint)",
@@ -1077,6 +1102,11 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         lines.append(
             f"- Same TGID/start/uid in two netns produced distinct rows with exact bytes: {ctx['check_netns_collision']}"
         )
+    if ctx.get("map_churn"):
+        lines += [
+            f"- Child byte totals matched expected payload: {ctx['check_churn_bytes']}",
+            f"- Map target reached: {ctx['check_map_target']}",
+        ]
     if ctx.get("nic"):
         tcp_note = (
             f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
@@ -1134,9 +1164,9 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn"),
         default="lo",
-        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer (phone hotspot). netns-key: same process in two netns to validate netns in the identity key.",
+        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
     parser.add_argument("--duration", type=float, default=300.0,
                         help="soak duration in seconds (default: 300)")
@@ -1146,6 +1176,14 @@ def main() -> int:
                         help="spawn a short-lived child after this many soak iterations (default: 5)")
     parser.add_argument("--netns-size-mib", type=float, default=1.0,
                         help="netns-key mode: payload per netns (default: 1)")
+    parser.add_argument("--churn-target", type=int, default=9000,
+                        help="map-churn mode: stop after map entries reach this value (default: 9000)")
+    parser.add_argument("--churn-child-size-kib", type=int, default=4,
+                        help="map-churn mode: TCP+UDP payload per child in KiB (default: 4)")
+    parser.add_argument("--churn-batch", type=int, default=64,
+                        help="map-churn mode: children spawned per batch (default: 64)")
+    parser.add_argument("--churn-timeout", type=float, default=180.0,
+                        help="map-churn mode: maximum run seconds (default: 180)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -1172,9 +1210,20 @@ def main() -> int:
     soak = args.mode == "soak"
     nic = args.mode == "nic"
     netns_key = args.mode == "netns-key"
+    map_churn = args.mode == "map-churn"
     netns_key_bytes = int(args.netns_size_mib * 1024 * 1024)
     if netns_key and netns_key_bytes <= 0:
         print("error: --netns-size-mib must be positive", file=sys.stderr)
+        return 2
+    churn_child_bytes = args.churn_child_size_kib * 1024
+    if map_churn and (
+        args.churn_target <= 0
+        or churn_child_bytes <= 0
+        or args.churn_batch <= 0
+        or args.churn_timeout <= 0
+    ):
+        print("error: map-churn mode needs positive --churn-target/--churn-child-size-kib/--churn-batch/--churn-timeout",
+              file=sys.stderr)
         return 2
     peer_host = args.peer_host
     peer_interface = args.interface
@@ -1203,6 +1252,10 @@ def main() -> int:
     soak_children: list[subprocess.Popen[str]] = []
     soak_iterations = 0
     soak_samples: list[dict[str, object]] = []
+    churn_children: list[subprocess.Popen[str]] = []
+    churn_samples: list[dict[str, object]] = []
+    churn_batches = 0
+    churn_successes = 0
     started = time.monotonic()
     cpu_before = None
     lo_before = None
@@ -1226,7 +1279,7 @@ def main() -> int:
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
-        if not nic and not netns_key:
+        if not nic and not netns_key and not map_churn:
             lo_before = read_net_dev("lo")
         if veth:
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
@@ -1277,6 +1330,40 @@ def main() -> int:
                     "unattributed_rx": last_map.get("urx"),
                 }
             )
+        elif map_churn:
+            deadline = time.monotonic() + args.churn_timeout
+            while time.monotonic() < deadline:
+                if loader.map_samples and loader.map_samples[-1]["entries"] >= args.churn_target:
+                    break
+                batch: list[subprocess.Popen[str]] = []
+                for _ in range(args.churn_batch):
+                    child = spawn_soak_child(churn_child_bytes)
+                    batch.append(child)
+                    churn_children.append(child)
+                    expected_tgids.add(child.pid)
+                for child in batch:
+                    try:
+                        child.wait(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        child.kill()
+                        child.wait(timeout=5)
+                    if child.returncode == 0:
+                        churn_successes += 1
+                churn_batches += 1
+                last_map = loader.map_samples[-1] if loader.map_samples else {}
+                churn_samples.append(
+                    {
+                        "elapsed_s": round(time.monotonic() - started, 1),
+                        "entries": last_map.get("entries"),
+                        "children": len(churn_children),
+                        "successes": churn_successes,
+                        "cpu_s": loader.cpu_seconds(),
+                        "rss_kb": loader.peak_rss_kb(),
+                    }
+                )
+                time.sleep(args.interval)
+            tcp_sent = tcp_received = churn_successes * churn_child_bytes
+            udp_sent = udp_received = churn_successes * churn_child_bytes
         elif netns_key:
             assert netns_pair is not None
             helper, helper_pid = spawn_netns_key_helper(
@@ -1331,7 +1418,7 @@ def main() -> int:
             expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
-        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key else None
+        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn else None
         if veth:
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
@@ -1352,6 +1439,10 @@ def main() -> int:
                 helper.kill()
                 helper.wait(timeout=5)
         for child in soak_children:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
+        for child in churn_children:
             if child.poll() is None:
                 child.kill()
                 child.wait(timeout=5)
@@ -1433,6 +1524,37 @@ def main() -> int:
             )
 
         check_interface = nic_proto_ok(1) and nic_proto_ok(2)
+    elif map_churn:
+        expected_interface_description = "all expected child rows on `lo`"
+        transfer_scope = (
+            f"batches of {args.churn_batch} short-lived TCP+UDP children, "
+            f"{churn_child_bytes} bytes per protocol each"
+        )
+        counter_caveat = "child traffic uses per-netns loopback; counters are not sampled."
+        process_scope_caveat = (
+            "Each short-lived child is an expected process generation. Identity verification "
+            "is n/a because children exit before snapshot enrichment; kernel-captured identity "
+            "is retained."
+        )
+        interface_caveat = (
+            "Loopback-only churn in the root netns. This probes map capacity and accounting "
+            "under churn, not physical interfaces, VPNs, or multi-interface behavior."
+        )
+        check_interface = (
+            summary["expected_resolved_ifnames"] == ["lo"]
+            and int(summary["expected_unresolved_rows"]) == 0
+        )
+        check_identity = None
+        last_entries = churn_samples[-1]["entries"] if churn_samples else None
+        check_map_target = last_entries is not None and int(last_entries) >= args.churn_target
+        expected_churn_bytes = churn_successes * churn_child_bytes
+        check_churn_bytes = (
+            expected_churn_bytes > 0
+            and abs(int(by_proto[1]["tx"]) - expected_churn_bytes) <= expected_churn_bytes * 0.01
+            and abs(int(by_proto[1]["rx"]) - expected_churn_bytes) <= expected_churn_bytes * 0.01
+            and abs(int(by_proto[2]["tx"]) - expected_churn_bytes) <= expected_churn_bytes * 0.01
+            and abs(int(by_proto[2]["rx"]) - expected_churn_bytes) <= expected_churn_bytes * 0.01
+        )
     elif netns_key:
         expected_interface_description = "both transfers on `lo` in two distinct netns"
         transfer_scope = "one helper process moves between two netns via setns()"
@@ -1551,6 +1673,10 @@ def main() -> int:
         )
     check_unattributed = int(summary["unattributed_tx"]) == 0 and int(summary["unattributed_rx"]) == 0
 
+    if map_churn:
+        summary["process_count"] = len(summary["processes"])
+        summary["processes"] = summary["processes"][:20]
+
     ctx = {
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "kernel": os.uname().release,
@@ -1558,18 +1684,22 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "same-PID two-netns identity collision"
-            if netns_key
+            "high-rate child churn toward BPF map capacity"
+            if map_churn
             else (
-                "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-                if veth
+                "same-PID two-netns identity collision"
+                if netns_key
                 else (
-                    f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                    if nic
+                    "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+                    if veth
                     else (
-                        f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                        if soak
-                        else "loopback `lo`"
+                        f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+                        if nic
+                        else (
+                            f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                            if soak
+                            else "loopback `lo`"
+                        )
                     )
                 )
             )
@@ -1583,6 +1713,16 @@ def main() -> int:
         "helper_netns_id": helper_netns,
         "nic": nic,
         "netns_key": netns_key,
+        "map_churn": map_churn,
+        "churn_target": args.churn_target if map_churn else None,
+        "churn_batch": args.churn_batch if map_churn else None,
+        "churn_child_bytes": churn_child_bytes if map_churn else None,
+        "churn_children": len(churn_children),
+        "churn_successes": churn_successes,
+        "churn_batches": churn_batches,
+        "churn_samples": churn_samples,
+        "check_map_target": check_map_target if map_churn else None,
+        "check_churn_bytes": check_churn_bytes if map_churn else None,
         "netns_key_bytes": netns_key_bytes if netns_key else None,
         "netns_key_rows": netns_rows if netns_key else [],
         "check_netns_collision": check_netns_collision if netns_key else None,
@@ -1649,6 +1789,7 @@ def main() -> int:
         and (check_peer_bytes if check_peer_bytes is not None else True)
         and (check_peer_udp_bytes if check_peer_udp_bytes is not None else True)
         and (check_netns_collision if check_netns_collision is not None else True)
+        and (check_churn_bytes if check_churn_bytes is not None else True)
     )
     return 0 if passed else 1
 

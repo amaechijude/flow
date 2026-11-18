@@ -41,7 +41,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **Widen scope evidence:** the netns collision key is accepted. Next test VPN/virtual-interface paths, wildcard sockets receiving on multiple interfaces, and higher-churn runs toward map capacity.
+1. **Run the map-capacity probe:** `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000` drives BPF map entries toward 9000 with short-lived children and checks byte totals/CPU/RSS; no privileged result yet. Then widen scope evidence: VPN/virtual-interface paths and wildcard sockets receiving on multiple interfaces.
 2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
 3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
 4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.

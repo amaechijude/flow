@@ -887,3 +887,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Changes
 - Fixed harness expectations for netns-key mode (`ifindex@netns` naming, identity check n/a for short-lived emitting threads) and annotated/accepted the report and index; updated `docs/attribution.md`, ADR 0007, `HANDOFF.md`.
 - No BPF change; build/test baseline remains 38/38 passing.
+
+## 2026-11-18 (map-churn capacity probe added, not yet run)
+
+### Implementation
+- Added `--mode map-churn` to `scripts/validate-ebpf-attribution.py`. It spawns batches of short-lived TCP+UDP children (default 64 per batch, 4 KiB per protocol) until BPF map entries reach `--churn-target` (default 9000) or `--churn-timeout` (default 180 s) expires.
+- Samples BPF map entries, loader CPU, and peak RSS each batch; verifies child byte totals per protocol/direction against successful child count × payload (`check_churn_bytes`).
+- Report gains a "Map churn observation" section with target reached, child/batch counts, expected vs attributed bytes, map-entry first/last/max, and CPU/RSS samples. Process rows are capped at 20 in the report while aggregates cover all children.
+- Default modes unchanged; no BPF/loader change.
+
+### Verification
+- `py_compile`, synthetic map-churn report, and 4 KiB `--soak-child` smoke passed. No .NET code changed; baseline remains 38/38 passing.
+
+### Pending
+- Privileged run:
+  `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000`
+- Expectation: map entries approach target with CPU/RSS samples and byte totals still exact. Any shortfall near capacity must be recorded as measured; the map has no expiry and this is not a bounded-memory claim.
