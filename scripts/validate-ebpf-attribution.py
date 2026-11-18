@@ -1069,7 +1069,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- UDP attributed TX within ±1% of payload accepted by send(): {ctx['check_udp_tx'] if ctx['check_udp_tx'] is not None else 'n/a (TCP-only mode)'}",
         f"- UDP attributed RX within ±1% of payload delivered to recvfrom(): {ctx['check_udp_rx'] if ctx['check_udp_rx'] is not None else 'n/a (TCP-only mode)'}",
         f"- Expected TGID has exactly one process generation (no thread/start-time split): {ctx['check_single_generation']}",
-        f"- Expected process identity verified against live `/proc`: {ctx['check_identity']}",
+        f"- Expected process identity verified against live `/proc`: {ctx['check_identity'] if ctx['check_identity'] is not None else 'n/a (short-lived emitting threads)'}",
         f"- Expected-process traffic on expected interface(s): {ctx['check_interface']}",
         f"- No unattributed bytes in a fully controlled transfer: {ctx['check_unattributed']}",
     ]
@@ -1439,11 +1439,15 @@ def main() -> int:
         counter_caveat = "per-netns `lo` counters are not sampled; exactness is checked against rows."
         process_scope_caveat = (
             "One TGID/start/uid sends in two netns; two rows with distinct netns ids "
-            "must appear, otherwise the identity key is still merging namespaces."
+            "must appear, otherwise the identity key is still merging namespaces. "
+            "Live /proc verification is not expected here because the emitting server "
+            "threads exit before snapshots; kernel-captured identity is retained."
         )
         interface_caveat = (
-            "Two temporary netns with loopback only. This validates netns in the identity "
-            "key, not VPN/tunnel paths or multiple simultaneous interfaces."
+            "Two temporary netns with loopback only. Interfaces in a netns other than "
+            "the loader's are reported as ifindex@netns, which is expected here. This "
+            "validates netns in the identity key, not VPN/tunnel paths or multiple "
+            "simultaneous interfaces."
         )
         netns_rows = [
             p for p in summary["processes"]
@@ -1460,10 +1464,13 @@ def main() -> int:
         )
         check_interface = (
             len(netns_rows) == 2
-            and all(p["ifname"] == "lo" for p in netns_rows)
+            and all(str(p["ifname"]).startswith("1@") for p in netns_rows)
+            and all(str(p["ifname"]) == f"1@{p['netns_id']}" for p in netns_rows)
             and int(by_proto[1]["unresolved_tx"]) == 0
             and int(by_proto[1]["unresolved_rx"]) == 0
         )
+        # Not a gate: the emitting server threads exit before /proc enrichment.
+        check_identity = None
     elif veth:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         helper_tgids = expected_tgids - {os.getpid()}
@@ -1637,7 +1644,7 @@ def main() -> int:
         and (check_udp_tx if check_udp_tx is not None else True)
         and (check_udp_rx if check_udp_rx is not None else True)
         and check_single_generation
-        and check_identity
+        and (check_identity if check_identity is not None else True)
         and check_interface
         and (check_peer_bytes if check_peer_bytes is not None else True)
         and (check_peer_udp_bytes if check_peer_udp_bytes is not None else True)

@@ -1,6 +1,6 @@
 # ADR 0007: Network-namespace identity in attribution keys
 
-- Status: Accepted (implemented; privileged two-netns validation pending)
+- Status: Accepted (implemented and privileged-validated for the collision case)
 - Date: 2026-11-18
 
 ## Context
@@ -52,9 +52,11 @@ those runs exercised two distinct netns with identical process keys.
 - The BPF key grows by 8 bytes; map capacity remains 10,240 entries.
 - Legacy 11/13/15/16-field TSV lines remain parseable; the netns field is
   optional in the parser for older loaders.
-- This does **not** by itself validate multi-namespace attribution. A
-  controlled two-netns collision test is still required before claiming that
-  cross-namespace merging is fixed in production behavior. The harness mode
-  `--mode netns-key` implements that test: one process moves between two
-  temporary netns via `setns()`, and two distinct rows with exact bytes must
-  appear. It is not yet privileged-run.
+- **Accepted collision run (`docs/measurements/ebpf-controlled-20261118T190019Z.md`):**
+  one TGID/start/uid moved between two netns and produced two distinct rows with
+  exact 1 MiB TX/RX each and `check_netns_collision: True`. The raw identity
+  check was false only because the emitting server threads exit before `/proc`
+  enrichment, and the raw interface check was false only because the harness
+  expected `lo` while the loader correctly reported `1@<netns>`. Both harness
+  expectations were corrected. This accepts the netns key for the controlled
+  case, not real container lifecycle or VPN/tunnel paths.

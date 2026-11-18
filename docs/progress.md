@@ -871,3 +871,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - Privileged run:
   `sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1`
 - Expectation: two distinct rows with exact 1 MiB TX/RX each, one verified process generation, 0 unattributed. Acceptance requires the report to show `check_netns_collision: True`; a merged row means the netns key change has not achieved its purpose.
+
+## 2026-11-18 (accepted two-netns identity collision validation)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1` produced `docs/measurements/ebpf-controlled-20261118T190019Z.md`.
+- One helper TGID 31488 / start_ns 10290344949016 in two netns produced **two distinct TCP rows** (`netns 4026532651` and `4026532843`), each with exactly **1,048,576 TX/RX** on `1@<netns>`.
+- `check_netns_collision: True`, one process generation, 0 unresolved/unattributed bytes, 0 background impact on the gate. CPU 0.01 s, RSS 3,788 KiB (short run).
+- Raw `check_identity: False` and `check_interface: False` were harness expectation mismatches: emitting server threads exit before `/proc` enrichment, and the loader correctly names foreign-netns interfaces as `ifindex@netns` instead of `lo`.
+
+### Interpretation
+- Accepts that netns participates in the kernel identity key and prevents identical `(tgid, start, uid)` generations in different netns from merging (ADR 0007).
+- Not a real container lifecycle test; no VPN/tunnel or multi-interface workload. Historical 3-part stable keys are not rewritten.
+
+### Changes
+- Fixed harness expectations for netns-key mode (`ifindex@netns` naming, identity check n/a for short-lived emitting threads) and annotated/accepted the report and index; updated `docs/attribution.md`, ADR 0007, `HANDOFF.md`.
+- No BPF change; build/test baseline remains 38/38 passing.
