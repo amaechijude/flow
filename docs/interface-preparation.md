@@ -22,7 +22,7 @@ Build a GNOME-friendly Avalonia desktop UI that queries the Flow daemon for live
 - Implement IPC as a thin adapter (candidate to spike: **Tmds.DBus**; verify maintenance, .NET 10, Ubuntu 26.04/GNOME session/system bus fit per ADR 0002) exposing explicit methods/signals; do not couple ViewModels directly to a D-Bus library.
 
 ### 2) Proposed initial contract surface (v1, versioned)
-- **Health/status:** state, provider, measurement description, last event/flush/update, counters (received/dropped/aggregated/batches/writeErrors), last error, attribution/limitation notes (e.g. TCP-only ebpf-tcp, unattributed buckets present).
+- **Health/status:** state, provider, measurement description, last event/flush/update, counters (received/dropped/aggregated/batches/writeErrors), last error, attribution/limitation notes (e.g. ebpf TCP+UDP scope, unresolved interfaces, unattributed buckets present).
 - **Queries:** usage summary, top applications, time series, (next) process list/details, interface list/usage — all accepting `[start,end)` UTC bounds, interface filter, and explicit range kind/label metadata.
 - **Control:** start/pause/stop monitoring where authorized (privileged operations must be validated/authorized; GUI should run unprivileged).
 - **Signals/updates (batched):** status/health changed, usage snapshot/refresh hint, monitoring error; support reconnect and stale-data indication.

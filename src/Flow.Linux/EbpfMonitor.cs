@@ -7,24 +7,26 @@ using Flow.Domain.Measurement;
 namespace Flow.Linux.Monitoring;
 
 /// <summary>
-/// Per-process TCP byte attribution provider backed by the validated eBPF prototype loader
-/// (fexit/tcp_sendmsg, kretprobe/tcp_recvmsg). Requires sufficient privileges to load/attach BPF.
-/// Emits delta events derived from periodic snapshots produced by the loader in TSV mode.
+/// Per-process TCP and UDP byte attribution provider backed by the validated eBPF
+/// prototype loader (fexit tcp_sendmsg/udp_sendmsg, kretprobe tcp_recvmsg/udp_recvmsg).
+/// Requires sufficient privileges to load/attach BPF. Emits delta events derived from
+/// periodic snapshots produced by the loader in TSV mode. The loader/type retain the
+/// historical "tcp"/"flow_tcp_bytes" names; QUIC is counted as UDP payload.
 /// </summary>
-public sealed class EbpfTcpMonitor : INetworkMonitor, IDisposable
+public sealed class EbpfMonitor : INetworkMonitor, IDisposable
 {
     public static readonly MeasurementPoint Point = new(
-        "ebpf-tcp",
-        "fexit/tcp_sendmsg+kretprobe/tcp_recvmsg",
-        "TCP bytes from positive return values of tcp_sendmsg/tcp_recvmsg observed via eBPF (TGID/UID attribution, cumulative snapshots converted to deltas). UDP/non-TCP paths not counted.");
+        "ebpf",
+        "fexit/tcp_sendmsg+udp_sendmsg, kretprobe/tcp_recvmsg+udp_recvmsg",
+        "TCP and UDP payload bytes from positive return values of the send/recv kernel functions observed via eBPF (TGID/UID attribution, per-interface where the socket route is resolvable, cumulative snapshots converted to deltas). QUIC is counted as UDP payload; ICMP and other non-TCP/UDP paths are not counted.");
 
-    private readonly EbpfTcpMonitorOptions _options;
+    private readonly EbpfMonitorOptions _options;
     private Process? _process;
     private CancellationTokenSource? _cts;
 
-    public EbpfTcpMonitor(EbpfTcpMonitorOptions? options = null)
+    public EbpfMonitor(EbpfMonitorOptions? options = null)
     {
-        _options = options ?? new EbpfTcpMonitorOptions();
+        _options = options ?? new EbpfMonitorOptions();
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -62,8 +64,8 @@ public sealed class EbpfTcpMonitor : INetworkMonitor, IDisposable
         var loaderPath = ResolveLoaderPath(_options.LoaderPath);
         if (loaderPath is null)
             throw new InvalidOperationException(
-                "eBPF TCP loader not found. Set Flow:Ebpf:LoaderPath or build prototype/bpf/flow_tcp_bytes_loader. " +
-                "This provider requires a privileged loader built from the validated prototype.");
+                "eBPF loader not found. Set Flow:Ebpf:LoaderPath or build prototype/bpf/flow_tcp_bytes_loader. " +
+                "This provider requires a privileged loader built from the validated prototype (the file name is historical; it counts TCP and UDP).");
 
         var psi = new ProcessStartInfo
         {
@@ -104,20 +106,20 @@ public sealed class EbpfTcpMonitor : INetworkMonitor, IDisposable
             if (line.Length == 0) continue;
             if (line.StartsWith("M\t", StringComparison.Ordinal))
             {
-                EbpfTcpSnapshotParser.ParseMeta(line, out clkTck, out bootUnixMs);
+                EbpfSnapshotParser.ParseMeta(line, out clkTck, out bootUnixMs);
                 continue;
             }
 
             if (line.StartsWith("E\t", StringComparison.Ordinal))
             {
-                var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, clkTck, bootUnixMs);
+                var ev = EbpfSnapshotParser.ParseEntry(line, Point, clkTck, bootUnixMs);
                 if (ev is not null) yield return ev;
                 continue;
             }
 
             if (line.StartsWith("U\t", StringComparison.Ordinal))
             {
-                var ev = EbpfTcpSnapshotParser.ParseUnattributed(line, Point);
+                var ev = EbpfSnapshotParser.ParseUnattributed(line, Point);
                 if (ev is not null) yield return ev;
                 continue;
             }
@@ -147,7 +149,7 @@ public sealed class EbpfTcpMonitor : INetworkMonitor, IDisposable
     }
 }
 
-public sealed class EbpfTcpMonitorOptions
+public sealed class EbpfMonitorOptions
 {
     public string? LoaderPath { get; set; }
     public int IntervalSeconds { get; set; } = 2;

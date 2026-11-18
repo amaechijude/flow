@@ -8,15 +8,20 @@ namespace Flow.Linux.Monitoring;
 /// <summary>
 /// Parses the tab-separated protocol emitted by <c>prototype/bpf/flow_tcp_bytes_loader</c>.
 /// Fields are positional. The trailing identity fields (<c>start_ns</c>, <c>cgroup_id</c>)
-/// were added later and are optional so loaders built before event-time identity keep working.
+/// were added with event-time identity, and <c>proto</c>/<c>ifname</c> with per-interface
+/// TCP+UDP accounting; all are optional so older loaders keep working.
 /// </summary>
-internal static class EbpfTcpSnapshotParser
+internal static class EbpfSnapshotParser
 {
     /// <summary>
     /// Minimum number of fields in an <c>E</c> line from the pre-event-time loader:
     /// E, tgid, uid, tx_total, rx_total, tx_delta, rx_delta, comm, exe, startticks, alive.
     /// </summary>
     internal const int MinimumEntryFieldCount = 11;
+
+    /// <summary>Protocol values emitted by the loader's <c>proto</c> field.</summary>
+    internal const int ProtoTcp = 1;
+    internal const int ProtoUdp = 2;
 
     /// <summary>
     /// Parses an <c>M</c> metadata line: <c>M\tclk_tck\tboot_unix_ms</c>.
@@ -76,6 +81,14 @@ internal static class EbpfTcpSnapshotParser
         if (p.Length > 12)
             _ = ulong.TryParse(p[12], NumberStyles.Integer, CultureInfo.InvariantCulture, out cgroupId);
 
+        // proto (1=TCP, 2=UDP) and the resolved interface name were added with
+        // per-interface/UDP accounting. They are optional for older loaders.
+        var proto = 0;
+        if (p.Length > 13)
+            _ = int.TryParse(p[13], NumberStyles.Integer, CultureInfo.InvariantCulture, out proto);
+
+        var interfaceName = p.Length > 14 ? NormalizeInterface(p[14]) : null;
+
         var startTimeUtc = DeriveStartTimeUtc(startNs, startTicks, clockTicksPerSecond, bootUnixMs);
         var proc = new ProcessIdentity(
             tgid,
@@ -97,12 +110,18 @@ internal static class EbpfTcpSnapshotParser
             DateTimeOffset.UtcNow,
             proc,
             appHint,
-            InterfaceName: null, // the TCP send/recv hooks do not expose an interface binding
+            InterfaceName: interfaceName,
             RxBytesDelta: rxDelta > 0 ? rxDelta : 0,
             TxBytesDelta: txDelta > 0 ? txDelta : 0,
             MeasurementPoint: point,
             IsAttributed: true,
-            AttributionNote: BuildIdentityNote(identityVerified != 0, startNs > 0, exePath is not null, comm is not null));
+            AttributionNote: BuildAttributionNote(
+                identityVerified != 0,
+                startNs > 0,
+                exePath is not null,
+                comm is not null,
+                proto,
+                interfaceName));
     }
 
     /// <summary>
@@ -172,6 +191,36 @@ internal static class EbpfTcpSnapshotParser
 
     private static string? NormalizeExecutable(string value)
         => string.IsNullOrWhiteSpace(value) || value == "-" ? null : value;
+
+    /// <summary>
+    /// The loader writes "-" when the socket's interface could not be resolved.
+    /// Such traffic is still attributed to the process; it is counted in the
+    /// no-interface bucket rather than guessed onto an interface.
+    /// </summary>
+    private static string? NormalizeInterface(string value)
+        => string.IsNullOrWhiteSpace(value) || value is "-" or "?" or "0" ? null : value;
+
+    private static string? BuildAttributionNote(
+        bool identityVerified,
+        bool hasEventTimeStart,
+        bool hasExecutable,
+        bool hasComm,
+        int proto,
+        string? interfaceName)
+    {
+        var identityNote = BuildIdentityNote(identityVerified, hasEventTimeStart, hasExecutable, hasComm);
+        var interfaceNote = interfaceName is null && proto is ProtoTcp or ProtoUdp
+            ? "Socket interface could not be resolved at observation time (ifindex 0); bytes are counted without interface attribution."
+            : null;
+
+        return (identityNote, interfaceNote) switch
+        {
+            (null, null) => null,
+            (null, _) => interfaceNote,
+            (_, null) => identityNote,
+            _ => $"{identityNote} {interfaceNote}",
+        };
+    }
 
     private static string? BuildIdentityNote(bool identityVerified, bool hasEventTimeStart, bool hasExecutable, bool hasComm)
     {

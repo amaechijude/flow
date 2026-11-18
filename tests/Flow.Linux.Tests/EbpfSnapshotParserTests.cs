@@ -3,7 +3,7 @@ using Flow.Linux.Monitoring;
 
 namespace Flow.Linux.Tests;
 
-public class EbpfTcpSnapshotParserTests
+public class EbpfSnapshotParserTests
 {
     private const long BootUnixMs = 1_700_000_000_000;
     private const long ClkTck = 100;
@@ -16,7 +16,7 @@ public class EbpfTcpSnapshotParserTests
         const ulong startNs = 123_456_789_000; // 123456.789 ms since boot
         var line = $"E\t4242\t1000\t9000\t8000\t900\t800\tfirefox\t/usr/lib/firefox/firefox\t12345\t1\t{startNs}\t777";
 
-        var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
 
         Assert.NotNull(ev);
         Assert.True(ev!.IsAttributed);
@@ -34,10 +34,10 @@ public class EbpfTcpSnapshotParserTests
     [Fact]
     public void ParseEntryPidReuseProducesDistinctStableKeys()
     {
-        var first = EbpfTcpSnapshotParser.ParseEntry(
+        var first = EbpfSnapshotParser.ParseEntry(
             "E\t500\t1000\t100\t0\t100\t0\told\t/usr/bin/old\t0\t0\t1000000000\t7",
             Point, ClkTck, BootUnixMs);
-        var reused = EbpfTcpSnapshotParser.ParseEntry(
+        var reused = EbpfSnapshotParser.ParseEntry(
             "E\t500\t1000\t50\t0\t50\t0\tnew\t/usr/bin/new\t0\t1\t2000000000\t8",
             Point, ClkTck, BootUnixMs);
 
@@ -64,7 +64,7 @@ public class EbpfTcpSnapshotParserTests
         // Old loader: no start_ns / cgroup_id fields.
         var line = "E\t700\t1000\t500\t400\t500\t400\tlegacy\t/usr/bin/legacy\t1000\t1";
 
-        var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
 
         Assert.NotNull(ev);
         Assert.Null(ev!.Process!.CgroupId);
@@ -78,7 +78,7 @@ public class EbpfTcpSnapshotParserTests
         // Process exited before snapshot: no /proc enrichment (identity_verified=0, exe "-").
         var line = "E\t800\t1000\t300\t200\t300\t200\tshort-lived\t-\t0\t0\t5000000000\t0";
 
-        var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
 
         Assert.NotNull(ev);
         Assert.Null(ev!.Process!.ExecutablePath);
@@ -95,7 +95,7 @@ public class EbpfTcpSnapshotParserTests
     {
         var line = "E\t900\t1000\t10\t10\t10\t10\t?\t-\t0\t0";
 
-        var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
 
         Assert.NotNull(ev);
         Assert.Null(ev!.Process!.ExecutablePath);
@@ -110,13 +110,56 @@ public class EbpfTcpSnapshotParserTests
     [InlineData("E\t123\t1000\t1\t1\t0\t0\tc\te\t0\t1")] // no positive delta
     public void ParseEntryInvalidOrEmptyReturnsNull(string line)
     {
-        Assert.Null(EbpfTcpSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs));
+        Assert.Null(EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs));
+    }
+
+    [Fact]
+    public void ParseEntryCarriesResolvedInterfaceAndProtocol()
+    {
+        var line = "E\t1100\t1000\t4000\t3000\t400\t300\tcurl\t/usr/bin/curl\t1000\t1\t2000000000\t99\t1\tlo";
+
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(ev);
+        Assert.Equal("lo", ev!.InterfaceName);
+        Assert.Equal(400, ev.TxBytesDelta);
+        Assert.Equal(300, ev.RxBytesDelta);
+        Assert.Null(ev.AttributionNote);
+    }
+
+    [Fact]
+    public void ParseEntryUdpWithUnresolvedInterfaceKeepsBytesAndExplainsGap()
+    {
+        var line = "E\t1200\t1000\t500\t700\t500\t700\tquic-client\t/usr/bin/quic-client\t1000\t1\t3000000000\t123\t2\t-";
+
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(ev);
+        Assert.Null(ev!.InterfaceName);
+        Assert.Equal(500, ev.TxBytesDelta);
+        Assert.Equal(700, ev.RxBytesDelta);
+        Assert.NotNull(ev.AttributionNote);
+        Assert.Contains("interface could not be resolved", ev.AttributionNote);
+    }
+
+    [Fact]
+    public void ParseEntryEventTimeLineWithoutProtocolOrInterfaceRemainsCompatible()
+    {
+        // Loader after event-time identity but before UDP/interface fields (13 fields).
+        var line = "E\t1300\t1000\t100\t200\t100\t200\tlegacy\t/usr/bin/legacy\t1000\t1\t4000000000\t55";
+
+        var ev = EbpfSnapshotParser.ParseEntry(line, Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(ev);
+        Assert.Null(ev!.InterfaceName);
+        Assert.Null(ev.AttributionNote);
+        Assert.Equal("55", ev.Process!.CgroupId);
     }
 
     [Fact]
     public void ParseUnattributedReturnsExplicitUnattributedEvent()
     {
-        var ev = EbpfTcpSnapshotParser.ParseUnattributed("U\t100\t200\t10\t20\t1\t2", Point);
+        var ev = EbpfSnapshotParser.ParseUnattributed("U\t100\t200\t10\t20\t1\t2", Point);
 
         Assert.NotNull(ev);
         Assert.False(ev!.IsAttributed);
@@ -130,17 +173,17 @@ public class EbpfTcpSnapshotParserTests
     [Fact]
     public void ParseUnattributedNoDeltaReturnsNull()
     {
-        Assert.Null(EbpfTcpSnapshotParser.ParseUnattributed("U\t100\t200\t0\t0\t1\t2", Point));
+        Assert.Null(EbpfSnapshotParser.ParseUnattributed("U\t100\t200\t0\t0\t1\t2", Point));
     }
 
     [Fact]
     public void ParseMetaReadsClockAndBootTimeWithSafeDefaults()
     {
-        EbpfTcpSnapshotParser.ParseMeta("M\t250\t1700000000000", out var tck, out var boot);
+        EbpfSnapshotParser.ParseMeta("M\t250\t1700000000000", out var tck, out var boot);
         Assert.Equal(250, tck);
         Assert.Equal(1_700_000_000_000, boot);
 
-        EbpfTcpSnapshotParser.ParseMeta("M\tgarbage", out tck, out boot);
+        EbpfSnapshotParser.ParseMeta("M\tgarbage", out tck, out boot);
         Assert.Equal(100, tck);
         Assert.Equal(0, boot);
     }

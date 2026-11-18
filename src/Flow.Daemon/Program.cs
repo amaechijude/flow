@@ -35,9 +35,10 @@ if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
     builder.Services.AddSingleton<INetworkMonitor, ProcNetDevMonitor>();
 }
 else if (string.Equals(monitorKind, "ebpf", StringComparison.OrdinalIgnoreCase) ||
+         // "ebpf-tcp" is a legacy alias kept for existing configuration.
          string.Equals(monitorKind, "ebpf-tcp", StringComparison.OrdinalIgnoreCase))
 {
-    var ebpfOptions = new EbpfTcpMonitorOptions
+    var ebpfOptions = new EbpfMonitorOptions
     {
         LoaderPath = builder.Configuration["Flow:Ebpf:LoaderPath"],
     };
@@ -45,7 +46,7 @@ else if (string.Equals(monitorKind, "ebpf", StringComparison.OrdinalIgnoreCase) 
         ebpfOptions.IntervalSeconds = interval;
     if (int.TryParse(builder.Configuration["Flow:Ebpf:Rounds"], out var rounds) && rounds > 0)
         ebpfOptions.Rounds = rounds;
-    builder.Services.AddSingleton<INetworkMonitor>(_ => new EbpfTcpMonitor(ebpfOptions));
+    builder.Services.AddSingleton<INetworkMonitor>(_ => new EbpfMonitor(ebpfOptions));
 }
 else
 {

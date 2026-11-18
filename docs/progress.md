@@ -538,3 +538,26 @@
 ### Next
 - Per-interface correlation/assessment and UDP/QUIC coverage are now the largest attribution-gate gaps.
 - Run a longer/high-connection-count validation for overhead and map behavior before making steady-state overhead claims.
+
+## 2026-11-18 (TCP+UDP and per-interface attribution increment)
+
+### Completed (implementation; privileged validation still pending)
+- **BPF coverage:** added `fexit/udp_sendmsg` and `kprobe`/`kretprobe` `udp_recvmsg` alongside the existing TCP hooks. TCP/UDP receive probes stash `struct sock *` by `bpf_get_current_pid_tgid()` for the return probe. QUIC is counted as UDP payload; framing is not identified.
+- **Per-interface key:** the BPF key is now `{start_ns, tgid, uid, ifindex, proto}` (`proto` 1=TCP, 2=UDP). `ifindex` resolves from `skc_bound_dev_if`, then `sk_rx_dst_ifindex`, then `sk_dst_cache->dev->ifindex`; `0` means unknown.
+- **Loader:** extended TSV `E` line with `proto` and `ifname`, resolves names with `if_indextoname`, prints PROTO/IFACE in human mode, and attaches all TCP+UDP programs (partial attach failures are reported rather than silently ignored). Skeleton regenerated with `bpftool`; loader compiled with gcc/libbpf.
+- **Provider:** renamed `EbpfTcpMonitor`/`EbpfTcpMonitorOptions` to `EbpfMonitor`/`EbpfMonitorOptions` and parser to `EbpfSnapshotParser`. Provider name is now `ebpf` with a TCP+UDP measurement description; `ebpf-tcp` remains a configuration alias. Historical prototype filenames are unchanged.
+- **Parser:** accepts the 15-field `E` line, sets `NetworkUsageEvent.InterfaceName` when the interface resolved, keeps `null` plus an explicit note for `ifindex 0`, and remains compatible with 11-field and 13-field lines.
+- **Export caveats:** updated desktop JSON/CSV caveats to describe TCP+UDP, per-interface resolution, QUIC-as-UDP, and unresolved-interface grouping. Noted that persisted minute buckets aggregate TCP+UDP.
+- **Provider label migration:** new rows use `measurement_provider='ebpf'`; existing database rows keep `ebpf-tcp` and are not rewritten, so mixed historical/new labels are expected during development.
+
+### Verification / test results
+- BPF object, skeleton, and loader compile (`clang`/`bpftool`/`gcc`; 0 errors, only pre-existing `vmlinux.h` warnings).
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 7 pre-existing analyzer warnings).
+- `dotnet test Flow.slnx -v minimal --no-build` → **34/34 passed** (Domain 1, Application 4, Infrastructure 9, Linux 15, Daemon 1, System 4).
+- New parser tests cover resolved `lo` interface + TCP, unresolved UDP interface note, and 13-field event-time compatibility.
+- `scripts/validate-ebpf-attribution.py` now runs TCP then UDP in the same process, sums expected-process rows per protocol and per interface, and asserts `lo` attribution. Syntax-checked with `py_compile`; **not run with privileges**.
+
+### Pending / next
+- **Privileged rerun required:** rebuild artifacts, then run `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. Review per-protocol totals, interface rows, unresolved-interface count, unattributed bytes, and CPU/RSS before accepting UDP/interface claims.
+- If UDP RX or socket-interface resolution fails/under-reports, record the failure and adjust semantics rather than widening claims. Unconnected/uncached UDP sockets are a known candidate for `ifindex=0`.
+- Still open: namespaces/containers, VPN/tunnel/virtual-interface behavior, physical interfaces, sustained/high-connection overhead, map expiry, and protocol-level persistence.

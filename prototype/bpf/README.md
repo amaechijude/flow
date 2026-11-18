@@ -1,19 +1,32 @@
-# TCP byte attribution prototype (BPF)
+# TCP+UDP per-interface attribution prototype (BPF)
 
-This prototype counts bytes returned by kernel TCP send/recv functions:
+This prototype counts payload bytes returned by kernel transport send/recv
+functions:
 
-- `fexit/tcp_sendmsg` → upload/TX bytes (`ret > 0`)
-- `kretprobe/tcp_recvmsg` → download/RX bytes (`ret > 0`)
+- `fexit/tcp_sendmsg` → TCP upload/TX bytes (`ret > 0`)
+- `kretprobe/tcp_recvmsg` → TCP download/RX bytes (`ret > 0`)
+- `fexit/udp_sendmsg` → UDP upload/TX bytes (`ret > 0`)
+- `kprobe/kretprobe udp_recvmsg` → UDP download/RX bytes (`ret > 0`)
 
-Counters are aggregated in a BPF hash map and printed periodically by a userspace loader.
+QUIC is counted as UDP payload; QUIC framing is not identified. Counters are
+aggregated in a BPF hash map and printed periodically by a userspace loader.
+The file/type names retain the historical `flow_tcp_bytes`/`tcp` spelling.
 
-## Identity semantics (event-time)
+## Key and interface semantics
 
-- **Key:** `{start_ns, tgid, uid}`. `start_ns` is the thread-group leader's
-  `task_struct.start_time` (nanoseconds since boot, read with CO-RE), captured
-  when the byte event is processed. Using the leader (not the current thread)
-  keeps all threads of one process in one row. PID reuse therefore creates a
-  distinct counter row instead of merging two process generations.
+- **Key:** `{start_ns, tgid, uid, ifindex, proto}`. `start_ns` is the
+  thread-group leader's `task_struct.start_time` (nanoseconds since boot, read
+  with CO-RE), captured when the byte event is processed. Using the leader (not
+  the current thread) keeps all threads of one process in one row. PID reuse
+  therefore creates a distinct counter row instead of merging two process
+  generations.
+- **Protocol:** `proto` is `1` for TCP and `2` for UDP, so per-protocol
+  counters remain separate in the map.
+- **Interface:** `ifindex` is resolved from the socket at hook time in this
+  order: `skc_bound_dev_if`, `sk_rx_dst_ifindex`, `sk_dst_cache->dev->ifindex`.
+  `0` means the interface could not be resolved; the loader reports it as `-`
+  and Flow stores it without an interface rather than guessing. Unconnected or
+  uncached UDP sockets may fall into this bucket.
 - **Value:** cumulative TX/RX bytes, plus the first-observed `cgroup_id` and
   task `comm`. These are captured in the kernel so short-lived processes keep
   attribution after they exit.
@@ -29,22 +42,24 @@ Counters are aggregated in a BPF hash map and printed periodically by a userspac
 
 ## Measurement semantics (important)
 
-- **What is counted:** bytes returned by `tcp_sendmsg` / `tcp_recvmsg` at hook
-  time (TCP-path bytes observed by these functions), cumulative while attached.
-- **Not counted:** UDP, QUIC-over-UDP, ICMP, non-TCP kernel paths, traffic
-  before attach/after detach.
+- **What is counted:** bytes returned by the TCP/UDP send/recv functions at
+  hook time (transport payload observed by these functions), cumulative while
+  attached.
+- **Not counted:** ICMP and non-TCP/UDP kernel paths; traffic before attach or
+  after detach.
 - **Attribution scope:** current task TGID/UID plus event-time start time;
   identity captured at first observation in the kernel, with guarded `/proc`
   enrichment.
 - **Unattributed (prototype):** when `tgid==0` in hook context, bytes/events are
   counted in an explicit unattributed map/counter instead of being dropped
   silently.
-- **Per-interface:** the send/recv hooks do not expose an interface binding.
-  The event stream therefore has no interface attribution; interface totals
-  must come from a separate provider (e.g. `/proc/net/dev`).
+- **Per-interface:** resolved from socket state as described above. This is
+  not the same as interface counters: tunnels/VPNs and virtual interfaces can
+  make the socket's device differ from the device that ultimately carries the
+  packets, and that behavior is unmeasured.
 - **This is a prototype, not final Flow attribution.** Context/ownership
-  nuances, namespaces, tunnels/VPN stacks, protocol coverage, and accuracy
-  still require validation.
+  nuances, namespaces, tunnels/VPN stacks, and accuracy still require
+  validation.
 
 ## Build artifacts
 
@@ -81,25 +96,30 @@ argument for machine-readable output.
 ```
 M  <clk_tck>  <boot_unix_ms>
 S  <snapshot_index>
-E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id>
+E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id> <proto> <ifname>
 U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
 ```
 
 - `identity_verified=1` means `/proc` enrichment matched the event-time start
   time; `0` means the process exited or was reused, and `comm` is the
   kernel-captured fallback.
-- `start_ns`/`cgroup_id` are appended fields. Consumers must accept 11-field
-  `E` lines from older loaders.
-- Fields are tab-separated; tabs/newlines inside `comm`/`exe` are sanitized to
-  spaces.
+- `proto` is `1` (TCP) or `2` (UDP). `ifname` is the resolved interface or
+  `-` when `ifindex==0`.
+- `start_ns`/`cgroup_id` are appended after event-time identity;
+  `proto`/`ifname` are appended after UDP/interface support. Consumers must
+  accept 11-field and 13-field `E` lines from older loaders.
+- Fields are tab-separated; tabs/newlines inside `comm`/`exe`/`ifname` are
+  sanitized to spaces.
 
 ## Controlled validation (privileged)
 
-`scripts/validate-ebpf-attribution.py` runs a known-size loopback TCP transfer
-while the loader samples, then compares:
+`scripts/validate-ebpf-attribution.py` runs known-size loopback TCP and UDP
+transfers while the loader samples, then compares:
 
-- payload sent/received in userspace,
-- expected-process attributed TX/RX from the loader (summed deltas),
+- payload sent/received in userspace, per protocol,
+- expected-process attributed TX/RX from the loader (summed deltas, per
+  protocol),
+- expected-process interface attribution (must be `lo` for this run),
 - `lo` RX/TX deltas from `/proc/net/dev`,
 - unattributed and background traffic, loader CPU time, and peak RSS.
 
@@ -111,15 +131,18 @@ It also asserts that the expected TGID maps to exactly one process generation
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
 ```
 
-The script writes a Markdown report under `docs/measurements/` and prints a
-JSON summary. It must run as root because it loads BPF programs. It is a
-controlled sanity check, not proof of complete attribution: it does not
-exercise UDP, physical interfaces, namespaces, containers, VPNs/tunnels, or
-virtual-interface double-counting.
+`--size-mib` is the payload per protocol (so the default run sends 16 MiB over
+TCP then 16 MiB over UDP). The script writes a Markdown report under
+`docs/measurements/` and prints a JSON summary. It must run as root because it
+loads BPF programs. It is a controlled sanity check, not proof of complete
+attribution: it does not exercise physical interfaces, namespaces, containers,
+VPNs/tunnels, or virtual-interface double-counting.
 
-Accepted TCP-loopback result (2026-11-18, kernel `7.0.0-43-generic`): one
-verified process generation for the expected TGID, exactly 16,777,216 TX/RX
-for a 16 MiB payload, background traffic separated, 0 unattributed bytes, and
-0.004 s loader CPU / 3,672 KiB peak RSS. See
-`docs/measurements/ebpf-controlled-20261118T044634Z.md`. The CPU/RSS sample is
-short-run only; do not treat it as steady-state overhead evidence.
+Accepted TCP-loopback result (2026-11-18, kernel `7.0.0-43-generic`, TCP-only
+harness before the UDP/per-interface change): one verified process generation
+for the expected TGID, exactly 16,777,216 TX/RX for a 16 MiB payload,
+background traffic separated, 0 unattributed bytes, and 0.004 s loader CPU /
+3,672 KiB peak RSS. See `docs/measurements/ebpf-controlled-20261118T044634Z.md`.
+The CPU/RSS sample is short-run only; do not treat it as steady-state overhead
+evidence. The TCP+UDP/per-interface build has compiled but has **not** been
+privileged-run yet.

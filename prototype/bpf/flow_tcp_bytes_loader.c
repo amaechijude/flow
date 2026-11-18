@@ -7,6 +7,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <net/if.h>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
 #include "flow_tcp_bytes.skel.h"
@@ -19,6 +20,8 @@ struct traffic_key {
     __u64 start_ns;
     __u32 tgid;
     __u32 uid;
+    __u32 ifindex;
+    __u32 proto; /* 1 = TCP, 2 = UDP */
 };
 
 struct traffic_val {
@@ -31,6 +34,8 @@ struct traffic_val {
 struct prev_entry {
     __u32 tgid;
     __u32 uid;
+    __u32 ifindex;
+    __u32 proto;
     __u64 start_ns;
     __u64 tx;
     __u64 rx;
@@ -52,10 +57,11 @@ struct unattributed_val {
 #define MAX_PREV 10240
 static struct prev_entry prev[MAX_PREV];
 
-static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns)
+static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns, __u32 ifindex, __u32 proto)
 {
     for (int i = 0; i < MAX_PREV; i++) {
-        if (prev[i].used && prev[i].tgid == tgid && prev[i].uid == uid && prev[i].start_ns == start_ns)
+        if (prev[i].used && prev[i].tgid == tgid && prev[i].uid == uid && prev[i].start_ns == start_ns &&
+            prev[i].ifindex == ifindex && prev[i].proto == proto)
             return &prev[i];
     }
     for (int i = 0; i < MAX_PREV; i++) {
@@ -65,6 +71,8 @@ static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns)
             prev[i].tgid = tgid;
             prev[i].uid = uid;
             prev[i].start_ns = start_ns;
+            prev[i].ifindex = ifindex;
+            prev[i].proto = proto;
             snprintf(prev[i].comm, sizeof(prev[i].comm), "?");
             snprintf(prev[i].exe, sizeof(prev[i].exe), "-");
             return &prev[i];
@@ -125,6 +133,17 @@ static void tsv_sanitize(char *s)
     }
 }
 
+static const char *proto_name(__u32 proto)
+{
+    return proto == 2 ? "udp" : (proto == 1 ? "tcp" : "?");
+}
+
+static void resolve_ifname(__u32 ifindex, char *buf, size_t buflen)
+{
+    if (ifindex == 0 || !if_indextoname(ifindex, buf))
+        snprintf(buf, buflen, "-");
+}
+
 static int startticks_match(__u64 start_ns, unsigned long long st, long clk_tck)
 {
     if (start_ns == 0 || st == 0 || clk_tck <= 0)
@@ -145,8 +164,8 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
     long clk_tck = read_clk_tck();
 
     if (!g_tsv) {
-        printf("\n--- snapshot %d: TCP attribution (cumulative, delta, event-time identity) ---\n", snapshot_idx);
-        printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/START/STATE");
+        printf("\n--- snapshot %d: TCP+UDP transport attribution (cumulative, delta, event-time identity) ---\n", snapshot_idx);
+        printf("%-8s %-6s %-5s %-10s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "PROTO", "IFACE", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/START/STATE");
     } else {
         printf("S\t%d\n", snapshot_idx);
     }
@@ -157,7 +176,11 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             char bpf_comm[17] = {0};
             memcpy(bpf_comm, val.comm, sizeof(val.comm));
             bpf_comm[sizeof(bpf_comm) - 1] = 0;
-            struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid, next_key.start_ns ? next_key.start_ns : st);
+            char ifname[IF_NAMESIZE] = {0};
+            resolve_ifname(next_key.ifindex, ifname, sizeof(ifname));
+            struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid,
+                                              next_key.start_ns ? next_key.start_ns : st,
+                                              next_key.ifindex, next_key.proto);
             unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
             char live_comm[64] = {0}, live_exe[256] = {0};
             int have_live = 0;
@@ -205,21 +228,23 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                 snprintf(extra, sizeof(extra), "%s (start_ns=%llu startticks=%llu cgroup=%llu%s)",
                          exe, show_ns, show_st, show_cgroup,
                          identity_verified ? "" : ", exited/unknown identity");
-                printf("%-8u %-6u %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
-                       next_key.tgid, next_key.uid,
+                printf("%-8u %-6u %-5s %-10s %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
+                       next_key.tgid, next_key.uid, proto_name(next_key.proto), ifname,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                        dtx, drx, comm, extra);
             } else {
-                char comm2[64], exe2[256];
+                char comm2[64], exe2[256], ifname2[IF_NAMESIZE];
                 snprintf(comm2, sizeof(comm2), "%s", comm);
                 snprintf(exe2, sizeof(exe2), "%s", exe);
+                snprintf(ifname2, sizeof(ifname2), "%s", ifname);
                 tsv_sanitize(comm2);
                 tsv_sanitize(exe2);
-                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\n",
+                tsv_sanitize(ifname2);
+                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\t%u\t%s\n",
                        next_key.tgid, next_key.uid,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                        dtx, drx, comm2, exe2, show_st, identity_verified ? 1 : 0,
-                       show_ns, show_cgroup);
+                       show_ns, show_cgroup, next_key.proto, ifname2);
             }
         }
         key = next_key;
@@ -305,19 +330,41 @@ int main(int argc, char **argv)
         flow_tcp_bytes_bpf__destroy(skel);
         return 1;
     }
+    skel->links.tcp_recvmsg_entry = bpf_program__attach(skel->progs.tcp_recvmsg_entry);
+    if (!skel->links.tcp_recvmsg_entry) {
+        err = -errno;
+        fprintf(stderr, "warning: failed to attach tcp_recvmsg_entry: %d (%s) (TCP RX interface may be unknown)\n", err, strerror(-err));
+    }
     skel->links.tcp_recvmsg_exit = bpf_program__attach(skel->progs.tcp_recvmsg_exit);
     if (!skel->links.tcp_recvmsg_exit) {
         err = -errno;
-        fprintf(stderr, "warning: failed to attach tcp_recvmsg_exit: %d (%s) (continuing with TX-only accounting)\n", err, strerror(-err));
+        fprintf(stderr, "warning: failed to attach tcp_recvmsg_exit: %d (%s) (continuing without TCP RX accounting)\n", err, strerror(-err));
+    }
+    skel->links.udp_sendmsg_exit = bpf_program__attach(skel->progs.udp_sendmsg_exit);
+    if (!skel->links.udp_sendmsg_exit) {
+        err = -errno;
+        fprintf(stderr, "warning: failed to attach udp_sendmsg_exit: %d (%s) (continuing without UDP TX accounting)\n", err, strerror(-err));
+    }
+    skel->links.udp_recvmsg_entry = bpf_program__attach(skel->progs.udp_recvmsg_entry);
+    if (!skel->links.udp_recvmsg_entry) {
+        err = -errno;
+        fprintf(stderr, "warning: failed to attach udp_recvmsg_entry: %d (%s) (UDP RX interface may be unknown)\n", err, strerror(-err));
+    }
+    skel->links.udp_recvmsg_exit = bpf_program__attach(skel->progs.udp_recvmsg_exit);
+    if (!skel->links.udp_recvmsg_exit) {
+        err = -errno;
+        fprintf(stderr, "warning: failed to attach udp_recvmsg_exit: %d (%s) (continuing without UDP RX accounting)\n", err, strerror(-err));
     }
 
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
 
     if (!g_tsv) {
-        printf("flow_tcp_bytes prototype attached (TX: tcp_sendmsg%s).\n",
-               skel->links.tcp_recvmsg_exit ? ", RX: tcp_recvmsg" : "");
-        printf("Measurement note: counts bytes returned by TCP send/recv kernel functions (TCP payload bytes at that hook), cumulative per (tgid,uid) while attached. UDP/other protocols and non-TCP paths are NOT counted. Unattributed/context edge cases require further validation.\n");
+        printf("flow_tcp_bytes prototype attached (TCP%s, UDP%s).\n",
+               skel->links.tcp_recvmsg_exit ? "+RX" : " TX-only",
+               (skel->links.udp_sendmsg_exit && skel->links.udp_recvmsg_exit) ? "+RX" :
+               (skel->links.udp_sendmsg_exit || skel->links.udp_recvmsg_exit) ? " partial" : " none");
+        printf("Measurement note: counts payload bytes returned by TCP and UDP send/recv kernel functions, cumulative per (tgid,uid,ifindex,proto) while attached. QUIC is counted as UDP payload (QUIC framing is not identified). Interface is resolved from bound device/cached socket route when available; ifindex 0 means unknown. Non-TCP/UDP paths are NOT counted.\n");
         printf("Sampling every %d s for %d rounds (Ctrl-C to stop early).\n", interval, rounds);
     } else {
         printf("M\t%ld\t%lld\n", read_clk_tck(), read_boot_unix_ms());

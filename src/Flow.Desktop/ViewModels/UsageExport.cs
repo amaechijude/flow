@@ -45,9 +45,9 @@ public static class UsageExport
         snapshot.InterfaceId,
         new UsageExportCaveats(
             "Per-process attribution depends on the active provider/measurement point. Unattributed bytes are separate and must not be treated as zero.",
-            "procfs reports interface-level counters without process attribution; ebpf-tcp counts TCP send/recv return bytes only and currently lacks per-interface mapping.",
-            "Process identity uses stable keys derived from PID start time where available; PID-reuse/event-time lifecycle hardening is still in progress.",
-            "UDP, namespace, VPN, and virtual-interface coverage is provider-dependent and not yet fully validated."),
+            "procfs reports interface-level counters without process attribution; ebpf counts TCP and UDP send/recv return bytes with per-interface attribution where the socket route is resolvable, and groups unresolved-interface bytes without an interface.",
+            "Process identity uses the thread-group leader's start time and event-time metadata; PID-reuse/event-time lifecycle hardening is still in progress.",
+            "UDP/QUIC is counted as UDP payload, not as identified QUIC frames. ICMP, namespace, VPN, and virtual-interface coverage is provider-dependent and not yet fully validated."),
         snapshot.Summary,
         snapshot.Applications,
         snapshot.Processes,
@@ -72,7 +72,7 @@ public static class UsageExport
         sb.AppendLine(c, $"# StatusDataSource,{Escape(snapshot.StatusDataSource)}");
         sb.AppendLine(c, $"# DaemonState,{snapshot.Status.State}");
         sb.AppendLine(c, $"# Provider,{Escape(snapshot.Status.ProviderName ?? "n/a")}");
-        sb.AppendLine("# Caveats,Per-process attribution depends on provider/measurement point; unattributed traffic is separate; procfs is interface-level/unattributed; ebpf-tcp is TCP-only and may lack per-interface mapping; process identity/lifecycle hardening ongoing.");
+        sb.AppendLine("# Caveats,Per-process attribution depends on provider/measurement point; unattributed traffic is separate; procfs is interface-level/unattributed; ebpf counts TCP+UDP with per-interface attribution where resolvable (unresolved ifindex is grouped without an interface); QUIC is counted as UDP; process identity/lifecycle hardening ongoing.");
         sb.AppendLine();
         sb.AppendLine("section,summary");
         sb.AppendLine("metric,rx_bytes,tx_bytes");
