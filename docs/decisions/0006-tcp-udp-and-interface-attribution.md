@@ -66,10 +66,15 @@ claims that are not observed.
   compile, and parser tests cover proto/interface fields, but attach behavior,
   UDP byte accuracy, and interface resolution have not been measured. They must
   not be described as validated coverage.
+- Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
+  attach, the loader exits instead of running with silent partial coverage.
 - Unconnected or uncached UDP sockets, and some receive paths, may produce
   `ifindex == 0`. Those bytes are counted without an interface and an
   attribution note explains the gap. The frequency of this case is unknown
   until measured.
+- The unattributed fallback (`tgid==0`) remains a single aggregate; it is not
+  split by protocol or interface, so unresolved hook-context bytes cannot be
+  attributed to TCP vs UDP.
 - The interface resolved from the socket is not necessarily the device that
   ultimately carries encapsulated/VPN traffic. Tunnel and virtual-interface
   behavior remains an open measurement item.

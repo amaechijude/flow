@@ -52,7 +52,8 @@ The file/type names retain the historical `flow_tcp_bytes`/`tcp` spelling.
   enrichment.
 - **Unattributed (prototype):** when `tgid==0` in hook context, bytes/events are
   counted in an explicit unattributed map/counter instead of being dropped
-  silently.
+  silently. That fallback is a single aggregate and is not split by protocol or
+  interface.
 - **Per-interface:** resolved from socket state as described above. This is
   not the same as interface counters: tunnels/VPNs and virtual interfaces can
   make the socket's device differ from the device that ultimately carries the
@@ -60,6 +61,10 @@ The file/type names retain the historical `flow_tcp_bytes`/`tcp` spelling.
 - **This is a prototype, not final Flow attribution.** Context/ownership
   nuances, namespaces, tunnels/VPN stacks, and accuracy still require
   validation.
+- **Attach failures are fatal.** The loader refuses to run unless all TCP+UDP
+  TX/RX hooks attach, so a partial attachment cannot silently back a
+  full-coverage claim. Interface resolution failure is different: bytes are
+  still counted with `ifindex 0` (reported as unresolved).
 
 ## Build artifacts
 

@@ -553,8 +553,8 @@
 ### Verification / test results
 - BPF object, skeleton, and loader compile (`clang`/`bpftool`/`gcc`; 0 errors, only pre-existing `vmlinux.h` warnings).
 - `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 7 pre-existing analyzer warnings).
-- `dotnet test Flow.slnx -v minimal --no-build` → **34/34 passed** (Domain 1, Application 4, Infrastructure 9, Linux 15, Daemon 1, System 4).
-- New parser tests cover resolved `lo` interface + TCP, unresolved UDP interface note, and 13-field event-time compatibility.
+- `dotnet test Flow.slnx -v minimal --no-build` → **35/35 passed** (Domain 1, Application 4, Infrastructure 9, Linux 16, Daemon 1, System 4).
+- New parser tests cover resolved `lo` interface + TCP, unresolved UDP interface note, and 13-field event-time compatibility. A monitor test verifies that a failing loader surfaces its exit code/stderr instead of silently ending the event stream.
 - `scripts/validate-ebpf-attribution.py` now runs TCP then UDP in the same process, sums expected-process rows per protocol and per interface, and asserts `lo` attribution. Syntax-checked with `py_compile`; **not run with privileges**.
 
 ### Pending / next

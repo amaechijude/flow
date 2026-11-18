@@ -323,47 +323,33 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    skel->links.tcp_sendmsg_exit = bpf_program__attach(skel->progs.tcp_sendmsg_exit);
-    if (!skel->links.tcp_sendmsg_exit) {
-        err = -errno;
-        fprintf(stderr, "failed to attach tcp_sendmsg_exit: %d (%s)\n", err, strerror(-err));
-        flow_tcp_bytes_bpf__destroy(skel);
-        return 1;
-    }
-    skel->links.tcp_recvmsg_entry = bpf_program__attach(skel->progs.tcp_recvmsg_entry);
-    if (!skel->links.tcp_recvmsg_entry) {
-        err = -errno;
-        fprintf(stderr, "warning: failed to attach tcp_recvmsg_entry: %d (%s) (TCP RX interface may be unknown)\n", err, strerror(-err));
-    }
-    skel->links.tcp_recvmsg_exit = bpf_program__attach(skel->progs.tcp_recvmsg_exit);
-    if (!skel->links.tcp_recvmsg_exit) {
-        err = -errno;
-        fprintf(stderr, "warning: failed to attach tcp_recvmsg_exit: %d (%s) (continuing without TCP RX accounting)\n", err, strerror(-err));
-    }
-    skel->links.udp_sendmsg_exit = bpf_program__attach(skel->progs.udp_sendmsg_exit);
-    if (!skel->links.udp_sendmsg_exit) {
-        err = -errno;
-        fprintf(stderr, "warning: failed to attach udp_sendmsg_exit: %d (%s) (continuing without UDP TX accounting)\n", err, strerror(-err));
-    }
-    skel->links.udp_recvmsg_entry = bpf_program__attach(skel->progs.udp_recvmsg_entry);
-    if (!skel->links.udp_recvmsg_entry) {
-        err = -errno;
-        fprintf(stderr, "warning: failed to attach udp_recvmsg_entry: %d (%s) (UDP RX interface may be unknown)\n", err, strerror(-err));
-    }
-    skel->links.udp_recvmsg_exit = bpf_program__attach(skel->progs.udp_recvmsg_exit);
-    if (!skel->links.udp_recvmsg_exit) {
-        err = -errno;
-        fprintf(stderr, "warning: failed to attach udp_recvmsg_exit: %d (%s) (continuing without UDP RX accounting)\n", err, strerror(-err));
-    }
+    /* The provider advertises TCP+UDP with per-interface attribution. Refuse to
+     * run with partial coverage so consumers never see a full-coverage claim
+     * backed by silently missing hooks. */
+#define ATTACH_OR_FAIL(field, prog)                                                 \
+    do {                                                                            \
+        skel->links.field = bpf_program__attach(skel->progs.prog);                  \
+        if (!skel->links.field) {                                                   \
+            err = -errno;                                                           \
+            fprintf(stderr, "failed to attach %s: %d (%s)\n", #prog, err, strerror(-err)); \
+            flow_tcp_bytes_bpf__destroy(skel);                                      \
+            return 1;                                                               \
+        }                                                                           \
+    } while (0)
+
+    ATTACH_OR_FAIL(tcp_sendmsg_exit, tcp_sendmsg_exit);
+    ATTACH_OR_FAIL(tcp_recvmsg_entry, tcp_recvmsg_entry);
+    ATTACH_OR_FAIL(tcp_recvmsg_exit, tcp_recvmsg_exit);
+    ATTACH_OR_FAIL(udp_sendmsg_exit, udp_sendmsg_exit);
+    ATTACH_OR_FAIL(udp_recvmsg_entry, udp_recvmsg_entry);
+    ATTACH_OR_FAIL(udp_recvmsg_exit, udp_recvmsg_exit);
+#undef ATTACH_OR_FAIL
 
     signal(SIGINT, on_sig);
     signal(SIGTERM, on_sig);
 
     if (!g_tsv) {
-        printf("flow_tcp_bytes prototype attached (TCP%s, UDP%s).\n",
-               skel->links.tcp_recvmsg_exit ? "+RX" : " TX-only",
-               (skel->links.udp_sendmsg_exit && skel->links.udp_recvmsg_exit) ? "+RX" :
-               (skel->links.udp_sendmsg_exit || skel->links.udp_recvmsg_exit) ? " partial" : " none");
+        printf("flow_tcp_bytes prototype attached (TCP TX/RX, UDP TX/RX, per-interface keys).\n");
         printf("Measurement note: counts payload bytes returned by TCP and UDP send/recv kernel functions, cumulative per (tgid,uid,ifindex,proto) while attached. QUIC is counted as UDP payload (QUIC framing is not identified). Interface is resolved from bound device/cached socket route when available; ifindex 0 means unknown. Non-TCP/UDP paths are NOT counted.\n");
         printf("Sampling every %d s for %d rounds (Ctrl-C to stop early).\n", interval, rounds);
     } else {

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -83,10 +84,21 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
         if (!_process.Start())
             throw new InvalidOperationException($"Failed to start eBPF loader process: {loaderPath}");
 
-        // Drain stderr to avoid blocking; could be surfaced as diagnostics in future.
+        // Drain stderr to avoid blocking and retain a short tail so attach/load
+        // failures surface as provider errors instead of a silently idle source.
+        var stderrTail = new ConcurrentQueue<string>();
         _ = Task.Run(async () =>
         {
-            try { while (await _process.StandardError.ReadLineAsync(ct).ConfigureAwait(false) is not null) { } } catch { }
+            try
+            {
+                while (await _process.StandardError.ReadLineAsync(ct).ConfigureAwait(false) is { } errLine)
+                {
+                    stderrTail.Enqueue(errLine);
+                    while (stderrTail.Count > 20)
+                        stderrTail.TryDequeue(out _);
+                }
+            }
+            catch { }
         }, ct);
 
         long clkTck = 100;
@@ -101,7 +113,26 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
             catch { yield break; }
 
             if (line is null)
-                yield break;
+            {
+                if (ct.IsCancellationRequested)
+                    yield break;
+
+                int? exitCode = null;
+                try
+                {
+                    await _process.WaitForExitAsync(ct).ConfigureAwait(false);
+                    exitCode = _process.ExitCode;
+                }
+                catch { }
+
+                if (exitCode is null or 0)
+                    yield break;
+
+                var detail = string.Join(Environment.NewLine, stderrTail);
+                throw new InvalidOperationException(
+                    $"eBPF loader exited with code {exitCode} before completing the event stream. " +
+                    (string.IsNullOrWhiteSpace(detail) ? "No stderr diagnostics were captured." : $"stderr:{Environment.NewLine}{detail}"));
+            }
 
             if (line.Length == 0) continue;
             if (line.StartsWith("M\t", StringComparison.Ordinal))

@@ -99,8 +99,8 @@ Prototype and product must handle (to supported extent):
   - **Limitations:** requires privileged loader/BPF attach, subprocess-based integration (not in-process libbpf), snapshot-delta granularity, no map expiry for dead generations, cgroup id is opaque (not a path/container name), persisted minute buckets do **not** separate TCP from UDP (they aggregate both for the same process/interface), and UDP/interface coverage/accuracy/overhead still require privileged validation.
 
 ### Unit-test evidence for this increment (non-privileged)
-- `dotnet test Flow.slnx` → **34/34 passed** (Domain 1, Application 4, Infrastructure 9, Linux 15, Daemon 1, System 4).
-- Parser tests cover: extended identity fields and cgroup propagation, PID reuse producing distinct stable keys, stable key ignoring mutable exe enrichment, legacy 11-field loader compatibility, 13-field event-time compatibility, protocol/interface propagation, unresolved-interface notes, exited-process comm fallback + attribution notes, malformed/zero-delta handling, unattributed events, and metadata defaults.
+- `dotnet test Flow.slnx` → **35/35 passed** (Domain 1, Application 4, Infrastructure 9, Linux 16, Daemon 1, System 4).
+- Parser tests cover: extended identity fields and cgroup propagation, PID reuse producing distinct stable keys, stable key ignoring mutable exe enrichment, legacy 11-field loader compatibility, 13-field event-time compatibility, protocol/interface propagation, unresolved-interface notes, exited-process comm fallback + attribution notes, malformed/zero-delta handling, unattributed events, metadata defaults, and loader-failure stderr surfacing.
 - BPF program, skeleton, and loader were **compiled** with clang/bpftool/libbpf (`0` errors; only pre-existing vmlinux.h warnings). They were **not loaded/attached** in this increment because that requires root/CAP_BPF and no non-interactive privilege path is available here.
 
 ### Controlled validation evidence (two TCP-only runs, 2026-11-18)
