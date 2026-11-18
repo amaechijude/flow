@@ -561,3 +561,22 @@
 - **Privileged rerun required:** rebuild artifacts, then run `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. Review per-protocol totals, interface rows, unresolved-interface count, unattributed bytes, and CPU/RSS before accepting UDP/interface claims.
 - If UDP RX or socket-interface resolution fails/under-reports, record the failure and adjust semantics rather than widening claims. Unconnected/uncached UDP sockets are a known candidate for `ifindex=0`.
 - Still open: namespaces/containers, VPN/tunnel/virtual-interface behavior, physical interfaces, sustained/high-connection overhead, map expiry, and protocol-level persistence.
+
+## 2026-11-18 (TCP+UDP controlled run: byte accuracy accepted, UDP RX interface failed)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` produced `docs/measurements/ebpf-controlled-20261118T050933Z.md`.
+- TCP: exactly **16,777,216 TX / 16,777,216 RX** (100.0% of payload), interface `lo`, one verified process generation, 0 background/unattributed bytes.
+- UDP: exactly **16,777,216 TX / 16,777,216 RX** (100.0% of payload; 100.0% delivery), one verified generation, 0 background/unattributed bytes.
+- UDP TX interface: `lo`. **UDP RX interface: unresolved (`ifindex=0`) for all 16,777,216 bytes.** The harness correctly failed `check_interface`.
+- Loader overhead: 0.005 s CPU (0.076% of one core), peak RSS 3,900 KiB (short-run only).
+- Interpretation: TCP+UDP **byte accuracy** is accepted for this controlled loopback run. Per-interface attribution is accepted only for TCP and UDP TX, not UDP RX.
+
+### Fix in response (not yet privileged-run)
+- Added `kretprobe/__skb_recv_udp`: captures the dequeued skb's `skb_iif` keyed by `pid_tgid`. `udp_recvmsg_exit` consumes/deletes it and uses it as the RX interface hint before falling back to socket-route state. This is per-datagram, avoiding a wrong "last seen" interface for wildcard-bound sockets receiving on multiple interfaces.
+- Loader now requires this hook to attach too (all-or-nothing attach).
+- Updated measurement-point/hook descriptions and docs; regenerated skeleton and rebuilt the loader.
+- Non-privileged verification: BPF/skeleton/loader compile with 0 errors; build succeeds; tests pass **35/35**. **Privileged rerun pending.**
+
+### Next
+- Rerun `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. Expect the UDP RX row to resolve to `lo` and `check_interface` to pass. If `skb_iif` is still unavailable, record that failure and keep UDP RX interface attribution explicitly unproven.

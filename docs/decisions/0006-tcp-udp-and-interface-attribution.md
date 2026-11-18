@@ -28,6 +28,10 @@ claims that are not observed.
      `struct sock *` keyed by `bpf_get_current_pid_tgid()` for the return probe.
    - UDP TX: `fexit/udp_sendmsg` (`ret > 0`).
    - UDP RX: `kprobe`/`kretprobe` on `udp_recvmsg` using the same stash pattern.
+   - UDP RX interface: `kretprobe/__skb_recv_udp` captures the dequeued skb's
+     `skb_iif` per `pid_tgid`; the `udp_recvmsg` return probe consumes it. This
+     is per-datagram, so wildcard-bound sockets receiving on multiple
+     interfaces are not reduced to one "last seen" interface.
    - QUIC is counted as UDP payload. QUIC framing is **not** identified.
    - ICMP and other non-TCP/UDP paths remain uncounted and are documented.
 2. **Add `proto` and `ifindex` to the counter key.** The key becomes
@@ -36,9 +40,10 @@ claims that are not observed.
    kernel map.
 3. **Resolve the interface from socket state, not from packet inspection.**
    Preference order: `skc_bound_dev_if`, then `sk_rx_dst_ifindex`, then
-   `sk_dst_cache->dev->ifindex`. `ifindex == 0` means the interface could not be
-   resolved and is reported as unresolved (`-` in TSV / no interface in Flow),
-   never guessed.
+   `sk_dst_cache->dev->ifindex`. For UDP RX, prefer the received datagram's
+   `skb_iif` captured via `__skb_recv_udp`, falling back to the socket state.
+   `ifindex == 0` means the interface could not be resolved and is reported as
+   unresolved (`-` in TSV / no interface in Flow), never guessed.
 4. **Extend the TSV `E` line backward-compatibly:**
    `E  tgid  uid  tx_total  rx_total  tx_delta  rx_delta  comm  exe  startticks  verified  start_ns  cgroup_id  proto  ifname`.
    Consumers must keep accepting 11-field and 13-field lines.
@@ -62,16 +67,23 @@ claims that are not observed.
 - The provider now has source-level coverage for TCP and UDP, including QUIC
   bytes as UDP payload, and per-interface event attribution when the socket
   route is resolvable.
-- **Not yet validated with privileges.** The new hooks, skeleton, and loader
-  compile, and parser tests cover proto/interface fields, but attach behavior,
-  UDP byte accuracy, and interface resolution have not been measured. They must
-  not be described as validated coverage.
+- **Controlled run 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T050933Z.md`):**
+  TCP and UDP each accounted for exactly 16,777,216 TX/RX bytes with one
+  verified process generation and 0 unattributed bytes. TCP and UDP TX resolved
+  to `lo`, but UDP RX (all 16,777,216 bytes) resolved to `ifindex=0`. The
+  socket-route path alone is therefore insufficient for unconnected UDP RX;
+  the `__skb_recv_udp`/`skb_iif` correlation above was added in response and
+  requires a rerun.
+- **Byte accuracy is validated for one loopback run; the interface fix is not.**
+  The follow-up `__skb_recv_udp` correlation compiles and is unit-covered only
+  indirectly, but it has not been privileged-run. Do not claim UDP RX interface
+  coverage or broader per-interface behavior until the rerun is reviewed.
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
-- Unconnected or uncached UDP sockets, and some receive paths, may produce
-  `ifindex == 0`. Those bytes are counted without an interface and an
-  attribution note explains the gap. The frequency of this case is unknown
-  until measured.
+- The controlled run showed unconnected UDP RX resolving to `ifindex=0` via
+  socket state alone (16,777,216 bytes). The new per-datagram `skb_iif` path is
+  meant to close that gap, but it remains unmeasured until rerun; unresolved
+  bytes are still counted without an interface and noted rather than guessed.
 - The unattributed fallback (`tgid==0`) remains a single aggregate; it is not
   split by protocol or interface, so unresolved hook-context bytes cannot be
   attributed to TCP vs UDP.

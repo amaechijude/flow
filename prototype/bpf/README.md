@@ -7,6 +7,7 @@ functions:
 - `kretprobe/tcp_recvmsg` → TCP download/RX bytes (`ret > 0`)
 - `fexit/udp_sendmsg` → UDP upload/TX bytes (`ret > 0`)
 - `kprobe/kretprobe udp_recvmsg` → UDP download/RX bytes (`ret > 0`)
+- `kretprobe/__skb_recv_udp` → per-datagram UDP RX interface (`skb_iif`)
 
 QUIC is counted as UDP payload; QUIC framing is not identified. Counters are
 aggregated in a BPF hash map and printed periodically by a userspace loader.
@@ -24,9 +25,11 @@ The file/type names retain the historical `flow_tcp_bytes`/`tcp` spelling.
   counters remain separate in the map.
 - **Interface:** `ifindex` is resolved from the socket at hook time in this
   order: `skc_bound_dev_if`, `sk_rx_dst_ifindex`, `sk_dst_cache->dev->ifindex`.
-  `0` means the interface could not be resolved; the loader reports it as `-`
-  and Flow stores it without an interface rather than guessing. Unconnected or
-  uncached UDP sockets may fall into this bucket.
+  For UDP receive, the dequeued datagram's `skb_iif` (captured from
+  `__skb_recv_udp`) is preferred, because unconnected UDP sockets do not
+  reliably expose a cached route. `0` means the interface could not be resolved;
+  the loader reports it as `-` and Flow stores it without an interface rather
+  than guessing.
 - **Value:** cumulative TX/RX bytes, plus the first-observed `cgroup_id` and
   task `comm`. These are captured in the kernel so short-lived processes keep
   attribution after they exit.
@@ -149,5 +152,10 @@ for the expected TGID, exactly 16,777,216 TX/RX for a 16 MiB payload,
 background traffic separated, 0 unattributed bytes, and 0.004 s loader CPU /
 3,672 KiB peak RSS. See `docs/measurements/ebpf-controlled-20261118T044634Z.md`.
 The CPU/RSS sample is short-run only; do not treat it as steady-state overhead
-evidence. The TCP+UDP/per-interface build has compiled but has **not** been
-privileged-run yet.
+evidence.
+
+TCP+UDP run (`docs/measurements/ebpf-controlled-20261118T050933Z.md`): TCP and
+UDP each produced exactly 16,777,216 TX/RX with one verified generation and 0
+unattributed bytes. TCP and UDP TX resolved to `lo`; UDP RX did not resolve an
+interface via socket state. The `__skb_recv_udp`/`skb_iif` path was added in
+response and has **not** been privileged-run yet.

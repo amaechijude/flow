@@ -13,3 +13,4 @@ attribution.
 | --- | --- | --- |
 | `ebpf-controlled-20261118T042842Z.md` | Rejected | Byte totals matched, but one Python TGID split into two rows (per-thread `start_time`). Led to the group-leader fix in `f435571`. |
 | `ebpf-controlled-20261118T044634Z.md` | Accepted (TCP loopback only) | One verified process generation, expected-process TX/RX exactly `16,777,216`, 0 unattributed bytes. Does not cover physical interfaces, UDP, namespaces, VPNs, or long-run overhead. |
+| `ebpf-controlled-20261118T050933Z.md` | Byte accuracy accepted; interface gate failed | TCP and UDP each exactly `16,777,216` TX/RX, one verified generation, 0 unattributed. TCP all `lo`; UDP TX `lo`; **UDP RX `16,777,216` bytes unresolved (`ifindex=0`)**. Led to per-datagram UDP RX interface correlation and a rerun. |

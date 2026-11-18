@@ -18,8 +18,8 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
 {
     public static readonly MeasurementPoint Point = new(
         "ebpf",
-        "fexit/tcp_sendmsg+udp_sendmsg, kretprobe/tcp_recvmsg+udp_recvmsg",
-        "TCP and UDP payload bytes from positive return values of the send/recv kernel functions observed via eBPF (TGID/UID attribution, per-interface where the socket route is resolvable, cumulative snapshots converted to deltas). QUIC is counted as UDP payload; ICMP and other non-TCP/UDP paths are not counted.");
+        "fexit/tcp_sendmsg+udp_sendmsg, kretprobe/tcp_recvmsg+udp_recvmsg, kretprobe/__skb_recv_udp (RX ifindex)",
+        "TCP and UDP payload bytes from positive return values of the send/recv kernel functions observed via eBPF (TGID/UID attribution, per-interface where the socket route or received skb resolves it, cumulative snapshots converted to deltas). QUIC is counted as UDP payload; ICMP and other non-TCP/UDP paths are not counted.");
 
     private readonly EbpfMonitorOptions _options;
     private Process? _process;

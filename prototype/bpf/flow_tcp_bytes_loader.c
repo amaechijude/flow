@@ -343,6 +343,7 @@ int main(int argc, char **argv)
     ATTACH_OR_FAIL(udp_sendmsg_exit, udp_sendmsg_exit);
     ATTACH_OR_FAIL(udp_recvmsg_entry, udp_recvmsg_entry);
     ATTACH_OR_FAIL(udp_recvmsg_exit, udp_recvmsg_exit);
+    ATTACH_OR_FAIL(__skb_recv_udp_exit, __skb_recv_udp_exit);
 #undef ATTACH_OR_FAIL
 
     signal(SIGINT, on_sig);

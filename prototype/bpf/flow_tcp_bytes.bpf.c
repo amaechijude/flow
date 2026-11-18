@@ -51,6 +51,19 @@ struct {
     __type(value, __u64);
 } recv_args SEC(".maps");
 
+/* Per-datagram receive interface. __skb_recv_udp returns the skb actually
+ * dequeued by udp_recvmsg, whose skb_iif is the interface the datagram
+ * arrived on. Keyed by pid_tgid because one thread receives one datagram at
+ * a time; the udp_recvmsg return probe consumes/deletes the entry. This
+ * avoids misattributing wildcard-bound sockets that receive on multiple
+ * interfaces, where a per-socket "last seen" value would be ambiguous. */
+struct {
+    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(max_entries, 10240);
+    __type(key, __u64);
+    __type(value, __u32);
+} rx_pkt_ifindex SEC(".maps");
+
 struct unattributed_val {
     __u64 tx_bytes;
     __u64 rx_bytes;
@@ -137,7 +150,7 @@ static __always_inline struct traffic_val *get_or_create(struct traffic_key *key
     return bpf_map_lookup_elem(&traffic, key);
 }
 
-static __always_inline void add_bytes(__u64 bytes, int is_tx, __u32 proto, struct sock *sk)
+static __always_inline void add_bytes(__u64 bytes, int is_tx, __u32 proto, struct sock *sk, __u32 ifindex_hint)
 {
     if (bytes == 0 || (__s64)bytes < 0)
         return;
@@ -153,11 +166,12 @@ static __always_inline void add_bytes(__u64 bytes, int is_tx, __u32 proto, struc
         return;
     }
 
+    __u32 ifindex = ifindex_hint ? ifindex_hint : sock_ifindex(sk);
     struct traffic_key k = {
         .start_ns = current_process_start_ns(),
         .tgid = tgid,
         .uid = uid,
-        .ifindex = sock_ifindex(sk),
+        .ifindex = ifindex,
         .proto = proto,
     };
     struct traffic_val *v = get_or_create(&k);
@@ -174,7 +188,7 @@ SEC("fexit/tcp_sendmsg")
 int BPF_PROG(tcp_sendmsg_exit, struct sock *sk, struct msghdr *msg, size_t size, int ret)
 {
     if (ret > 0)
-        add_bytes((__u64)ret, 1, PROTO_TCP, sk);
+        add_bytes((__u64)ret, 1, PROTO_TCP, sk, 0);
     return 0;
 }
 
@@ -196,7 +210,7 @@ int BPF_KRETPROBE(tcp_recvmsg_exit, int ret)
     bpf_map_delete_elem(&recv_args, &key);
 
     if (ret > 0)
-        add_bytes((__u64)ret, 0, PROTO_TCP, sk);
+        add_bytes((__u64)ret, 0, PROTO_TCP, sk, 0);
     return 0;
 }
 
@@ -204,7 +218,21 @@ SEC("fexit/udp_sendmsg")
 int BPF_PROG(udp_sendmsg_exit, struct sock *sk, struct msghdr *msg, size_t len, int ret)
 {
     if (ret > 0)
-        add_bytes((__u64)ret, 1, PROTO_UDP, sk);
+        add_bytes((__u64)ret, 1, PROTO_UDP, sk, 0);
+    return 0;
+}
+
+SEC("kretprobe/__skb_recv_udp")
+int BPF_KRETPROBE(__skb_recv_udp_exit, struct sk_buff *skb)
+{
+    __u64 key = bpf_get_current_pid_tgid();
+    __u32 ifindex = 0;
+    if (skb) {
+        int iif = BPF_CORE_READ(skb, skb_iif);
+        if (iif > 0)
+            ifindex = (__u32)iif;
+    }
+    bpf_map_update_elem(&rx_pkt_ifindex, &key, &ifindex, BPF_ANY);
     return 0;
 }
 
@@ -225,7 +253,13 @@ int BPF_KRETPROBE(udp_recvmsg_exit, int ret)
     struct sock *sk = skp ? (struct sock *)*skp : NULL;
     bpf_map_delete_elem(&recv_args, &key);
 
+    __u32 ifindex = 0;
+    __u32 *iifp = bpf_map_lookup_elem(&rx_pkt_ifindex, &key);
+    if (iifp)
+        ifindex = *iifp;
+    bpf_map_delete_elem(&rx_pkt_ifindex, &key);
+
     if (ret > 0)
-        add_bytes((__u64)ret, 0, PROTO_UDP, sk);
+        add_bytes((__u64)ret, 0, PROTO_UDP, sk, ifindex);
     return 0;
 }
