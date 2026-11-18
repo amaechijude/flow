@@ -228,7 +228,9 @@ int BPF_KRETPROBE(__skb_recv_udp_exit, struct sk_buff *skb)
     __u64 key = bpf_get_current_pid_tgid();
     __u32 ifindex = 0;
     if (skb) {
-        int iif = BPF_CORE_READ(skb, skb_iif);
+        int iif = 0;
+        /* helper-based read: a failed/ERR_PTR return just leaves 0 (unknown). */
+        bpf_core_read(&iif, sizeof(iif), &skb->skb_iif);
         if (iif > 0)
             ifindex = (__u32)iif;
     }

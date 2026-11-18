@@ -24,6 +24,7 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
     private readonly EbpfMonitorOptions _options;
     private Process? _process;
     private CancellationTokenSource? _cts;
+    private Task? _stderrTask;
 
     public EbpfMonitor(EbpfMonitorOptions? options = null)
     {
@@ -87,7 +88,7 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
         // Drain stderr to avoid blocking and retain a short tail so attach/load
         // failures surface as provider errors instead of a silently idle source.
         var stderrTail = new ConcurrentQueue<string>();
-        _ = Task.Run(async () =>
+        _stderrTask = Task.Run(async () =>
         {
             try
             {
@@ -127,6 +128,14 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
 
                 if (exitCode is null or 0)
                     yield break;
+
+                // The stderr reader may still be draining when stdout closes.
+                // Wait briefly so an error report includes the loader's diagnostics.
+                if (_stderrTask is not null)
+                {
+                    try { await _stderrTask.WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+                    catch { }
+                }
 
                 var detail = string.Join(Environment.NewLine, stderrTail);
                 throw new InvalidOperationException(
