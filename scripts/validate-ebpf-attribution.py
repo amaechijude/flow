@@ -272,22 +272,36 @@ class TunnelTopology:
         remote = VETH_SERVER_IP if not netns else VETH_CLIENT_IP
         addr = TUNNEL_ROOT_IP if not netns else TUNNEL_PEER_IP
         prefix = ["ip", "netns", "exec", VETH_NS] if netns else []
-        _ip(*prefix, "tunnel", "add", TUNNEL_NAME, "mode", mode, "local", local, "remote", remote)
+        underlay = VETH_CLIENT if not netns else VETH_SERVER
+        if mode == "vxlan":
+            _ip(
+                *prefix, "link", "add", TUNNEL_NAME, "type", "vxlan",
+                "id", "4242", "local", local, "remote", remote,
+                "dev", underlay, "dstport", "4789",
+            )
+        else:
+            _ip(*prefix, "tunnel", "add", TUNNEL_NAME, "mode", mode, "local", local, "remote", remote)
         _ip(*prefix, "addr", "add", f"{addr}/30", "dev", TUNNEL_NAME)
         _ip(*prefix, "link", "set", TUNNEL_NAME, "up")
 
     def start(self) -> None:
         self.veth.start()
-        for mode in ("gre", "ipip"):
+        errors: list[str] = []
+        for mode in ("gre", "ipip", "vxlan"):
             try:
                 self._create_tunnel(mode, netns=False)
                 self._create_tunnel(mode, netns=True)
                 self.mode = mode
                 break
-            except SystemExit:
-                self.stop()
-                if mode == "ipip":
-                    raise SystemExit("could not create GRE or IPIP tunnel in the test netns")
+            except SystemExit as exc:
+                errors.append(f"{mode}: {exc}")
+                self.stop_tunnels()
+        else:
+            self.veth.stop()
+            raise SystemExit(
+                "could not create GRE, IPIP, or VXLAN tunnel in the test netns:\n"
+                + "\n".join(errors)
+            )
         self.root_ifindex = self._ifindex(netns=False)
         self.peer_ifindex = self._ifindex(netns=True)
         time.sleep(0.2)
@@ -302,12 +316,16 @@ class TunnelTopology:
             return int(result.stdout.split(":", 1)[0].strip())
         return 0
 
+    def stop_tunnels(self) -> None:
+        for delete in (["ip", "tunnel", "del", TUNNEL_NAME], ["ip", "link", "del", TUNNEL_NAME]):
+            subprocess.run(delete, capture_output=True, text=True, check=False)
+            subprocess.run(
+                ["ip", "netns", "exec", VETH_NS, *delete[1:]],
+                capture_output=True, text=True, check=False,
+            )
+
     def stop(self) -> None:
-        subprocess.run(["ip", "tunnel", "del", TUNNEL_NAME], capture_output=True, text=True, check=False)
-        subprocess.run(
-            ["ip", "netns", "exec", VETH_NS, "ip", "tunnel", "del", TUNNEL_NAME],
-            capture_output=True, text=True, check=False,
-        )
+        self.stop_tunnels()
         self.veth.stop()
 
 
