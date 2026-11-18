@@ -41,7 +41,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **Implement VPN/tunnel probe:** wildcard multi-interface and hard-capacity approaches are accepted (`docs/measurements/ebpf-controlled-20261118T225010Z.md` and `...T225153Z.md`: two-interface RX on one wildcard socket; map 128→10,107/10,240 with exact bytes). Next build a tunnel topology (GRE/IPIP between netns) and a long/high-connection production-load soak. Hard cap itself remains untested.
+1. **Run the VPN/tunnel probe:** `sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16` (GRE/IPIP over veth, overlay vs underlay attribution). Previously implemented: wildcard multi-interface and hard-capacity approaches are accepted (`docs/measurements/ebpf-controlled-20261118T225010Z.md` and `...T225153Z.md`: two-interface RX on one wildcard socket; map 128→10,107/10,240 with exact bytes). Hard cap itself remains untested; a long/high-connection production-load soak is still to be built.
 2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
 3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
 4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.

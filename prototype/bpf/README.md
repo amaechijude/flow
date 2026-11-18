@@ -151,6 +151,7 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gatewa
 sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
 sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
 sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
+sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over

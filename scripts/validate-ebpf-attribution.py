@@ -24,6 +24,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
     sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
+    sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -56,6 +57,11 @@ bound to 0.0.0.0 in the root netns. Clients on loopback and on the veth peer
 send known payloads; the run requires two RX rows for the same server process
 with different interface names, validating per-datagram interface attribution
 for wildcard-bound sockets.
+
+Tunnel mode builds a GRE (or IPIP fallback) tunnel over a veth underlay between
+two netns, runs a TCP echo server in the peer netns on the tunnel address, and
+asserts that process rows resolve to the tunnel device rather than the underlay.
+Overlay and underlay counter deltas are both reported to document overlap.
 """
 
 from __future__ import annotations
@@ -88,6 +94,24 @@ def read_net_dev(interface: str = "lo") -> dict[str, int] | None:
         return None
 
     for line in lines[2:]:
+        name, _, rest = line.partition(":")
+        if name.strip() != interface:
+            continue
+        fields = rest.split()
+        if len(fields) < 9:
+            return None
+        return {"rx_bytes": int(fields[0]), "tx_bytes": int(fields[8])}
+    return None
+
+
+def read_net_dev_netns(interface: str, netns: str) -> dict[str, int] | None:
+    result = subprocess.run(
+        ["ip", "netns", "exec", netns, "cat", "/proc/net/dev"],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        return None
+    for line in result.stdout.splitlines()[2:]:
         name, _, rest = line.partition(":")
         if name.strip() != interface:
             continue
@@ -227,6 +251,64 @@ class VethPair:
 
 NETNS_KEY_A = "flowkeyA"
 NETNS_KEY_B = "flowkeyB"
+
+
+TUNNEL_NAME = "flowtun0"
+TUNNEL_ROOT_IP = "10.0.0.1"
+TUNNEL_PEER_IP = "10.0.0.2"
+
+
+class TunnelTopology:
+    """Veth underlay plus a GRE (or IPIP fallback) tunnel between two netns."""
+
+    def __init__(self) -> None:
+        self.veth = VethPair()
+        self.mode = "gre"
+        self.root_ifindex = 0
+        self.peer_ifindex = 0
+
+    def _create_tunnel(self, mode: str, netns: bool) -> None:
+        local = VETH_CLIENT_IP if not netns else VETH_SERVER_IP
+        remote = VETH_SERVER_IP if not netns else VETH_CLIENT_IP
+        addr = TUNNEL_ROOT_IP if not netns else TUNNEL_PEER_IP
+        prefix = ["ip", "netns", "exec", VETH_NS] if netns else []
+        _ip(*prefix, "tunnel", "add", TUNNEL_NAME, "mode", mode, "local", local, "remote", remote)
+        _ip(*prefix, "addr", "add", f"{addr}/30", "dev", TUNNEL_NAME)
+        _ip(*prefix, "link", "set", TUNNEL_NAME, "up")
+
+    def start(self) -> None:
+        self.veth.start()
+        for mode in ("gre", "ipip"):
+            try:
+                self._create_tunnel(mode, netns=False)
+                self._create_tunnel(mode, netns=True)
+                self.mode = mode
+                break
+            except SystemExit:
+                self.stop()
+                if mode == "ipip":
+                    raise SystemExit("could not create GRE or IPIP tunnel in the test netns")
+        self.root_ifindex = self._ifindex(netns=False)
+        self.peer_ifindex = self._ifindex(netns=True)
+        time.sleep(0.2)
+
+    @staticmethod
+    def _ifindex(netns: bool) -> int:
+        cmd = ["ip", "-o", "link", "show", TUNNEL_NAME]
+        if netns:
+            cmd = ["ip", "netns", "exec", VETH_NS, *cmd]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode == 0 and result.stdout.strip():
+            return int(result.stdout.split(":", 1)[0].strip())
+        return 0
+
+    def stop(self) -> None:
+        subprocess.run(["ip", "tunnel", "del", TUNNEL_NAME], capture_output=True, text=True, check=False)
+        subprocess.run(
+            ["ip", "netns", "exec", VETH_NS, "ip", "tunnel", "del", TUNNEL_NAME],
+            capture_output=True, text=True, check=False,
+        )
+        self.veth.stop()
 
 
 class NetnsKeyPair:
@@ -473,6 +555,51 @@ def run_netns_key_helper(path_a: str, path_b: str, size: int) -> int:
     # Stay alive so the loader can emit snapshots for both netns rows.
     sys.stdin.readline()
     return 0
+
+
+def run_tunnel_server(port: int, size: int) -> int:
+    """TCP echo server inside the tunnel peer netns."""
+    print(f"SERVER_PID {os.getpid()}", flush=True)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((TUNNEL_PEER_IP, port))
+    server.listen(1)
+    server.settimeout(30)
+    conn, _ = server.accept()
+    received = bytearray()
+    try:
+        while True:
+            data = conn.recv(1 << 20)
+            if not data:
+                break
+            received.extend(data)
+        conn.sendall(received)
+        print(f"SERVER_BYTES {len(received)}", flush=True)
+    finally:
+        conn.close()
+        server.close()
+    sys.stdin.readline()
+    return 0
+
+
+def spawn_tunnel_server(port: int, size: int) -> tuple[subprocess.Popen[str], int]:
+    proc = subprocess.Popen(
+        [
+            "ip", "netns", "exec", VETH_NS,
+            sys.executable, str(Path(__file__).resolve()),
+            "--tunnel-server", str(port), str(size),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    line = proc.stdout.readline().strip() if proc.stdout else ""
+    if not line.startswith("SERVER_PID "):
+        proc.kill()
+        raise SystemExit(f"tunnel server failed to start: {(line or 'no output')!r}")
+    return proc, int(line.split()[1])
 
 
 def run_wildcard_helper(host: str, port: int, size: int) -> int:
@@ -1188,6 +1315,26 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Wildcard per-datagram interface attribution check: {ctx['check_wildcard']}",
             "- The same server socket received traffic on two interfaces; rows must differ by interface name.",
         ]
+    if ctx.get("tunnel"):
+        counters = ctx["tunnel_counters"]
+        def delta(key: str) -> str:
+            before = counters.get(f"{key}_before")
+            after = counters.get(f"{key}_after")
+            if not before or not after:
+                return "n/a"
+            return f"TX {after['tx_bytes'] - before['tx_bytes']}, RX {after['rx_bytes'] - before['rx_bytes']}"
+
+        lines += [
+            "",
+            "## Tunnel observation",
+            "",
+            f"- Tunnel mode: {ctx['tunnel_mode']} ({ctx['tunnel_name']}) above the veth underlay",
+            f"- Tunnel check (overlay device only, no underlay rows): {ctx['check_tunnel']}",
+            f"- Root tunnel counter delta: {delta('tunnel')}",
+            f"- Root underlay counter delta: {delta('underlay')}",
+            f"- Peer-netns tunnel counter delta: {delta('peer_tunnel')}",
+            "- Overlay and underlay both carried the packets; only the tunnel device is attributed to the process. The underlay delta documents the overlap.",
+        ]
     lines += [
         "",
         "## Loader overhead (first datapoint)",
@@ -1219,6 +1366,10 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
     if ctx.get("wildcard"):
         lines.append(
             f"- Wildcard server received on two interfaces with correct per-interface bytes: {ctx['check_wildcard']}"
+        )
+    if ctx.get("tunnel"):
+        lines.append(
+            f"- TCP echo attributed to tunnel devices with no underlay rows: {ctx['check_tunnel']}"
         )
     if ctx.get("nic"):
         tcp_note = (
@@ -1259,6 +1410,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
+    parser.add_argument("--tunnel-server", nargs=2, metavar=("PORT", "SIZE"),
+                        help=argparse.SUPPRESS)  # internal: tunnel peer echo server
     parser.add_argument("--wildcard-helper", nargs=3, metavar=("HOST", "PORT", "SIZE"),
                         help=argparse.SUPPRESS)  # internal: peer-netns UDP sender
     parser.add_argument("--netns-helper", nargs=3, metavar=("PATH_A", "PATH_B", "SIZE"),
@@ -1279,7 +1432,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel"),
         default="lo",
         help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
@@ -1301,6 +1454,8 @@ def main() -> int:
                         help="map-churn mode: maximum run seconds (default: 180)")
     parser.add_argument("--wildcard-size-mib", type=float, default=1.0,
                         help="wildcard mode: UDP payload per source (default: 1)")
+    parser.add_argument("--tunnel-size-mib", type=float, default=16.0,
+                        help="tunnel mode: TCP echo payload (default: 16)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -1310,6 +1465,8 @@ def main() -> int:
         return run_client_helper(args.client_helper)
     if args.soak_child is not None:
         return run_soak_child(args.soak_child)
+    if args.tunnel_server:
+        return run_tunnel_server(int(args.tunnel_server[0]), int(args.tunnel_server[1]))
     if args.wildcard_helper:
         return run_wildcard_helper(args.wildcard_helper[0], int(args.wildcard_helper[1]), int(args.wildcard_helper[2]))
     if args.netns_helper:
@@ -1331,6 +1488,11 @@ def main() -> int:
     netns_key = args.mode == "netns-key"
     map_churn = args.mode == "map-churn"
     wildcard = args.mode == "wildcard"
+    tunnel = args.mode == "tunnel"
+    tunnel_bytes = int(args.tunnel_size_mib * 1024 * 1024)
+    if tunnel and tunnel_bytes <= 0:
+        print("error: --tunnel-size-mib must be positive", file=sys.stderr)
+        return 2
     wildcard_bytes = int(args.wildcard_size_mib * 1024 * 1024)
     if wildcard and wildcard_bytes <= 0:
         print("error: --wildcard-size-mib must be positive", file=sys.stderr)
@@ -1370,6 +1532,7 @@ def main() -> int:
     )
 
     veth = VethPair() if args.mode in ("veth", "wildcard") else None
+    tunnel_topology = TunnelTopology() if tunnel else None
     netns_pair = NetnsKeyPair() if netns_key else None
     loader: LoaderRun | None = None
     helpers: list[subprocess.Popen[str]] = []
@@ -1382,6 +1545,8 @@ def main() -> int:
     churn_successes = 0
     wildcard_counts: dict[str, int] = {}
     wildcard_port = 17001
+    tunnel_port = 17002
+    tunnel_counters: dict[str, dict[str, int] | None] = {}
     started = time.monotonic()
     cpu_before = None
     lo_before = None
@@ -1399,13 +1564,15 @@ def main() -> int:
             veth.start()
         if netns_pair:
             netns_pair.start()
+        if tunnel_topology:
+            tunnel_topology.start()
         loader = LoaderRun(args.loader, args.interval)
         loader.start()
         cpu_before = loader.cpu_seconds()
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
-        if not nic and not netns_key and not map_churn:
+        if not nic and not netns_key and not map_churn and not tunnel:
             lo_before = read_net_dev("lo")
         if veth and args.mode == "veth":
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
@@ -1490,6 +1657,23 @@ def main() -> int:
                 time.sleep(args.interval)
             tcp_sent = tcp_received = churn_successes * churn_child_bytes
             udp_sent = udp_received = churn_successes * churn_child_bytes
+        elif tunnel:
+            assert tunnel_topology is not None
+            expected_tgids.add(os.getpid())
+            tunnel_counters["tunnel_before"] = read_net_dev(TUNNEL_NAME)
+            tunnel_counters["underlay_before"] = read_net_dev(VETH_CLIENT)
+            tunnel_counters["peer_tunnel_before"] = read_net_dev_netns(TUNNEL_NAME, VETH_NS)
+            server, server_pid = spawn_tunnel_server(tunnel_port, tunnel_bytes)
+            helpers.append(server)
+            expected_tgids.add(server_pid)
+            tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
+                tunnel_bytes, TUNNEL_PEER_IP, tunnel_port
+            )
+            time.sleep(max(2.0, args.interval * 2.5))
+            tunnel_counters["tunnel_after"] = read_net_dev(TUNNEL_NAME)
+            tunnel_counters["underlay_after"] = read_net_dev(VETH_CLIENT)
+            tunnel_counters["peer_tunnel_after"] = read_net_dev_netns(TUNNEL_NAME, VETH_NS)
+            udp_sent = udp_received = 0
         elif wildcard:
             assert veth is not None
             expected_tgids.add(os.getpid())
@@ -1569,7 +1753,7 @@ def main() -> int:
             expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
-        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn else None
+        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn and not tunnel else None
         if veth and args.mode == "veth":
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
@@ -1601,6 +1785,8 @@ def main() -> int:
             veth.stop()
         if netns_pair:
             netns_pair.stop()
+        if tunnel_topology:
+            tunnel_topology.stop()
 
     elapsed = time.monotonic() - started
     for role, counters in veth_before.items():
@@ -1643,6 +1829,7 @@ def main() -> int:
     check_churn_bytes: bool | None = None
     check_map_target: bool | None = None
     check_wildcard: bool | None = None
+    check_tunnel: bool | None = None
     if nic:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         expected_interface_description = (
@@ -1679,6 +1866,50 @@ def main() -> int:
             )
 
         check_interface = nic_proto_ok(1) and nic_proto_ok(2)
+    elif tunnel:
+        assert tunnel_topology is not None
+        root_netns = os.stat("/proc/self/ns/net").st_ino
+        helper_netns = os.stat(f"/proc/{server_pid}/ns/net").st_ino
+        expected_peer_ifname = f"{tunnel_topology.peer_ifindex}@{helper_netns}"
+        expected_interface_description = (
+            f"client TX on `{TUNNEL_NAME}` (root) and server RX on {expected_peer_ifname}"
+        )
+        transfer_scope = f"TCP echo over {tunnel_topology.mode} tunnel above a veth underlay"
+        counter_caveat = "tunnel and underlay counters are sampled separately."
+        process_scope_caveat = (
+            "The parent client and the peer-netns server are expected processes. "
+            "Server identity is n/a after exit; kernel-captured identity is retained."
+        )
+        interface_caveat = (
+            f"A {tunnel_topology.mode} tunnel above a veth underlay exercises tunnel-device "
+            "attribution. Overlay and underlay both carry the packets; double-counting is "
+            "reported, not treated as additional process traffic. No physical NIC or VPN daemon."
+        )
+        parent_tx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == os.getpid() and int(p["proto"]) == 1 and int(p["tx"]) > 0
+        ]
+        peer_rx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == server_pid and int(p["proto"]) == 1 and int(p["rx"]) > 0
+        ]
+        underlay_rows = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) in expected_tgids and p["ifname"] == VETH_CLIENT
+        ]
+        check_tunnel = (
+            len(parent_tx) == 1
+            and parent_tx[0]["ifname"] == TUNNEL_NAME
+            and int(parent_tx[0]["netns_id"]) == root_netns
+            and int(parent_tx[0]["tx"]) == tcp_sent
+            and len(peer_rx) == 1
+            and peer_rx[0]["ifname"] == expected_peer_ifname
+            and int(peer_rx[0]["netns_id"]) == helper_netns
+            and int(peer_rx[0]["rx"]) == tcp_received
+            and not underlay_rows
+        )
+        check_interface = check_tunnel
+        check_identity = None
     elif wildcard:
         assert veth is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino
@@ -1890,24 +2121,28 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "wildcard UDP listener on two interfaces"
-            if wildcard
+            f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
+            if tunnel
             else (
-                "high-rate child churn toward BPF map capacity"
-                if map_churn
+                "wildcard UDP listener on two interfaces"
+                if wildcard
                 else (
-                    "same-PID two-netns identity collision"
-                    if netns_key
+                    "high-rate child churn toward BPF map capacity"
+                    if map_churn
                     else (
-                        "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-                        if veth
+                        "same-PID two-netns identity collision"
+                        if netns_key
                         else (
-                            f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                            if nic
+                            "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+                            if veth
                             else (
-                                f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                                if soak
-                                else "loopback `lo`"
+                                f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+                                if nic
+                                else (
+                                    f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                                    if soak
+                                    else "loopback `lo`"
+                                )
                             )
                         )
                     )
@@ -1925,6 +2160,11 @@ def main() -> int:
         "netns_key": netns_key,
         "map_churn": map_churn,
         "wildcard": wildcard,
+        "tunnel": tunnel,
+        "tunnel_mode": tunnel_topology.mode if tunnel else None,
+        "tunnel_name": TUNNEL_NAME if tunnel else None,
+        "tunnel_counters": tunnel_counters if tunnel else {},
+        "check_tunnel": check_tunnel,
         "wildcard_counts": wildcard_counts if wildcard else {},
         "wildcard_bytes": wildcard_bytes if wildcard else None,
         "wildcard_client_ifindex": veth.client_ifindex if wildcard and veth else None,
@@ -1958,9 +2198,14 @@ def main() -> int:
         "soak_map_entries": [s["map_entries"] for s in soak_samples if s["map_entries"] is not None],
         "soak_cpu_samples": [s["cpu_s"] for s in soak_samples if s["cpu_s"] is not None],
         "soak_rss_samples": [s["rss_kb"] for s in soak_samples if s["rss_kb"] is not None],
-        "size_bytes": wildcard_bytes if wildcard else (churn_child_bytes if map_churn else size_bytes),
+        "size_bytes": (
+            tunnel_bytes if tunnel
+            else (wildcard_bytes if wildcard else (churn_child_bytes if map_churn else size_bytes))
+        ),
         "size_mib": (
-            (args.wildcard_size_mib if wildcard else (args.churn_child_size_kib / 1024.0 if map_churn else args.size_mib))
+            (args.tunnel_size_mib if tunnel else
+             (args.wildcard_size_mib if wildcard else
+              (args.churn_child_size_kib / 1024.0 if map_churn else args.size_mib)))
         ),
         "tcp_sent": tcp_sent,
         "tcp_received": tcp_received,
@@ -2009,6 +2254,7 @@ def main() -> int:
         and (check_netns_collision if check_netns_collision is not None else True)
         and (check_churn_bytes if check_churn_bytes is not None else True)
         and (check_wildcard if check_wildcard is not None else True)
+        and (check_tunnel if check_tunnel is not None else True)
     )
     return 0 if passed else 1
 

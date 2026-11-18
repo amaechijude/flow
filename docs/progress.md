@@ -943,3 +943,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Changes
 - Accepted/annotated both reports and index; updated `docs/attribution.md`, `HANDOFF.md`. No BPF/loader change; baseline 38/38 passing.
+
+## 2026-11-19 (VPN/tunnel probe implemented, not yet run)
+
+### Implementation
+- Added `--mode tunnel`: builds a veth underlay plus a GRE tunnel (IPIP fallback) between the root netns and `flowvns`, with tunnel addresses 10.0.0.1/30 and 10.0.0.2/30.
+- Runs a TCP echo server in the peer netns bound to the tunnel address; the root client connects over the tunnel. The harness requires the client TX row on the root tunnel device and the server RX row on the peer-netns tunnel device, with no expected rows on the veth underlay.
+- Records root tunnel, root underlay, and peer-netns tunnel counter deltas to document overlay/underlay overlap (double counting) without attributing underlay bytes to the process.
+- Syntax, CLI, and synthetic report checks passed. No BPF/loader change; baseline 38/38 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16`
+- Expectation: exact TCP bytes, `check_tunnel: True`, expected rows only on tunnel devices, underlay counter delta > 0 (overlap documented), 0 unattributed. If tunnel creation fails, record the kernel/module limitation rather than claiming tunnel coverage.
