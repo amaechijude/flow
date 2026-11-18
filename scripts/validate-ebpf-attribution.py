@@ -274,6 +274,7 @@ def run_udp_transfer(
 
     payload = b"u" * datagram_size
     sent = 0
+    datagrams = 0
     started = time.monotonic()
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
@@ -282,6 +283,12 @@ def run_udp_transfer(
         while sent < size_bytes:
             n = min(datagram_size, size_bytes - sent)
             sent += client.send(payload[:n])
+            datagrams += 1
+            # Pace bursts so the receiver queue (often capped below the
+            # requested SO_RCVBUF) can drain; drops are still reported by the
+            # sent/received comparison rather than hidden.
+            if datagrams % 64 == 0:
+                time.sleep(0.001)
         # Drain the receive queue before stopping the server thread.
         deadline = time.monotonic() + 5
         stable_since = time.monotonic()
@@ -439,6 +446,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
         f"| TCP (`tcp_sendmsg`/`tcp_recvmsg`) | {ctx['tcp_sent']} | {ctx['tcp_received']} | {tcp_tx} | {tcp_rx} | {pct(tcp_tx, int(ctx['tcp_sent']))}% | {pct(tcp_rx, int(ctx['tcp_received']))}% |",
         f"| UDP (`udp_sendmsg`/`udp_recvmsg`) | {ctx['udp_sent']} | {ctx['udp_received']} | {udp_tx} | {udp_rx} | {pct(udp_tx, int(ctx['udp_sent']))}% | {pct(udp_rx, int(ctx['udp_received']))}% |",
+        "",
+        f"- UDP delivered / UDP sent: {pct(int(ctx['udp_received']), int(ctx['udp_sent']))}% (drops are possible; eBPF RX is compared to delivered bytes).",
         "",
         "| Aggregate | Bytes |",
         "| --- | ---: |",
