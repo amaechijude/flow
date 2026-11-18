@@ -858,3 +858,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Pending
 - Privileged two-netns collision run: two distinct netns with identical `(pid, start, uid)` must produce distinct counter rows, stable keys, and persisted process metadata before claiming cross-namespace de-duplication is validated.
+
+## 2026-11-18 (two-netns collision harness added, not yet run)
+
+### Implementation
+- Added `--mode netns-key` to `scripts/validate-ebpf-attribution.py`. It creates two temporary netns (`flowkeyA`, `flowkeyB`) with loopback up, then runs one helper process that uses `setns()` to move between them while keeping TGID/start/UID identical.
+- The harness requires two distinct expected-process TCP rows with the same `tgid`, `start_ns`, `uid`, `proto`, and `ifname`, but different `netns_id`, each with exact TX/RX bytes. A single merged row fails `check_netns_collision`.
+- Report gains a "Netns-key collision observation" section listing both netns rows and the collision check. Temporary netns are cleaned up in `finally`.
+- Syntax check and synthetic report generation passed; no product code changed. Build/test baseline remains 38/38 passing.
+
+### Pending
+- Privileged run:
+  `sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1`
+- Expectation: two distinct rows with exact 1 MiB TX/RX each, one verified process generation, 0 unattributed. Acceptance requires the report to show `check_netns_collision: True`; a merged row means the netns key change has not achieved its purpose.

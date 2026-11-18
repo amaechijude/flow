@@ -148,6 +148,7 @@ sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
 sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
 sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3 --peer-bytes 16777216 --peer-udp-bytes 16777216
+sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over

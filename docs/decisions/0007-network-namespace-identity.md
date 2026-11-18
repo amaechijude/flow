@@ -54,4 +54,7 @@ those runs exercised two distinct netns with identical process keys.
   optional in the parser for older loaders.
 - This does **not** by itself validate multi-namespace attribution. A
   controlled two-netns collision test is still required before claiming that
-  cross-namespace merging is fixed in production behavior.
+  cross-namespace merging is fixed in production behavior. The harness mode
+  `--mode netns-key` implements that test: one process moves between two
+  temporary netns via `setns()`, and two distinct rows with exact bytes must
+  appear. It is not yet privileged-run.

@@ -21,6 +21,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
     sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3
+    sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -36,11 +37,17 @@ UDP echo servers) and requires the expected rows to resolve to that interface in
 the root netns. Peer/interface are inferred from the default route or supplied
 with `--peer-host`/`--interface`. If the peer reports byte counts, pass them with
 `--peer-bytes`/`--peer-udp-bytes` to include them as checks.
+
+Netns-key mode creates two temporary netns with loopback and runs one helper
+process in both via setns(), keeping TGID/start/UID identical. It requires two
+distinct counter rows with exact bytes, proving netns participates in the
+identity key. It is TCP-only and privileged.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import os
 import signal
@@ -193,6 +200,48 @@ class VethPair:
             text=True,
             check=False,
         )
+
+
+NETNS_KEY_A = "flowkeyA"
+NETNS_KEY_B = "flowkeyB"
+
+
+class NetnsKeyPair:
+    """Two temporary netns with only loopback, for identity-collision runs.
+
+    A single helper process moves between them with setns(), keeping TGID,
+    start time and UID identical. Only netns changes.
+    """
+
+    def start(self) -> None:
+        existing = subprocess.run(
+            ["ip", "-o", "netns", "list"], capture_output=True, text=True, check=False
+        ).stdout
+        names = {line.split(":")[0].strip() for line in existing.splitlines()}
+        for name in (NETNS_KEY_A, NETNS_KEY_B):
+            if name in names:
+                raise SystemExit(f"netns {name} already exists; refusing to modify it")
+        try:
+            for name in (NETNS_KEY_A, NETNS_KEY_B):
+                _ip("netns", "add", name)
+                _ip("netns", "exec", name, "ip", "link", "set", "lo", "up")
+        except SystemExit:
+            self.stop()
+            raise
+        time.sleep(0.2)
+
+    @property
+    def paths(self) -> tuple[str, str]:
+        return (f"/var/run/netns/{NETNS_KEY_A}", f"/var/run/netns/{NETNS_KEY_B}")
+
+    def stop(self) -> None:
+        for name in (NETNS_KEY_A, NETNS_KEY_B):
+            subprocess.run(
+                ["ip", "netns", "delete", name],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
 
 
 class LoaderRun:
@@ -374,6 +423,55 @@ def spawn_client_helper(proto: str, host: str, port: int, size: int) -> tuple[su
     if not line.startswith("HELPER_PID "):
         proc.kill()
         raise SystemExit(f"client helper failed to start: {(line or 'no output')!r}")
+    return proc, int(line.split()[1])
+
+
+CLONE_NEWNET = 0x40000000
+
+
+def set_netns(path: str) -> None:
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        if ctypes.CDLL(None, use_errno=True).setns(fd, CLONE_NEWNET) != 0:
+            err = ctypes.get_errno()
+            raise OSError(err, f"setns({path}) failed: {os.strerror(err)}")
+    finally:
+        os.close(fd)
+
+
+def run_netns_key_helper(path_a: str, path_b: str, size: int) -> int:
+    """Same process/TGID sends in two netns; only netns changes between runs."""
+    print(f"HELPER_PID {os.getpid()}", flush=True)
+    for path in (path_a, path_b):
+        set_netns(path)
+        sent, received, _ = run_tcp_transfer(size)
+        print(f"HELPER_XFER {path} {sent} {received}", flush=True)
+        time.sleep(2)
+    # Stay alive so the loader can emit snapshots for both netns rows.
+    sys.stdin.readline()
+    return 0
+
+
+def spawn_netns_key_helper(path_a: str, path_b: str, size: int) -> tuple[subprocess.Popen[str], int]:
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--netns-helper",
+            path_a,
+            path_b,
+            str(size),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    line = proc.stdout.readline().strip() if proc.stdout else ""
+    if not line.startswith("HELPER_PID "):
+        proc.kill()
+        raise SystemExit(f"netns-key helper failed to start: {(line or 'no output')!r}")
     return proc, int(line.split()[1])
 
 
@@ -941,6 +1039,21 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
             "- The BPF map has no expiry; growth here is an observation, not a claim of bounded steady-state memory.",
         ]
+    if ctx.get("netns_key"):
+        lines += [
+            "",
+            "## Netns-key collision observation",
+            "",
+            f"- Payload per netns: {ctx['netns_key_bytes']}",
+            f"- Expected-process TCP rows: {len(ctx['netns_key_rows'])}",
+        ]
+        for row in ctx["netns_key_rows"]:
+            lines.append(
+                f"  - netns {row['netns_id']}: TX {row['tx']} / RX {row['rx']} on {row['ifname']}"
+            )
+        lines += [
+            "- The rows must differ only by netns id; a single merged row would mean the identity key still merges namespaces.",
+        ]
     lines += [
         "",
         "## Loader overhead (first datapoint)",
@@ -960,6 +1073,10 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Expected-process traffic on expected interface(s): {ctx['check_interface']}",
         f"- No unattributed bytes in a fully controlled transfer: {ctx['check_unattributed']}",
     ]
+    if ctx.get("netns_key"):
+        lines.append(
+            f"- Same TGID/start/uid in two netns produced distinct rows with exact bytes: {ctx['check_netns_collision']}"
+        )
     if ctx.get("nic"):
         tcp_note = (
             f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
@@ -999,6 +1116,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
+    parser.add_argument("--netns-helper", nargs=3, metavar=("PATH_A", "PATH_B", "SIZE"),
+                        help=argparse.SUPPRESS)  # internal: same-PID two-netns collision helper
     parser.add_argument("--soak-child", type=int, metavar="SIZE_BYTES",
                         help=argparse.SUPPRESS)  # internal: short-lived churn process
     parser.add_argument("--peer-host", help="nic mode: peer address (default: default-route gateway)")
@@ -1015,9 +1134,9 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic"),
+        choices=("lo", "veth", "soak", "nic", "netns-key"),
         default="lo",
-        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP echo through a physical interface to a peer (phone hotspot).",
+        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer (phone hotspot). netns-key: same process in two netns to validate netns in the identity key.",
     )
     parser.add_argument("--duration", type=float, default=300.0,
                         help="soak duration in seconds (default: 300)")
@@ -1025,6 +1144,8 @@ def main() -> int:
                         help="payload per protocol per soak iteration/child (default: 1)")
     parser.add_argument("--soak-child-every", type=int, default=5,
                         help="spawn a short-lived child after this many soak iterations (default: 5)")
+    parser.add_argument("--netns-size-mib", type=float, default=1.0,
+                        help="netns-key mode: payload per netns (default: 1)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -1034,6 +1155,10 @@ def main() -> int:
         return run_client_helper(args.client_helper)
     if args.soak_child is not None:
         return run_soak_child(args.soak_child)
+    if args.netns_helper:
+        return run_netns_key_helper(
+            args.netns_helper[0], args.netns_helper[1], int(args.netns_helper[2])
+        )
 
     if os.geteuid() != 0:
         print("error: this validation loads BPF programs and must run as root", file=sys.stderr)
@@ -1046,6 +1171,11 @@ def main() -> int:
 
     soak = args.mode == "soak"
     nic = args.mode == "nic"
+    netns_key = args.mode == "netns-key"
+    netns_key_bytes = int(args.netns_size_mib * 1024 * 1024)
+    if netns_key and netns_key_bytes <= 0:
+        print("error: --netns-size-mib must be positive", file=sys.stderr)
+        return 2
     peer_host = args.peer_host
     peer_interface = args.interface
     if nic:
@@ -1067,6 +1197,7 @@ def main() -> int:
     )
 
     veth = VethPair() if args.mode == "veth" else None
+    netns_pair = NetnsKeyPair() if netns_key else None
     loader: LoaderRun | None = None
     helpers: list[subprocess.Popen[str]] = []
     soak_children: list[subprocess.Popen[str]] = []
@@ -1087,13 +1218,15 @@ def main() -> int:
     try:
         if veth:
             veth.start()
+        if netns_pair:
+            netns_pair.start()
         loader = LoaderRun(args.loader, args.interval)
         loader.start()
         cpu_before = loader.cpu_seconds()
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
-        if not nic:
+        if not nic and not netns_key:
             lo_before = read_net_dev("lo")
         if veth:
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
@@ -1144,6 +1277,17 @@ def main() -> int:
                     "unattributed_rx": last_map.get("urx"),
                 }
             )
+        elif netns_key:
+            assert netns_pair is not None
+            helper, helper_pid = spawn_netns_key_helper(
+                netns_pair.paths[0], netns_pair.paths[1], netns_key_bytes
+            )
+            helpers.append(helper)
+            expected_tgids.add(helper_pid)
+            # Helper does two transfers with short holds; allow several snapshots.
+            time.sleep(8)
+            tcp_sent = tcp_received = 2 * netns_key_bytes
+            udp_sent = udp_received = 0
         elif nic:
             expected_tgids.add(os.getpid())
             nic_before = read_net_dev(peer_interface)
@@ -1187,7 +1331,7 @@ def main() -> int:
             expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
-        lo_after = read_net_dev("lo") if not veth and not nic else None
+        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key else None
         if veth:
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
@@ -1213,6 +1357,8 @@ def main() -> int:
                 child.wait(timeout=5)
         if veth:
             veth.stop()
+        if netns_pair:
+            netns_pair.stop()
 
     elapsed = time.monotonic() - started
     for role, counters in veth_before.items():
@@ -1230,8 +1376,12 @@ def main() -> int:
 
     check_tcp_tx = abs(tcp_attributed_tx - tcp_sent) <= tcp_sent * 0.01
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
-    check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
-    check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
+    if nic or netns_key:
+        check_udp_tx = None
+        check_udp_rx = None
+    else:
+        check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
+        check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
     check_peer_bytes = (
         None
         if not nic or args.peer_bytes is None
@@ -1283,6 +1433,37 @@ def main() -> int:
             )
 
         check_interface = nic_proto_ok(1) and nic_proto_ok(2)
+    elif netns_key:
+        expected_interface_description = "both transfers on `lo` in two distinct netns"
+        transfer_scope = "one helper process moves between two netns via setns()"
+        counter_caveat = "per-netns `lo` counters are not sampled; exactness is checked against rows."
+        process_scope_caveat = (
+            "One TGID/start/uid sends in two netns; two rows with distinct netns ids "
+            "must appear, otherwise the identity key is still merging namespaces."
+        )
+        interface_caveat = (
+            "Two temporary netns with loopback only. This validates netns in the identity "
+            "key, not VPN/tunnel paths or multiple simultaneous interfaces."
+        )
+        netns_rows = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) in expected_tgids and int(p["proto"]) == 1 and int(p["tx"]) > 0
+        ]
+        netns_ids = {int(p["netns_id"]) for p in netns_rows}
+        check_netns_collision = (
+            len(netns_rows) == 2
+            and len(netns_ids) == 2
+            and 0 not in netns_ids
+            and all(int(p["tx"]) == netns_key_bytes and int(p["rx"]) == netns_key_bytes for p in netns_rows)
+            and len({int(p["start_ns"]) for p in netns_rows}) == 1
+            and len({int(p["uid"]) for p in netns_rows}) == 1
+        )
+        check_interface = (
+            len(netns_rows) == 2
+            and all(p["ifname"] == "lo" for p in netns_rows)
+            and int(by_proto[1]["unresolved_tx"]) == 0
+            and int(by_proto[1]["unresolved_rx"]) == 0
+        )
     elif veth:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         helper_tgids = expected_tgids - {os.getpid()}
@@ -1370,15 +1551,19 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-            if veth
+            "same-PID two-netns identity collision"
+            if netns_key
             else (
-                f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                if nic
+                "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+                if veth
                 else (
-                    f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                    if soak
-                    else "loopback `lo`"
+                    f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+                    if nic
+                    else (
+                        f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                        if soak
+                        else "loopback `lo`"
+                    )
                 )
             )
         ),
@@ -1390,6 +1575,10 @@ def main() -> int:
         "root_netns_id": os.stat("/proc/self/ns/net").st_ino,
         "helper_netns_id": helper_netns,
         "nic": nic,
+        "netns_key": netns_key,
+        "netns_key_bytes": netns_key_bytes if netns_key else None,
+        "netns_key_rows": netns_rows if netns_key else [],
+        "check_netns_collision": check_netns_collision if netns_key else None,
         "nic_interface": peer_interface if nic else None,
         "nic_peer_host": peer_host if nic else None,
         "nic_peer_port": args.peer_port if nic else None,
@@ -1452,6 +1641,7 @@ def main() -> int:
         and check_interface
         and (check_peer_bytes if check_peer_bytes is not None else True)
         and (check_peer_udp_bytes if check_peer_udp_bytes is not None else True)
+        and (check_netns_collision if check_netns_collision is not None else True)
     )
     return 0 if passed else 1
 
