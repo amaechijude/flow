@@ -19,9 +19,12 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
  * ifindex is captured from the socket when it can be resolved (bound device,
  * cached RX route, or cached output route). It is part of the key so traffic
  * over different interfaces is reported separately. ifindex 0 means unknown.
+ * netns_id is the network namespace inode captured at event time so identical
+ * process generations in different netns cannot merge.
  */
 struct traffic_key {
     __u64 start_ns;
+    __u64 netns_id;
     __u32 tgid;
     __u32 uid;
     __u32 ifindex;
@@ -111,6 +114,20 @@ static __always_inline __u64 current_process_start_ns(void)
     return BPF_CORE_READ(leader, start_time);
 }
 
+static __always_inline __u64 current_netns_id(void)
+{
+    struct task_struct *task = (struct task_struct *)bpf_get_current_task_btf();
+    if (!task)
+        return 0;
+    struct nsproxy *nsproxy = BPF_CORE_READ(task, nsproxy);
+    if (!nsproxy)
+        return 0;
+    struct net *net = BPF_CORE_READ(nsproxy, net_ns);
+    if (!net)
+        return 0;
+    return BPF_CORE_READ(net, ns.inum);
+}
+
 static __always_inline __u32 sock_ifindex(struct sock *sk)
 {
     if (!sk)
@@ -169,6 +186,7 @@ static __always_inline void add_bytes(__u64 bytes, int is_tx, __u32 proto, struc
     __u32 ifindex = ifindex_hint ? ifindex_hint : sock_ifindex(sk);
     struct traffic_key k = {
         .start_ns = current_process_start_ns(),
+        .netns_id = current_netns_id(),
         .tgid = tgid,
         .uid = uid,
         .ifindex = ifindex,

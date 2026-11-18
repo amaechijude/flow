@@ -89,9 +89,10 @@ internal static class EbpfSnapshotParser
 
         var interfaceName = p.Length > 14 ? NormalizeInterface(p[14]) : null;
 
-        // netns id is appended after proto/ifname. Interfaces in other network
-        // namespaces are emitted as ifindex@netns because ifindex is scoped to
-        // a namespace and cannot be named from the loader's namespace.
+        // netns id is appended after proto/ifname. It is captured at event time
+        // in the kernel and participates in ProcessIdentity.StableKey, so
+        // identical (pid, start, uid) triples in different netns stay distinct.
+        // Interfaces in other namespaces are emitted as ifindex@netns.
         ulong netnsId = 0;
         if (p.Length > 15)
             _ = ulong.TryParse(p[15], NumberStyles.Integer, CultureInfo.InvariantCulture, out netnsId);
@@ -102,7 +103,8 @@ internal static class EbpfSnapshotParser
             startTimeUtc,
             exePath,
             uid,
-            CgroupId: cgroupId > 0 ? cgroupId.ToString(CultureInfo.InvariantCulture) : null);
+            CgroupId: cgroupId > 0 ? cgroupId.ToString(CultureInfo.InvariantCulture) : null,
+            NetworkNamespaceId: netnsId > 0 ? netnsId.ToString(CultureInfo.InvariantCulture) : null);
 
         ApplicationIdentity? appHint = null;
         if (exePath is not null || comm is not null)

@@ -15,10 +15,12 @@ The file/type names retain the historical `flow_tcp_bytes`/`tcp` spelling.
 
 ## Key and interface semantics
 
-- **Key:** `{start_ns, tgid, uid, ifindex, proto}`. `start_ns` is the
+- **Key:** `{start_ns, netns_id, tgid, uid, ifindex, proto}`. `start_ns` is the
   thread-group leader's `task_struct.start_time` (nanoseconds since boot, read
   with CO-RE), captured when the byte event is processed. Using the leader (not
-  the current thread) keeps all threads of one process in one row. PID reuse
+  the current thread) keeps all threads of one process in one row. `netns_id`
+  is the netns inode captured at event time (`nsproxy->net_ns->ns.inum`), so
+  identical process generations in different netns stay distinct. PID reuse
   therefore creates a distinct counter row instead of merging two process
   generations.
 - **Protocol:** `proto` is `1` for TCP and `2` for UDP, so per-protocol
@@ -114,12 +116,14 @@ X  <snapshot_index> <map_entries> <unattributed_tx_total> <unattributed_rx_total
   kernel-captured fallback.
 - `proto` is `1` (TCP) or `2` (UDP). `ifname` is the resolved interface or
   `-` when `ifindex==0`.
-- `netns_id` is the network namespace inode of the owning process. When it
-  differs from the loader's namespace, `ifname` is `ifindex@netns_id` because
-  `ifindex` is namespace-scoped and cannot be named from the loader's namespace.
+- `netns_id` is the network namespace inode captured at event time in the
+  kernel (not inferred from `/proc` at snapshot time). It participates in the
+  BPF key and in `ProcessIdentity.StableKey`. When it differs from the loader's
+  namespace, `ifname` is `ifindex@netns_id` because `ifindex` is namespace-scoped
+  and cannot be named from the loader's namespace.
 - `start_ns`/`cgroup_id` are appended after event-time identity;
   `proto`/`ifname` after UDP/interface support; `netns_id` last. Consumers must
-  accept 11-field, 13-field, and 15-field `E` lines from older loaders.
+  accept 11-field, 13-field, 15-field, and 16-field `E` lines from older loaders.
 - Fields are tab-separated; tabs/newlines inside `comm`/`exe`/`ifname` are
   sanitized to spaces.
 

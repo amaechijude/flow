@@ -33,7 +33,8 @@ identity from `/proc` at snapshot time. Two problems followed:
 5. Define `ProcessIdentity.StableKey` as `pid:startUnixMs:uid`. Executable path
    and other enrichment metadata are attributes, not key material: they can
    become known later or change between snapshots and must not split one
-   process generation into multiple identities.
+   process generation into multiple identities. **ADR 0007 later extends this
+   to `pid:startUnixMs:uid:netns` to prevent cross-namespace merging.**
 6. Persist the kernel-captured cgroup id in the existing `cgroup_id` metadata
    column (numeric id as text). This is an opaque cgroup v2 id, not a path.
 

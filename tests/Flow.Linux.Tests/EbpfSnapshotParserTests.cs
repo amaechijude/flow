@@ -49,6 +49,35 @@ public class EbpfSnapshotParserTests
     }
 
     [Fact]
+    public void ParseEntryNetnsParticipatesInStableKey()
+    {
+        var inRoot = EbpfSnapshotParser.ParseEntry(
+            "E\t501\t1000\t100\t0\t100\t0\tsame\t/usr/bin/same\t0\t1\t1000000000\t7\t1\tlo\t4026531833",
+            Point, ClkTck, BootUnixMs);
+        var inContainer = EbpfSnapshotParser.ParseEntry(
+            "E\t501\t1000\t100\t0\t100\t0\tsame\t/usr/bin/same\t0\t1\t1000000000\t7\t1\tlo\t4026532000",
+            Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(inRoot);
+        Assert.NotNull(inContainer);
+        Assert.Equal("4026531833", inRoot!.Process!.NetworkNamespaceId);
+        Assert.Equal("4026532000", inContainer!.Process!.NetworkNamespaceId);
+        Assert.NotEqual(inRoot.Process.StableKey, inContainer.Process.StableKey);
+    }
+
+    [Fact]
+    public void LegacyLineHasNoNetnsInStableKey()
+    {
+        var ev = EbpfSnapshotParser.ParseEntry(
+            "E\t502\t1000\t100\t0\t100\t0\tlegacy\t/usr/bin/legacy\t0\t1\t1000000000\t7",
+            Point, ClkTck, BootUnixMs);
+
+        Assert.NotNull(ev);
+        Assert.Null(ev!.Process!.NetworkNamespaceId);
+        Assert.EndsWith(":-", ev.Process.StableKey);
+    }
+
+    [Fact]
     public void StableKeyIgnoresMutableEnrichmentMetadata()
     {
         var start = DateTimeOffset.FromUnixTimeMilliseconds(BootUnixMs);

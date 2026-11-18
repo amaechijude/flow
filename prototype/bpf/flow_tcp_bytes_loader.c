@@ -18,6 +18,7 @@ static int g_tsv = 0;
 
 struct traffic_key {
     __u64 start_ns;
+    __u64 netns_id;
     __u32 tgid;
     __u32 uid;
     __u32 ifindex;
@@ -58,11 +59,13 @@ struct unattributed_val {
 #define MAX_PREV 10240
 static struct prev_entry prev[MAX_PREV];
 
-static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns, __u32 ifindex, __u32 proto)
+static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns,
+                                    __u32 ifindex, __u32 proto, __u64 netns_id)
 {
     for (int i = 0; i < MAX_PREV; i++) {
         if (prev[i].used && prev[i].tgid == tgid && prev[i].uid == uid && prev[i].start_ns == start_ns &&
-            prev[i].ifindex == ifindex && prev[i].proto == proto)
+            prev[i].ifindex == ifindex && prev[i].proto == proto &&
+            prev[i].netns_id == netns_id)
             return &prev[i];
     }
     for (int i = 0; i < MAX_PREV; i++) {
@@ -74,6 +77,7 @@ static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns, __u32
             prev[i].start_ns = start_ns;
             prev[i].ifindex = ifindex;
             prev[i].proto = proto;
+            prev[i].netns_id = netns_id;
             snprintf(prev[i].comm, sizeof(prev[i].comm), "?");
             snprintf(prev[i].exe, sizeof(prev[i].exe), "-");
             return &prev[i];
@@ -204,8 +208,10 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             char ifname[64] = {0};
             struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid,
                                               next_key.start_ns ? next_key.start_ns : st,
-                                              next_key.ifindex, next_key.proto);
-            unsigned long long netns_id = (pe && pe->netns_id) ? pe->netns_id : read_netns_id(next_key.tgid);
+                                              next_key.ifindex, next_key.proto, next_key.netns_id);
+            unsigned long long netns_id = next_key.netns_id
+                ? next_key.netns_id
+                : ((pe && pe->netns_id) ? pe->netns_id : read_netns_id(next_key.tgid));
             resolve_ifname(next_key.ifindex, netns_id, ifname, sizeof(ifname));
             unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
             char live_comm[64] = {0}, live_exe[256] = {0};

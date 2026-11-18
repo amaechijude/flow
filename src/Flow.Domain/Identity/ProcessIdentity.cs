@@ -16,8 +16,10 @@ public sealed record ProcessIdentity(
     /// Stable key for a process generation. Deliberately excludes executable path and
     /// other enrichment-only metadata: those may become known later (or differ between
     /// snapshots) and must not split one process generation into multiple identities.
-    /// PID reuse is disambiguated by the event-time start time.
+    /// PID reuse is disambiguated by the event-time start time; network namespace id
+    /// prevents identical (pid, start, uid) triples in different netns from merging.
+    /// Missing netns is rendered as "-".
     /// </summary>
     public string StableKey => FormattableString.Invariant(
-        $"{Pid}:{StartTimeUtc.ToUnixTimeMilliseconds()}:{(Uid.HasValue ? Uid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")}");
+        $"{Pid}:{StartTimeUtc.ToUnixTimeMilliseconds()}:{(Uid.HasValue ? Uid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")}:{NetworkNamespaceId ?? "-"}");
 }

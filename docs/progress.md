@@ -840,3 +840,21 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Changes
 - Accepted/annotated the report and index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
 - Fixed report wording to say TCP+UDP NIC mode. No BPF/loader change; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (network-namespace identity key implemented)
+
+### Design decision
+- Added ADR 0007: capture netns id at event time (`nsproxy->net_ns->ns.inum`), include it in the BPF key and in `ProcessIdentity.StableKey`, and populate the existing `processes.network_namespace_id` column. Historical 3-part stable keys are not rewritten; new rows use 4-part keys.
+
+### Implementation
+- BPF key is now `{start_ns, netns_id, tgid, uid, ifindex, proto}`; netns is read from the thread-group leader via CO-RE at event time.
+- Loader struct/find_prev updated; the TSV `netns_id` field is now the kernel-captured value rather than a `/proc`-snapshot guess.
+- Parser sets `ProcessIdentity.NetworkNamespaceId`; `StableKey` is `pid:startUnixMs:uid:netns` (missing netns renders as `-`).
+- Added parser tests: same pid/start/uid in two netns produce distinct stable keys; legacy lines have no netns in the key.
+
+### Verification
+- BPF object, skeleton, and loader compiled with 0 errors.
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → **38/38 passed** (Linux 19).
+
+### Pending
+- Privileged two-netns collision run: two distinct netns with identical `(pid, start, uid)` must produce distinct counter rows, stable keys, and persisted process metadata before claiming cross-namespace de-duplication is validated.
