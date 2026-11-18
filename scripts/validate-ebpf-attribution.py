@@ -23,6 +23,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --peer-udp-port 9001 --interface wlp0s20f3
     sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
+    sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -49,6 +50,12 @@ BPF map reaches `--churn-target` or `--churn-timeout` expires. It samples map
 entries, CPU, and RSS, and checks that child byte totals still match expected
 payloads. It is an observation of map capacity behavior, not a bounded-memory
 claim.
+
+Wildcard mode creates a veth pair across two netns and uses one UDP server
+bound to 0.0.0.0 in the root netns. Clients on loopback and on the veth peer
+send known payloads; the run requires two RX rows for the same server process
+with different interface names, validating per-datagram interface attribution
+for wildcard-bound sockets.
 """
 
 from __future__ import annotations
@@ -154,6 +161,7 @@ class VethPair:
 
     def __init__(self) -> None:
         self.server_ifindex = 0
+        self.client_ifindex = 0
 
     def start(self) -> None:
         namespaces = subprocess.run(
@@ -192,6 +200,14 @@ class VethPair:
         )
         if detail.returncode == 0 and detail.stdout.strip():
             self.server_ifindex = int(detail.stdout.split(":", 1)[0].strip())
+        client_detail = subprocess.run(
+            ["ip", "-o", "link", "show", VETH_CLIENT],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if client_detail.returncode == 0 and client_detail.stdout.strip():
+            self.client_ifindex = int(client_detail.stdout.split(":", 1)[0].strip())
         time.sleep(0.2)
 
     def stop(self) -> None:
@@ -459,6 +475,35 @@ def run_netns_key_helper(path_a: str, path_b: str, size: int) -> int:
     return 0
 
 
+def run_wildcard_helper(host: str, port: int, size: int) -> int:
+    """Send a known UDP payload from the peer netns to a wildcard listener."""
+    print(f"HELPER_PID {os.getpid()}", flush=True)
+    sent = send_udp_once(size, host, port)
+    print(f"HELPER_SENT {sent}", flush=True)
+    sys.stdin.readline()
+    return 0
+
+
+def spawn_wildcard_helper(host: str, port: int, size: int) -> tuple[subprocess.Popen[str], int]:
+    proc = subprocess.Popen(
+        [
+            "ip", "netns", "exec", VETH_NS,
+            sys.executable, str(Path(__file__).resolve()),
+            "--wildcard-helper", host, str(port), str(size),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    line = proc.stdout.readline().strip() if proc.stdout else ""
+    if not line.startswith("HELPER_PID "):
+        proc.kill()
+        raise SystemExit(f"wildcard helper failed to start: {(line or 'no output')!r}")
+    return proc, int(line.split()[1])
+
+
 def spawn_netns_key_helper(path_a: str, path_b: str, size: int) -> tuple[subprocess.Popen[str], int]:
     proc = subprocess.Popen(
         [
@@ -523,6 +568,52 @@ def run_tcp_transfer_remote(
     finally:
         sock.close()
     return sent, received, time.monotonic() - started
+
+
+def send_udp_once(size_bytes: int, host: str, port: int, datagram_size: int = 4096) -> int:
+    """Fire-and-forget UDP payload; returns bytes accepted by send()."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    payload = b"w" * datagram_size
+    sent = 0
+    datagrams = 0
+    try:
+        sock.connect((host, port))
+        while sent < size_bytes:
+            n = min(datagram_size, size_bytes - sent)
+            sent += sock.send(payload[:n])
+            datagrams += 1
+            if datagrams % 8 == 0:
+                time.sleep(0.005)
+    finally:
+        sock.close()
+    return sent
+
+
+def receive_wildcard_udp(
+    port: int, expected_root: int, expected_peer: int, timeout: float = 30.0
+) -> dict[str, int]:
+    """Receive on 0.0.0.0 and count bytes from loopback and veth sources."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 << 20)
+    sock.bind(("0.0.0.0", port))
+    sock.settimeout(0.5)
+    totals = {"root": 0, "peer": 0}
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            if totals["root"] >= expected_root and totals["peer"] >= expected_peer:
+                break
+            try:
+                data, addr = sock.recvfrom(1 << 16)
+            except socket.timeout:
+                continue
+            if addr[0] == "127.0.0.1":
+                totals["root"] += len(data)
+            else:
+                totals["peer"] += len(data)
+    finally:
+        sock.close()
+    return totals
 
 
 def run_udp_transfer_remote(
@@ -1085,6 +1176,18 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
             "- The map has no expiry; growth and any accounting shortfall near capacity are observations, not a bounded-memory claim.",
         ]
+    if ctx.get("wildcard"):
+        counts = ctx["wildcard_counts"]
+        lines += [
+            "",
+            "## Wildcard multi-interface observation",
+            "",
+            f"- Payload per source: {ctx['wildcard_bytes']}",
+            f"- Server received: loopback {counts.get('root', 0)}, veth {counts.get('peer', 0)}",
+            f"- flowvA ifindex in root: {ctx['wildcard_client_ifindex']}; flowvB ifindex in peer netns: {ctx['wildcard_server_ifindex']}",
+            f"- Wildcard per-datagram interface attribution check: {ctx['check_wildcard']}",
+            "- The same server socket received traffic on two interfaces; rows must differ by interface name.",
+        ]
     lines += [
         "",
         "## Loader overhead (first datapoint)",
@@ -1113,6 +1216,10 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Child byte totals matched expected payload: {ctx['check_churn_bytes']}",
             f"- Map target reached: {ctx['check_map_target']}",
         ]
+    if ctx.get("wildcard"):
+        lines.append(
+            f"- Wildcard server received on two interfaces with correct per-interface bytes: {ctx['check_wildcard']}"
+        )
     if ctx.get("nic"):
         tcp_note = (
             f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
@@ -1152,6 +1259,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
+    parser.add_argument("--wildcard-helper", nargs=3, metavar=("HOST", "PORT", "SIZE"),
+                        help=argparse.SUPPRESS)  # internal: peer-netns UDP sender
     parser.add_argument("--netns-helper", nargs=3, metavar=("PATH_A", "PATH_B", "SIZE"),
                         help=argparse.SUPPRESS)  # internal: same-PID two-netns collision helper
     parser.add_argument("--soak-child", type=int, metavar="SIZE_BYTES",
@@ -1170,7 +1279,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard"),
         default="lo",
         help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
@@ -1190,6 +1299,8 @@ def main() -> int:
                         help="map-churn mode: children spawned per batch (default: 64)")
     parser.add_argument("--churn-timeout", type=float, default=180.0,
                         help="map-churn mode: maximum run seconds (default: 180)")
+    parser.add_argument("--wildcard-size-mib", type=float, default=1.0,
+                        help="wildcard mode: UDP payload per source (default: 1)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -1199,6 +1310,8 @@ def main() -> int:
         return run_client_helper(args.client_helper)
     if args.soak_child is not None:
         return run_soak_child(args.soak_child)
+    if args.wildcard_helper:
+        return run_wildcard_helper(args.wildcard_helper[0], int(args.wildcard_helper[1]), int(args.wildcard_helper[2]))
     if args.netns_helper:
         return run_netns_key_helper(
             args.netns_helper[0], args.netns_helper[1], int(args.netns_helper[2])
@@ -1217,6 +1330,11 @@ def main() -> int:
     nic = args.mode == "nic"
     netns_key = args.mode == "netns-key"
     map_churn = args.mode == "map-churn"
+    wildcard = args.mode == "wildcard"
+    wildcard_bytes = int(args.wildcard_size_mib * 1024 * 1024)
+    if wildcard and wildcard_bytes <= 0:
+        print("error: --wildcard-size-mib must be positive", file=sys.stderr)
+        return 2
     netns_key_bytes = int(args.netns_size_mib * 1024 * 1024)
     if netns_key and netns_key_bytes <= 0:
         print("error: --netns-size-mib must be positive", file=sys.stderr)
@@ -1251,7 +1369,7 @@ def main() -> int:
         DEFAULT_REPORT_DIR / f"ebpf-controlled-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.md"
     )
 
-    veth = VethPair() if args.mode == "veth" else None
+    veth = VethPair() if args.mode in ("veth", "wildcard") else None
     netns_pair = NetnsKeyPair() if netns_key else None
     loader: LoaderRun | None = None
     helpers: list[subprocess.Popen[str]] = []
@@ -1262,6 +1380,8 @@ def main() -> int:
     churn_samples: list[dict[str, object]] = []
     churn_batches = 0
     churn_successes = 0
+    wildcard_counts: dict[str, int] = {}
+    wildcard_port = 17001
     started = time.monotonic()
     cpu_before = None
     lo_before = None
@@ -1287,7 +1407,7 @@ def main() -> int:
 
         if not nic and not netns_key and not map_churn:
             lo_before = read_net_dev("lo")
-        if veth:
+        if veth and args.mode == "veth":
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
         if soak:
             expected_tgids.add(os.getpid())
@@ -1370,6 +1490,31 @@ def main() -> int:
                 time.sleep(args.interval)
             tcp_sent = tcp_received = churn_successes * churn_child_bytes
             udp_sent = udp_received = churn_successes * churn_child_bytes
+        elif wildcard:
+            assert veth is not None
+            expected_tgids.add(os.getpid())
+            server_result: dict[str, dict[str, int]] = {}
+
+            def wildcard_server() -> None:
+                server_result["counts"] = receive_wildcard_udp(
+                    wildcard_port, wildcard_bytes, wildcard_bytes, timeout=30
+                )
+
+            server_thread = threading.Thread(target=wildcard_server, daemon=True)
+            server_thread.start()
+            time.sleep(0.2)
+            send_udp_once(wildcard_bytes, "127.0.0.1", wildcard_port)
+            helper, helper_pid = spawn_wildcard_helper(
+                VETH_CLIENT_IP, wildcard_port, wildcard_bytes
+            )
+            helpers.append(helper)
+            expected_tgids.add(helper_pid)
+            helper_netns = os.stat(f"/proc/{helper_pid}/ns/net").st_ino
+            server_thread.join(timeout=35)
+            wildcard_counts = server_result.get("counts", {})
+            time.sleep(max(2.0, args.interval * 2.5))
+            tcp_sent = tcp_received = 0
+            udp_sent = udp_received = 2 * wildcard_bytes
         elif netns_key:
             assert netns_pair is not None
             helper, helper_pid = spawn_netns_key_helper(
@@ -1425,7 +1570,7 @@ def main() -> int:
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
         lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn else None
-        if veth:
+        if veth and args.mode == "veth":
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
         cpu_after = loader.cpu_seconds() if loader else None
@@ -1497,6 +1642,7 @@ def main() -> int:
     check_netns_collision: bool | None = None
     check_churn_bytes: bool | None = None
     check_map_target: bool | None = None
+    check_wildcard: bool | None = None
     if nic:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         expected_interface_description = (
@@ -1533,6 +1679,57 @@ def main() -> int:
             )
 
         check_interface = nic_proto_ok(1) and nic_proto_ok(2)
+    elif wildcard:
+        assert veth is not None
+        root_netns = os.stat("/proc/self/ns/net").st_ino
+        expected_helper_ifname = f"{veth.server_ifindex}@{helper_netns}"
+        expected_interface_description = (
+            f"one wildcard UDP listener on `lo` and `{VETH_CLIENT}` in root netns; "
+            f"client TX from flowvB ({expected_helper_ifname})"
+        )
+        transfer_scope = "wildcard UDP server receiving from loopback and veth clients"
+        counter_caveat = "per-interface counters are not sampled for this probe."
+        process_scope_caveat = (
+            "The parent wildcard server and the peer-netns client are expected processes. "
+            "Client identity is n/a after exit; kernel-captured identity is retained."
+        )
+        interface_caveat = (
+            "A temporary veth pair plus loopback in the root netns exercises one "
+            "wildcard-bound UDP socket receiving on two interfaces. This is not a VPN, "
+            "physical-NIC, or multiple-simultaneous-interface workload."
+        )
+        parent_rx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == os.getpid() and int(p["proto"]) == 2 and int(p["rx"]) > 0
+        ]
+        parent_tx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == os.getpid() and int(p["proto"]) == 2 and int(p["tx"]) > 0
+        ]
+        helper_tx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) in (expected_tgids - {os.getpid()})
+            and int(p["proto"]) == 2 and int(p["tx"]) > 0
+        ]
+        check_wildcard = (
+            len(parent_rx) == 2
+            and {p["ifname"] for p in parent_rx} == {"lo", VETH_CLIENT}
+            and any(int(p["rx"]) == wildcard_counts.get("root", -1) and p["ifname"] == "lo" for p in parent_rx)
+            and any(int(p["rx"]) == wildcard_counts.get("peer", -1) and p["ifname"] == VETH_CLIENT for p in parent_rx)
+            and len(parent_tx) == 1
+            and parent_tx[0]["ifname"] == "lo"
+            and int(parent_tx[0]["tx"]) == wildcard_counts.get("root", -1)
+            and len(helper_tx) == 1
+            and helper_tx[0]["ifname"] == expected_helper_ifname
+            and int(helper_tx[0]["tx"]) == wildcard_counts.get("peer", -1)
+        )
+        check_interface = (
+            all(p["ifname"] in ("lo", VETH_CLIENT, expected_helper_ifname) for p in summary["processes"]
+                if int(p["tgid"]) in expected_tgids)
+            and int(by_proto[2]["unresolved_tx"]) == 0
+            and int(by_proto[2]["unresolved_rx"]) == 0
+        )
+        check_identity = None
     elif map_churn:
         expected_interface_description = "all expected child rows on `lo`"
         transfer_scope = (
@@ -1693,21 +1890,25 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "high-rate child churn toward BPF map capacity"
-            if map_churn
+            "wildcard UDP listener on two interfaces"
+            if wildcard
             else (
-                "same-PID two-netns identity collision"
-                if netns_key
+                "high-rate child churn toward BPF map capacity"
+                if map_churn
                 else (
-                    "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-                    if veth
+                    "same-PID two-netns identity collision"
+                    if netns_key
                     else (
-                        f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                        if nic
+                        "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+                        if veth
                         else (
-                            f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                            if soak
-                            else "loopback `lo`"
+                            f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+                            if nic
+                            else (
+                                f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                                if soak
+                                else "loopback `lo`"
+                            )
                         )
                     )
                 )
@@ -1723,6 +1924,12 @@ def main() -> int:
         "nic": nic,
         "netns_key": netns_key,
         "map_churn": map_churn,
+        "wildcard": wildcard,
+        "wildcard_counts": wildcard_counts if wildcard else {},
+        "wildcard_bytes": wildcard_bytes if wildcard else None,
+        "wildcard_client_ifindex": veth.client_ifindex if wildcard and veth else None,
+        "wildcard_server_ifindex": veth.server_ifindex if wildcard and veth else None,
+        "check_wildcard": check_wildcard,
         "churn_target": args.churn_target if map_churn else None,
         "churn_batch": args.churn_batch if map_churn else None,
         "churn_child_bytes": churn_child_bytes if map_churn else None,
@@ -1799,6 +2006,7 @@ def main() -> int:
         and (check_peer_udp_bytes if check_peer_udp_bytes is not None else True)
         and (check_netns_collision if check_netns_collision is not None else True)
         and (check_churn_bytes if check_churn_bytes is not None else True)
+        and (check_wildcard if check_wildcard is not None else True)
     )
     return 0 if passed else 1
 

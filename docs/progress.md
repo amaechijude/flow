@@ -919,3 +919,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Changes
 - Accepted/annotated report and index; fixed harness initialization, capped displayed TGIDs/payload wording, and updated `docs/attribution.md`, `HANDOFF.md`.
 - No BPF/loader change; build/test baseline remains 38/38 passing.
+
+## 2026-11-18 (wildcard multi-interface probe added, not yet run)
+
+### Implementation
+- Added `--mode wildcard`: creates the veth/netns pair, runs one UDP server bound to 0.0.0.0 in the root netns, and sends known payloads from a loopback client and from a peer-netns client via the veth.
+- Requires two RX rows for the same server TGID/protocol on `lo` and `flowvA`, with per-interface bytes matching each source; also checks client TX rows on each side.
+- VethPair now records the root-side ifindex; helper and report sections added.
+- Syntax, synthetic report, and helper-path checks passed. No BPF/loader change; build/test baseline remains 38/38 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1`
+- Expectation: `check_wildcard: True`, exact per-source bytes, distinct interfaces for the same wildcard-bound server socket, 0 unattributed.
