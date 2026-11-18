@@ -457,8 +457,8 @@ def run_udp_transfer_remote(
             n = min(datagram_size, size_bytes - sent)
             sent += sock.send(payload[:n])
             datagrams += 1
-            if datagrams % 64 == 0:
-                time.sleep(0.001)
+            if datagrams % 8 == 0:
+                time.sleep(0.005)
 
         # Wait for echoed datagrams; stops early if delivery has settled.
         deadline = time.monotonic() + 30
@@ -1147,13 +1147,20 @@ def main() -> int:
         elif nic:
             expected_tgids.add(os.getpid())
             nic_before = read_net_dev(peer_interface)
-            tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
-                size_bytes, peer_host, args.peer_port
-            )
-            time.sleep(max(1.0, args.interval * 1.5))
-            udp_sent, udp_received, udp_s = run_udp_transfer_remote(
-                size_bytes, peer_host, args.peer_udp_port
-            )
+            try:
+                tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
+                    size_bytes, peer_host, args.peer_port
+                )
+                time.sleep(max(1.0, args.interval * 1.5))
+                udp_sent, udp_received, udp_s = run_udp_transfer_remote(
+                    size_bytes, peer_host, args.peer_udp_port
+                )
+            except OSError as exc:
+                raise SystemExit(
+                    f"NIC echo transfer failed: {exc}. Check that the Termux listener is "
+                    f"still running on {peer_host}:{args.peer_port} (TCP) and "
+                    f"{args.peer_udp_port} (UDP)."
+                ) from exc
             time.sleep(max(1.0, args.interval * 1.5))
             nic_after = read_net_dev(peer_interface)
         elif veth:

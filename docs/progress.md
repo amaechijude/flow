@@ -814,3 +814,13 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Verification
 - `py_compile` passed for harness and Termux helper; local TCP/UDP echo smoke tests passed; synthetic NIC report generation passed.
 - No BPF/loader change; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (physical-NIC UDP listener lifecycle fix)
+
+### Measured failure
+- First TCP+UDP NIC attempt reached the TCP phase successfully, then failed with `ConnectionRefusedError` on UDP. The Termux screenshot showed `udp 0` printed before the TCP peer connected: the UDP listener's 3 s idle timeout closed it before the harness's UDP phase.
+
+### Fix
+- `scripts/termux_echo_listener.py`: UDP thread is non-daemon, stays alive while TCP runs, and only drains for 5 s after TCP completes; sets `SO_RCVBUF` to 8 MiB.
+- Harness: UDP sends are paced every 8 datagrams with a 5 ms pause; NIC transfer `OSError`s now produce a diagnostic instead of a bare traceback.
+- Local combined TCP+UDP echo smoke with the helper passed (1 MiB each, exact). No BPF/loader change; build/test baseline remains 36/36 passing.
