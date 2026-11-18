@@ -1565,6 +1565,7 @@ def main() -> int:
     wildcard_counts: dict[str, int] = {}
     wildcard_port = 17001
     tunnel_port = 17002
+    tunnel_helper_netns = 0
     tunnel_counters: dict[str, dict[str, int] | None] = {}
     started = time.monotonic()
     cpu_before = None
@@ -1685,6 +1686,11 @@ def main() -> int:
             server, server_pid = spawn_tunnel_server(tunnel_port, tunnel_bytes)
             helpers.append(server)
             expected_tgids.add(server_pid)
+            try:
+                tunnel_helper_netns = os.stat(f"/proc/{server_pid}/ns/net").st_ino
+            except FileNotFoundError:
+                detail = server.stdout.read() if server.stdout else ""
+                raise SystemExit(f"tunnel server exited before netns inspection: {detail.strip()}")
             tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
                 tunnel_bytes, TUNNEL_PEER_IP, tunnel_port
             )
@@ -1888,7 +1894,7 @@ def main() -> int:
     elif tunnel:
         assert tunnel_topology is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino
-        helper_netns = os.stat(f"/proc/{server_pid}/ns/net").st_ino
+        helper_netns = tunnel_helper_netns
         expected_peer_ifname = f"{tunnel_topology.peer_ifindex}@{helper_netns}"
         expected_interface_description = (
             f"client TX on `{TUNNEL_NAME}` (root) and server RX on {expected_peer_ifname}"
