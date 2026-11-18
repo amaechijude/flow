@@ -712,3 +712,21 @@
 - `dotnet build Flow.slnx -v minimal` → succeeded (3 warnings, 0 errors).
 - `dotnet test Flow.slnx -v minimal --no-build` → **36/36 passed**.
 - GUI was not relaunched/screenshotted in this step; visual confirmation is requested from the user after rebuild.
+
+## 2026-11-18 (soak validation mode added, not yet run)
+
+### Implementation
+- Added `--mode soak` to `scripts/validate-ebpf-attribution.py`: repeats small loopback TCP/UDP transfers for `--duration` seconds (default 300), spawns a short-lived child every `--soak-child-every` iterations (default 5) using `--soak-child`, and samples loader CPU/RSS plus BPF map entry count.
+- Loader now emits an `X` TSV line (`snapshot`, `map_entries`, cumulative unattributed TX/RX); harness parses it and reports map growth over time.
+- Exactness checks cover only the parent TGID; child churn rows are reported as background. No claim of bounded steady-state memory is made (map has no expiry).
+- Report gains a "Soak / map growth observation" section with duration, iterations, child count, map-entry samples, and CPU/RSS samples.
+
+### Verification (non-privileged)
+- `py_compile`, `--soak-child` 1 MiB transfer, and synthetic soak report generation passed.
+- Loader recompiled with `0` errors; product build/test baseline remains 36/36 passing.
+- Privileged soak run still pending.
+
+### How to run
+```bash
+sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
+```

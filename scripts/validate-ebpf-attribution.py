@@ -19,9 +19,15 @@ the prototype program for the duration of the run.
 Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
-    sudo python3 scripts/validate-ebpf-attribution.py --size-mib 64 --interval 1 --report out.md
+    sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
+
+Soak mode repeats small loopback TCP/UDP transfers for `--duration` seconds and
+periodically spawns short-lived child processes (`--soak-child-every`) to create
+process churn. It samples loader CPU, peak RSS, and BPF map entry count (emitted
+by the loader as `X` lines) to provide steady-state overhead/map-growth evidence.
+Exactness checks cover only the parent TGID; child rows are reported as background.
 """
 
 from __future__ import annotations
@@ -191,6 +197,7 @@ class LoaderRun:
         self.proc: subprocess.Popen[str] | None = None
         self.entries: list[dict[str, object]] = []
         self.unattributed: list[dict[str, int]] = []
+        self.map_samples: list[dict[str, int]] = []
         self.meta: dict[str, int] = {}
         self.stderr: list[str] = []
         self._threads: list[threading.Thread] = []
@@ -260,6 +267,18 @@ class LoaderRun:
                 self.unattributed.append(
                     {"tx_delta": int(p[3]), "rx_delta": int(p[4])}
                 )
+            elif line.startswith("X\t"):
+                # X <snapshot> <map_entries> <unattributed_tx> <unattributed_rx>
+                p = line.split("\t")
+                if len(p) >= 5:
+                    self.map_samples.append(
+                        {
+                            "snapshot": int(p[1]),
+                            "entries": int(p[2]),
+                            "utx": int(p[3]),
+                            "urx": int(p[4]),
+                        }
+                    )
 
     def _read_stderr(self) -> None:
         assert self.proc is not None and self.proc.stderr is not None
@@ -348,6 +367,22 @@ def spawn_client_helper(proto: str, host: str, port: int, size: int) -> tuple[su
         proc.kill()
         raise SystemExit(f"client helper failed to start: {(line or 'no output')!r}")
     return proc, int(line.split()[1])
+
+
+def run_soak_child(size_bytes: int) -> int:
+    """Short-lived process that does one loopback TCP+UDP transfer, then exits."""
+    run_tcp_transfer(size_bytes)
+    run_udp_transfer(size_bytes)
+    return 0
+
+
+def spawn_soak_child(size_bytes: int) -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "--soak-child", str(size_bytes)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
 
 
 def run_tcp_transfer_netns(
@@ -773,6 +808,24 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Expected-process unresolved-interface bytes: TX {s['expected_unresolved_tx']}, RX {s['expected_unresolved_rx']}",
         f"- TCP interface name(s): {', '.join(by_proto[1]['ifnames']) or '(none)'} (TX: {', '.join(by_proto[1]['tx_ifnames']) or '(none)'}; RX: {', '.join(by_proto[1]['rx_ifnames']) or '(none)'})",
         f"- UDP interface name(s): {', '.join(by_proto[2]['ifnames']) or '(none)'} (TX: {', '.join(by_proto[2]['tx_ifnames']) or '(none)'}; RX: {', '.join(by_proto[2]['rx_ifnames']) or '(none)'})",
+    ]
+    if ctx.get("soak"):
+        entries = ctx["soak_map_entries"]
+        cpu_samples = ctx["soak_cpu_samples"]
+        rss_samples = ctx["soak_rss_samples"]
+        lines += [
+            "",
+            "## Soak / map growth observation",
+            "",
+            f"- Duration requested: {ctx['soak_duration_s']:.0f} s; wall time: {ctx['elapsed_s']:.2f} s",
+            f"- Parent iterations: {ctx['soak_iterations']}",
+            f"- Short-lived child transfers: {ctx['soak_children']}",
+            f"- BPF map entries: first {entries[0] if entries else 'n/a'}, last {entries[-1] if entries else 'n/a'}, max {max(entries) if entries else 'n/a'}",
+            f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",
+            f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
+            "- The BPF map has no expiry; growth here is an observation, not a claim of bounded steady-state memory.",
+        ]
+    lines += [
         "",
         "## Loader overhead (first datapoint)",
         "",
@@ -812,14 +865,22 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
+    parser.add_argument("--soak-child", type=int, metavar="SIZE_BYTES",
+                        help=argparse.SUPPRESS)  # internal: short-lived churn process
     parser.add_argument("--size-mib", type=float, default=16.0, help="payload per protocol")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth"),
+        choices=("lo", "veth", "soak"),
         default="lo",
-        help="lo: one loopback interface for TX/RX (default). veth: temporary veth pair, TX via flowvA and RX via flowvB.",
+        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence.",
     )
+    parser.add_argument("--duration", type=float, default=300.0,
+                        help="soak duration in seconds (default: 300)")
+    parser.add_argument("--soak-size-mib", type=float, default=1.0,
+                        help="payload per protocol per soak iteration/child (default: 1)")
+    parser.add_argument("--soak-child-every", type=int, default=5,
+                        help="spawn a short-lived child after this many soak iterations (default: 5)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -827,6 +888,8 @@ def main() -> int:
 
     if args.client_helper:
         return run_client_helper(args.client_helper)
+    if args.soak_child is not None:
+        return run_soak_child(args.soak_child)
 
     if os.geteuid() != 0:
         print("error: this validation loads BPF programs and must run as root", file=sys.stderr)
@@ -837,6 +900,13 @@ def main() -> int:
         print("error: --size-mib must be positive", file=sys.stderr)
         return 2
 
+    soak = args.mode == "soak"
+    soak_bytes = int(args.soak_size_mib * 1024 * 1024)
+    if soak and (args.duration <= 0 or soak_bytes <= 0 or args.soak_child_every <= 0):
+        print("error: soak mode needs positive --duration, --soak-size-mib, and --soak-child-every",
+              file=sys.stderr)
+        return 2
+
     report_path = args.report or (
         DEFAULT_REPORT_DIR / f"ebpf-controlled-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.md"
     )
@@ -844,6 +914,9 @@ def main() -> int:
     veth = VethPair() if args.mode == "veth" else None
     loader: LoaderRun | None = None
     helpers: list[subprocess.Popen[str]] = []
+    soak_children: list[subprocess.Popen[str]] = []
+    soak_iterations = 0
+    soak_samples: list[dict[str, object]] = []
     started = time.monotonic()
     cpu_before = None
     lo_before = None
@@ -866,7 +939,54 @@ def main() -> int:
         lo_before = read_net_dev("lo")
         if veth:
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
-        if veth:
+        if soak:
+            expected_tgids.add(os.getpid())
+            sample_every = max(args.interval, 5.0)
+            deadline = time.monotonic() + args.duration
+            next_sample = time.monotonic() + sample_every
+            while time.monotonic() < deadline:
+                t_sent, t_recv, _ = run_tcp_transfer(soak_bytes)
+                u_sent, u_recv, _ = run_udp_transfer(soak_bytes)
+                tcp_sent += t_sent
+                tcp_received += t_recv
+                udp_sent += u_sent
+                udp_received += u_recv
+                soak_iterations += 1
+                if soak_iterations % args.soak_child_every == 0:
+                    soak_children.append(spawn_soak_child(soak_bytes))
+                now = time.monotonic()
+                if now >= next_sample:
+                    last_map = loader.map_samples[-1] if loader.map_samples else {}
+                    soak_samples.append(
+                        {
+                            "elapsed_s": round(now - started, 1),
+                            "cpu_s": loader.cpu_seconds(),
+                            "rss_kb": loader.peak_rss_kb(),
+                            "map_entries": last_map.get("entries"),
+                            "unattributed_tx": last_map.get("utx"),
+                            "unattributed_rx": last_map.get("urx"),
+                        }
+                    )
+                    next_sample = now + sample_every
+                time.sleep(0.1)
+            for child in soak_children:
+                try:
+                    child.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+            last_map = loader.map_samples[-1] if loader.map_samples else {}
+            soak_samples.append(
+                {
+                    "elapsed_s": round(time.monotonic() - started, 1),
+                    "cpu_s": loader.cpu_seconds(),
+                    "rss_kb": loader.peak_rss_kb(),
+                    "map_entries": last_map.get("entries"),
+                    "unattributed_tx": last_map.get("utx"),
+                    "unattributed_rx": last_map.get("urx"),
+                }
+            )
+        elif veth:
             expected_tgids.add(os.getpid())
             # The server runs in the root namespace, where only flowvA
             # (192.0.2.1) exists; 192.0.2.2 lives in flowvns.
@@ -910,6 +1030,10 @@ def main() -> int:
             except subprocess.TimeoutExpired:
                 helper.kill()
                 helper.wait(timeout=5)
+        for child in soak_children:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
         if veth:
             veth.stop()
 
@@ -976,6 +1100,26 @@ def main() -> int:
             )
 
         check_interface = veth_direction_ok(1) and veth_direction_ok(2)
+    elif soak:
+        expected_interface_description = "all expected-process rows on `lo`"
+        transfer_scope = (
+            f"repeated loopback transfers for {args.duration:.0f}s with short-lived child churn"
+        )
+        counter_caveat = "`lo` counters count IP/link bytes including headers."
+        process_scope_caveat = (
+            f"Exactness checks cover only the parent TGID ({os.getpid()}); "
+            f"{len(soak_children)} short-lived child transfer(s) are reported as "
+            "background rows and are not asserted."
+        )
+        interface_caveat = (
+            "Loopback traffic appears once in each interface direction. Child churn "
+            "rows may have unverified identity after exit; map growth is reported as "
+            "observation only, since the BPF map has no expiry."
+        )
+        check_interface = (
+            summary["expected_resolved_ifnames"] == ["lo"]
+            and int(summary["expected_unresolved_rows"]) == 0
+        )
     else:
         expected_interface_description = "all expected-process rows on `lo`"
         transfer_scope = "same process"
@@ -1005,7 +1149,11 @@ def main() -> int:
         "mode_description": (
             "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
             if veth
-            else "loopback `lo`"
+            else (
+                f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                if soak
+                else "loopback `lo`"
+            )
         ),
         "expected_interface_description": expected_interface_description,
         "interface_caveat": interface_caveat,
@@ -1014,6 +1162,14 @@ def main() -> int:
         "process_scope_caveat": process_scope_caveat,
         "root_netns_id": os.stat("/proc/self/ns/net").st_ino,
         "helper_netns_id": helper_netns,
+        "soak": soak,
+        "soak_duration_s": args.duration,
+        "soak_iterations": soak_iterations,
+        "soak_children": len(soak_children),
+        "soak_samples": soak_samples,
+        "soak_map_entries": [s["map_entries"] for s in soak_samples if s["map_entries"] is not None],
+        "soak_cpu_samples": [s["cpu_s"] for s in soak_samples if s["cpu_s"] is not None],
+        "soak_rss_samples": [s["rss_kb"] for s in soak_samples if s["rss_kb"] is not None],
         "size_bytes": size_bytes,
         "size_mib": args.size_mib,
         "tcp_sent": tcp_sent,

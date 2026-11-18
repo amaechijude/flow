@@ -185,6 +185,7 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
     int fd = bpf_map__fd(skel->maps.traffic);
     int ufd = bpf_map__fd(skel->maps.unattributed);
     long clk_tck = read_clk_tck();
+    int map_entries = 0;
 
     if (!g_tsv) {
         printf("\n--- snapshot %d: TCP+UDP transport attribution (cumulative, delta, event-time identity) ---\n", snapshot_idx);
@@ -195,6 +196,7 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
 
     while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
         if (bpf_map_lookup_elem(fd, &next_key, &val) == 0) {
+            map_entries++;
             unsigned long long st = read_proc_startticks(next_key.tgid);
             char bpf_comm[17] = {0};
             memcpy(bpf_comm, val.comm, sizeof(val.comm));
@@ -297,6 +299,11 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                    (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
         }
     }
+    if (!g_tsv)
+        printf("MAP entries=%d\n", map_entries);
+    else
+        printf("X\t%d\t%d\t%llu\t%llu\n", snapshot_idx, map_entries,
+               (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes);
     fflush(stdout);
 }
 

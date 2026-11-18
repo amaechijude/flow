@@ -106,6 +106,7 @@ M  <clk_tck>  <boot_unix_ms>
 S  <snapshot_index>
 E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id> <proto> <ifname> <netns_id>
 U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
+X  <snapshot_index> <map_entries> <unattributed_tx_total> <unattributed_rx_total>
 ```
 
 - `identity_verified=1` means `/proc` enrichment matched the event-time start
@@ -141,6 +142,7 @@ It also asserts that the expected TGID maps to exactly one process generation
 ```bash
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
 sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
+sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over
@@ -152,7 +154,15 @@ All checks passed, one verified generation per TGID, expected unresolved bytes
 0. Background UDP from unrelated processes still produced unresolved-interface
 rows. This accepts controlled two-interface separation across two virtual
 interfaces only; physical NICs, VPN/tunnel paths, wildcard multi-interface
-sockets, and namespace-level key merging remain unmeasured. The script writes a Markdown report under
+sockets, and namespace-level key merging remain unmeasured.
+
+`--mode soak` (not yet privileged-run) repeats `--soak-size-mib` transfers for
+`--duration` seconds and spawns a short-lived child every `--soak-child-every`
+iterations. It samples loader CPU/RSS and loader-emitted map-entry counts to
+provide steady-state overhead and map-growth evidence. Byte-exactness checks
+cover only the parent TGID; child churn and unresolved background rows are
+reported separately. The BPF map has no expiry, so growth is an observation,
+not a claim of bounded memory. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
