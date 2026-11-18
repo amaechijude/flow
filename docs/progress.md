@@ -748,3 +748,20 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
 - Fixed a missing prose line in the harness report generator and in the generated report.
 - No product code changed; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (accepted 300-second soak)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1` produced `docs/measurements/ebpf-controlled-20261118T121017Z.md`.
+- Parent TGID 86954: TCP and UDP each exactly **364,904,448 TX/RX** (348 iterations × 1 MiB), one verified generation, all expected rows `lo`, 0 unresolved/unattributed bytes; all checks true.
+- 69 short-lived child transfers produced distinct background process generations; some show `netns=0`, `exe=-`, or `identity verified: no` after exit.
+- Loader CPU: 0.038 s → 1.895 s cumulative over ~305 s; reported average **0.616% of one core**. Peak RSS constant at **3,960 KiB** across all samples.
+- BPF map entries: **10 → 161** with no expiry. Growth is an observation under low churn, not a bounded-memory or capacity claim.
+
+### Interpretation
+- Extends the 60 s soak: byte accounting stayed exact for the parent, unattributed stayed zero, CPU scaled roughly linearly with time at <1% of one core, and RSS remained flat over 5 minutes.
+- Not production-load evidence: map capacity not approached, higher churn/higher connection counts unmeasured, physical NIC/VPN/wildcard multi-interface paths unmeasured.
+
+### Changes
+- Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
+- No product code changed; build/test baseline remains 36/36 passing.

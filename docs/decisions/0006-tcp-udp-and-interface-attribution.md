@@ -98,10 +98,17 @@ claims that are not observed.
   of growth, not a bounded-memory or production-load claim. Short-lived child
   generations appeared as background rows, some without `/proc` enrichment
   after exit.
+- **300 s soak 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T121017Z.md`):**
+  the parent matched 348×1 MiB exactly for TCP and UDP, one verified generation,
+  all rows on `lo`, 0 unattributed. Loader CPU averaged ~0.616% of one core and
+  peak RSS stayed constant at 3,960 KiB. BPF map entries grew 10→161 with no
+  expiry; this extends the growth observation but is still not a capacity,
+  high-churn, or bounded-memory claim. 69 short-lived child generations were
+  background rows, some without complete post-exit `/proc` enrichment.
 - **Byte accuracy, the loopback interface fix, controlled two-interface
-  separation, and a 60 s overhead/map-growth observation are validated.**
+  separation, and 60 s/300 s overhead/map-growth observations are validated.**
   Physical NICs, VPN/tunnel paths, wildcard multi-interface sockets,
-  cross-namespace key merging, and long-duration/high-churn behavior remain
+  cross-namespace key merging, and map-capacity/high-churn behavior remain
   unproven (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.

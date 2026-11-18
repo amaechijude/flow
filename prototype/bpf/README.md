@@ -168,7 +168,13 @@ Accepted 60 s run (`docs/measurements/ebpf-controlled-20261118T115504Z.md`): 70
 iterations × 1 MiB per protocol matched exactly, all checks passed, loader CPU
 ~0.2% of one core, peak RSS constant 3,916 KiB, map entries grew 6→34 with no
 expiry. Child churn rows were background only; some exited before `/proc`
-enrichment. This is a first sustained datapoint, not production-load evidence. The script writes a Markdown report under
+enrichment.
+
+Accepted 300 s run (`docs/measurements/ebpf-controlled-20261118T121017Z.md`): 348
+iterations × 1 MiB per protocol matched exactly, all checks passed, loader CPU
+~0.616% of one core, peak RSS constant 3,960 KiB, map entries grew 10→161 with
+no expiry, 69 child-churn background rows. These are sustained observations,
+not capacity/high-churn/production-load evidence. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
