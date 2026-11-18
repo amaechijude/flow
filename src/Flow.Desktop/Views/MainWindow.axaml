@@ -31,6 +31,13 @@
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,8,0" IsVisible="{Binding Overview.IsCustomRange}">
+                            <TextBlock Text="From:" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding Overview.CustomStartDate}" />
+                            <TextBlock Text="To:" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding Overview.CustomEndDate}" />
+                            <Button Content="Apply" Command="{Binding Overview.RefreshCommand}" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,8,0">
                             <TextBlock Text="Interface filter:" VerticalAlignment="Center" />
                             <ComboBox ItemsSource="{Binding Overview.InterfaceFilters}" SelectedItem="{Binding Overview.SelectedInterfaceFilter}" MinWidth="200">
@@ -42,8 +49,10 @@
                             </ComboBox>
                         </StackPanel>
                         <Button Content="Refresh" Command="{Binding Overview.RefreshCommand}" Margin="0,0,8,0" />
+                        <Button Content="Export CSV" Command="{Binding Overview.ExportCsvCommand}" Margin="0,0,8,0" />
                         <TextBlock Text="Loading..." IsVisible="{Binding Overview.IsBusy}" VerticalAlignment="Center" />
                     </WrapPanel>
+                    <TextBlock Text="{Binding Overview.ExportStatus}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
                 </StackPanel>
             </Border>
 

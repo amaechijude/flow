@@ -442,3 +442,17 @@
 - No live D-Bus change/status signals yet (poll/refresh model), no automated daemon↔client IPC integration test, and no custom calendar date picker/time-zone-aware calendar range UX.
 - Charting is textual/list-based (real buckets), not a graphical chart library (Avalonia charting dependency/Wayland fit still to verify if added).
 - Provider/identity/gate hardening (interface mapping for ebpf, PID-reuse/event-time identity, UDP/namespace/VPN/virtual-interface semantics, controlled accuracy/overhead evidence) and rollups/retention/exports/packaging remain pending.
+
+## 2026-11-18 (UI ranges and CSV export)
+
+### Completed
+- **Desktop UI (real data):** added `Today`/`Yesterday` calendar ranges (local day boundaries converted to UTC `[start,end)`) and a `Custom range` mode with date pickers and apply action; range computation centralized for refresh/export.
+- **CSV export:** added "Export CSV" action exporting the currently selected range/interface-filter view (summary, applications, processes, interfaces, 1-minute time series) to `~/flow-export-<utc-timestamp>.csv` with generation time, range/TZ context, filter, and attribution/measurement caveats in headers. Exports use real persisted/query results (no fabricated data).
+- **Docs:** progress updated. (IPC contract is v2 in implementation; ADR 0003 text still references initial v1 methods and should be reconciled in a follow-up ADR/update.)
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 errors; 1 pre-existing warning).
+- `dotnet test Flow.slnx -v minimal` → **passed** (16 tests total).
+
+### Notes / remaining next steps
+- Export writes to a fixed user-home path (no file picker yet). Graphical charts, live D-Bus signals, automated IPC integration tests, retention/rollups, and provider/identity/gate hardening remain pending.
