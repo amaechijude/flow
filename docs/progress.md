@@ -599,3 +599,23 @@
 ### Changes recorded
 - Accepted/annotated the new report, updated `docs/measurements/README.md`, `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md` accordingly.
 - No product code changed in this documentation/evidence step; the build/test baseline remains **35/35 passing**.
+
+## 2026-11-18 (two-interface validation harness implemented, not yet run)
+
+### Completed
+- Extended `scripts/validate-ebpf-attribution.py` with `--mode veth` (default remains the accepted `lo` mode).
+  - Creates a temporary veth pair `flowvA` (192.0.2.1/24) / `flowvB` (192.0.2.2/24) via `ip`, refuses to touch pre-existing device names, and deletes the pair in a `finally` block.
+  - Client sockets bind to `flowvA` / 192.0.2.1 and server sockets to `flowvB` / 192.0.2.2 using `SO_BINDTODEVICE`, so TX and RX exercise distinct interfaces while staying in one process and one network namespace.
+  - Per-protocol summary now records TX and RX interface names separately and unresolved TX/RX bytes; the interface gate requires TCP and UDP TX on `flowvA` and RX on `flowvB`.
+  - Report includes per-role `/proc/net/dev` deltas, expected-interface description, mode, and mode-specific caveats.
+  - Default loopback mode output remains compatible with earlier accepted reports.
+
+### Verification (non-privileged)
+- `py_compile` succeeded; synthetic report generation succeeded.
+- TCP and UDP transfer smoke tests with distinct source addresses (127.0.0.1 / 127.0.0.2) delivered 1 MiB each in full.
+- No product code changed; build/test baseline remains **35/35 passing**.
+
+### Pending
+- Privileged `--mode veth` run: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth`.
+- Expectation: expected-process TX rows on `flowvA`, RX rows on `flowvB`, both protocols exact payload, one verified generation, 0 unresolved/unattributed. If RX resolves to `lo` or `-`, record the measured result instead of claiming two-interface coverage; that would indicate local-delivery short-circuiting or interface-resolution scope limits.
+- Cross-network-namespace interface naming remains unhandled (`ifindex` is namespace-scoped); document rather than guess.

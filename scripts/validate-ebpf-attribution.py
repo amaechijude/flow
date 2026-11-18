@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Controlled validation for the Flow eBPF TCP+UDP attribution prototype.
 
-Runs known-size loopback TCP and UDP transfers while the privileged loader
-samples, then compares per-process attributed bytes against the expected
-payloads and the kernel's loopback interface counters. It also verifies that
-the expected process's traffic is attributed to the `lo` interface, and
-records loader CPU time and peak RSS as a first overhead datapoint.
+Runs known-size TCP and UDP transfers while the privileged loader samples, then
+compares per-process attributed bytes against the expected payloads and interface
+counters. It also verifies interface attribution and records loader CPU time and
+peak RSS as a first overhead datapoint.
+
+Default mode uses loopback `lo` for both directions. `--mode veth` creates a
+temporary veth pair and binds the client to 192.0.2.1 (flowvA) and the server to
+192.0.2.2 (flowvB), so TX and RX must resolve to two distinct interfaces.
 
 This script MUST run as root (or with CAP_BPF/CAP_PERFMON/CAP_SYS_ADMIN) because
 it loads and attaches BPF programs. It does not modify the system beyond loading
@@ -13,6 +16,7 @@ the prototype program for the duration of the run.
 
 Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
+    sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 64 --interval 1 --report out.md
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
@@ -89,6 +93,63 @@ def read_proc_peak_rss_kb(pid: int) -> int | None:
     except (OSError, ValueError):
         pass
     return None
+
+
+VETH_CLIENT = "flowvA"
+VETH_SERVER = "flowvB"
+VETH_CLIENT_IP = "192.0.2.1"
+VETH_SERVER_IP = "192.0.2.2"
+VETH_PREFIX = 24
+
+
+def _ip(*args: str) -> None:
+    result = subprocess.run(
+        ["ip", *args], capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"ip {' '.join(args)} failed: {(result.stderr or result.stdout).strip()}"
+        )
+
+
+class VethPair:
+    """Temporary veth pair for controlled two-interface transfers.
+
+    Only creates/deletes the two dedicated device names; refuses to touch an
+    existing interface with either name.
+    """
+
+    def start(self) -> None:
+        for name in (VETH_CLIENT, VETH_SERVER):
+            existing = subprocess.run(
+                ["ip", "-o", "link", "show", name],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if existing.returncode == 0:
+                raise SystemExit(
+                    f"interface {name} already exists; refusing to modify it"
+                )
+        _ip("link", "add", VETH_CLIENT, "type", "veth", "peer", "name", VETH_SERVER)
+        try:
+            _ip("addr", "add", f"{VETH_CLIENT_IP}/{VETH_PREFIX}", "dev", VETH_CLIENT)
+            _ip("addr", "add", f"{VETH_SERVER_IP}/{VETH_PREFIX}", "dev", VETH_SERVER)
+            _ip("link", "set", VETH_CLIENT, "up")
+            _ip("link", "set", VETH_SERVER, "up")
+        except SystemExit:
+            self.stop()
+            raise
+        # Let the kernel install connected routes before transfers start.
+        time.sleep(0.2)
+
+    def stop(self) -> None:
+        subprocess.run(
+            ["ip", "link", "del", VETH_CLIENT],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
 
 
 class LoaderRun:
@@ -199,11 +260,24 @@ class LoaderRun:
             t.join(timeout=5)
 
 
-def run_tcp_transfer(size_bytes: int, host: str = "127.0.0.1") -> tuple[int, int, float]:
-    """Send size_bytes over a loopback TCP connection; return sent, received, elapsed."""
+def run_tcp_transfer(
+    size_bytes: int,
+    host: str = "127.0.0.1",
+    server_bind: str | None = None,
+    client_bind: str | None = None,
+    server_device: str | None = None,
+    client_device: str | None = None,
+) -> tuple[int, int, float]:
+    """Send size_bytes over a TCP connection; return sent, received, elapsed.
+
+    With distinct bind addresses/devices the client and server can exercise two
+    different interfaces (e.g. a veth pair) in the same process.
+    """
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind((host, 0))
+    if server_device:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, server_device.encode())
+    server.bind((server_bind or host, 0))
     server.listen(1)
     port = server.getsockname()[1]
     received = [0]
@@ -223,13 +297,22 @@ def run_tcp_transfer(size_bytes: int, host: str = "127.0.0.1") -> tuple[int, int
     chunk = b"x" * (1 << 20)
     sent = 0
     started = time.monotonic()
-    with socket.create_connection((host, port), timeout=30) as client:
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        client.settimeout(30)
+        if client_device:
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, client_device.encode())
+        if client_bind:
+            client.bind((client_bind, 0))
+        client.connect((host, port))
         client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         while sent < size_bytes:
             n = min(len(chunk), size_bytes - sent)
             client.sendall(chunk[:n])
             sent += n
         client.shutdown(socket.SHUT_WR)
+    finally:
+        client.close()
 
     thread.join(timeout=60)
     server.close()
@@ -240,16 +323,23 @@ def run_udp_transfer(
     size_bytes: int,
     host: str = "127.0.0.1",
     datagram_size: int = 4096,
+    server_bind: str | None = None,
+    client_bind: str | None = None,
+    server_device: str | None = None,
+    client_device: str | None = None,
 ) -> tuple[int, int, float]:
-    """Send size_bytes of loopback UDP payload; return sent, received, elapsed.
+    """Send size_bytes of UDP payload; return sent, received, elapsed.
 
     UDP may drop datagrams. The caller compares eBPF TX against bytes accepted by
     send() and eBPF RX against bytes actually delivered to recvfrom(), so drops
     are reported rather than hidden. QUIC would appear here as UDP payload too.
+    Distinct bind addresses exercise two interfaces in the same process.
     """
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 << 20)
-    server.bind((host, 0))
+    if server_device:
+        server.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, server_device.encode())
+    server.bind((server_bind or host, 0))
     server.settimeout(0.25)
     port = server.getsockname()[1]
     received = [0]
@@ -279,6 +369,10 @@ def run_udp_transfer(
     client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         client.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 8 << 20)
+        if client_device:
+            client.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, client_device.encode())
+        if client_bind:
+            client.bind((client_bind, 0))
         client.connect((host, port))
         while sent < size_bytes:
             n = min(datagram_size, size_bytes - sent)
@@ -362,6 +456,18 @@ def summarize(
             "tx": sum(int(p["tx"]) for p in rows),
             "rx": sum(int(p["rx"]) for p in rows),
             "ifnames": sorted({str(p["ifname"]) for p in rows}),
+            "tx_ifnames": sorted(
+                {str(p["ifname"]) for p in rows if int(p["tx"]) > 0}
+            ),
+            "rx_ifnames": sorted(
+                {str(p["ifname"]) for p in rows if int(p["rx"]) > 0}
+            ),
+            "unresolved_tx": sum(
+                int(p["tx"]) for p in rows if str(p["ifname"]) in ("", "-", "?", "0")
+            ),
+            "unresolved_rx": sum(
+                int(p["rx"]) for p in rows if str(p["ifname"]) in ("", "-", "?", "0")
+            ),
             "rows": len(rows),
         }
 
@@ -437,7 +543,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Date (UTC): {ctx['date']}",
         f"- Kernel: `{ctx['kernel']}`",
         f"- Loader: `{ctx['loader']}` (interval {ctx['interval']} s)",
-        f"- Payload per protocol: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB), loopback `lo`",
+        f"- Payload per protocol: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB), {ctx['mode_description']}",
         f"- Transfers: TCP then UDP, same process",
         f"- Expected process TGID: {s['expected_tgid']}",
         f"- Loader wall time: {ctx['elapsed_s']:.2f} s",
@@ -469,6 +575,14 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"| `lo` TX delta (IP/link, both protocols) | {lo_tx} |",
             f"| `lo` RX delta (IP/link, both protocols) | {lo_rx} |",
         ]
+    for dev in ("client", "server"):
+        before = ctx.get(f"veth_{dev}_before")
+        after = ctx.get(f"veth_{dev}_after")
+        if before and after:
+            lines += [
+                f"| `{before['name']}` TX delta | {after['tx_bytes'] - before['tx_bytes']} |",
+                f"| `{before['name']}` RX delta | {after['rx_bytes'] - before['rx_bytes']} |",
+            ]
     lines += [
         "",
         "## Per-process rows (TGID + event-time start_ns + UID + proto + interface)",
@@ -487,11 +601,12 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         "## Interface attribution",
         "",
+        f"- Expected interface: {ctx['expected_interface_description']}",
         f"- Expected-process resolved interface(s): {', '.join(s['expected_resolved_ifnames']) or '(none)'}",
         f"- Expected-process rows with unresolved interface: {s['expected_unresolved_rows']}",
         f"- Expected-process unresolved-interface bytes: TX {s['expected_unresolved_tx']}, RX {s['expected_unresolved_rx']}",
-        f"- Expected-process TCP interface name(s): {', '.join(by_proto[1]['ifnames']) or '(none)'}",
-        f"- Expected-process UDP interface name(s): {', '.join(by_proto[2]['ifnames']) or '(none)'}",
+        f"- TCP interface name(s): {', '.join(by_proto[1]['ifnames']) or '(none)'} (TX: {', '.join(by_proto[1]['tx_ifnames']) or '(none)'}; RX: {', '.join(by_proto[1]['rx_ifnames']) or '(none)'})",
+        f"- UDP interface name(s): {', '.join(by_proto[2]['ifnames']) or '(none)'} (TX: {', '.join(by_proto[2]['tx_ifnames']) or '(none)'}; RX: {', '.join(by_proto[2]['rx_ifnames']) or '(none)'})",
         "",
         "## Loader overhead (first datapoint)",
         "",
@@ -507,7 +622,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- UDP attributed RX within ±1% of payload delivered to recvfrom(): {ctx['check_udp_rx']}",
         f"- Expected TGID has exactly one process generation (no thread/start-time split): {ctx['check_single_generation']}",
         f"- Expected process identity verified against live `/proc`: {ctx['check_identity']}",
-        f"- Expected-process traffic attributed to `lo`: {ctx['check_interface']}",
+        f"- Expected-process traffic on expected interface(s): {ctx['check_interface']}",
         f"- No unattributed bytes in a fully controlled transfer: {ctx['check_unattributed']}",
         "",
         "## Interpretation and caveats",
@@ -520,9 +635,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "  background traffic from other processes during the run is reported separately.",
         "- UDP datagrams may be dropped by the receiver; the UDP RX comparison uses bytes actually",
         "  delivered to recvfrom(), and dropped bytes are not counted as attributed RX.",
-        "- Loopback traffic appears once in each interface direction; this run does not exercise",
-        "  physical-interface, namespace, VPN, or container paths, and it does not prove that",
-        "  unconnected/uncached UDP sockets always resolve an interface.",
+        f"- {ctx['interface_caveat']}",
         "- This is a controlled sanity check, not a claim of complete attribution coverage.",
         "",
     ]
@@ -534,6 +647,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--size-mib", type=float, default=16.0, help="payload per protocol")
     parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument(
+        "--mode",
+        choices=("lo", "veth"),
+        default="lo",
+        help="lo: one loopback interface for TX/RX (default). veth: temporary veth pair, TX via flowvA and RX via flowvB.",
+    )
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -552,28 +671,61 @@ def main() -> int:
         DEFAULT_REPORT_DIR / f"ebpf-controlled-{datetime.now(timezone.utc):%Y%m%dT%H%M%SZ}.md"
     )
 
+    veth = VethPair() if args.mode == "veth" else None
     loader = LoaderRun(args.loader, args.interval)
     started = time.monotonic()
     cpu_before = None
+    lo_before = None
+    lo_after = None
+    veth_before: dict[str, dict[str, int] | None] = {}
+    veth_after: dict[str, dict[str, int] | None] = {}
     try:
+        if veth:
+            veth.start()
         loader.start()
         cpu_before = loader.cpu_seconds()
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
         lo_before = read_net_dev("lo")
-        tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes)
+        if veth:
+            veth_before = {
+                "client": read_net_dev(VETH_CLIENT),
+                "server": read_net_dev(VETH_SERVER),
+            }
+        transfer_kwargs = (
+            {
+                "host": VETH_SERVER_IP,
+                "server_bind": VETH_SERVER_IP,
+                "client_bind": VETH_CLIENT_IP,
+                "server_device": VETH_SERVER,
+                "client_device": VETH_CLIENT,
+            }
+            if veth
+            else {"host": "127.0.0.1"}
+        )
+        tcp_sent, tcp_received, tcp_s = run_tcp_transfer(size_bytes, **transfer_kwargs)
         time.sleep(max(1.0, args.interval * 1.5))
-        udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes)
+        udp_sent, udp_received, udp_s = run_udp_transfer(size_bytes, **transfer_kwargs)
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
+        lo_after = read_net_dev("lo") if not veth else None
+        if veth:
+            veth_after = {
+                "client": read_net_dev(VETH_CLIENT),
+                "server": read_net_dev(VETH_SERVER),
+            }
     finally:
         cpu_after = loader.cpu_seconds()
         rss_kb = loader.peak_rss_kb()
         loader.stop()
+        if veth:
+            veth.stop()
 
     elapsed = time.monotonic() - started
-    lo_after = read_net_dev("lo")
+    for role, counters in veth_before.items():
+        if counters is not None:
+            counters["name"] = VETH_CLIENT if role == "client" else VETH_SERVER  # type: ignore[assignment]
     expected_tgid = os.getpid()
     summary = summarize(loader.entries, loader.unattributed, expected_tgid)
     cpu_s = round(cpu_after - cpu_before, 3) if cpu_before is not None and cpu_after is not None else None
@@ -591,10 +743,39 @@ def main() -> int:
     check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
     check_single_generation = int(summary["expected_generations"]) == 1
     check_identity = bool(summary["expected_identity_verified"])
-    check_interface = (
-        summary["expected_resolved_ifnames"] == ["lo"]
-        and int(summary["expected_unresolved_rows"]) == 0
-    )
+    if veth:
+        expected_interface_description = (
+            f"TCP/UDP TX `{VETH_CLIENT}`, TCP/UDP RX `{VETH_SERVER}`"
+        )
+        interface_caveat = (
+            "A temporary veth pair exercises two distinct non-loopback interfaces "
+            "in one network namespace. This does not cover physical NICs, multiple "
+            "simultaneous interface pairs, namespaces/containers, VPN/tunnel paths, "
+            "or virtual-interface double-counting."
+        )
+
+        def direction_ok(proto: int) -> bool:
+            p = by_proto[proto]
+            return (
+                p["tx_ifnames"] == [VETH_CLIENT]
+                and p["rx_ifnames"] == [VETH_SERVER]
+                and int(p["unresolved_tx"]) == 0
+                and int(p["unresolved_rx"]) == 0
+            )
+
+        check_interface = direction_ok(1) and direction_ok(2)
+    else:
+        expected_interface_description = "all expected-process rows on `lo`"
+        interface_caveat = (
+            "Loopback traffic appears once in each interface direction; this run does "
+            "not exercise physical-interface, namespace, VPN, or container paths, and "
+            "it does not prove that unconnected/uncached UDP sockets always resolve "
+            "an interface."
+        )
+        check_interface = (
+            summary["expected_resolved_ifnames"] == ["lo"]
+            and int(summary["expected_unresolved_rows"]) == 0
+        )
     check_unattributed = int(summary["unattributed_tx"]) == 0 and int(summary["unattributed_rx"]) == 0
 
     ctx = {
@@ -602,6 +783,14 @@ def main() -> int:
         "kernel": os.uname().release,
         "loader": str(args.loader),
         "interval": args.interval,
+        "mode": args.mode,
+        "mode_description": (
+            "temporary veth pair (192.0.2.1/24 <-> 192.0.2.2/24)"
+            if veth
+            else "loopback `lo`"
+        ),
+        "expected_interface_description": expected_interface_description,
+        "interface_caveat": interface_caveat,
         "size_bytes": size_bytes,
         "size_mib": args.size_mib,
         "tcp_sent": tcp_sent,
@@ -613,6 +802,10 @@ def main() -> int:
         "elapsed_s": elapsed,
         "lo_before": lo_before,
         "lo_after": lo_after,
+        "veth_client_before": veth_before.get("client"),
+        "veth_client_after": veth_after.get("client"),
+        "veth_server_before": veth_before.get("server"),
+        "veth_server_after": veth_after.get("server"),
         "summary": summary,
         "cpu_s": cpu_s,
         "cpu_pct": cpu_pct,
