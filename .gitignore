@@ -48,3 +48,7 @@ logs/
 *.changes
 /packaging/out/
 st.sh
+
+# Python bytecode
+__pycache__/
+*.pyc
