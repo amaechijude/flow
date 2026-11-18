@@ -271,7 +271,8 @@ class TunnelTopology:
         local = VETH_CLIENT_IP if not netns else VETH_SERVER_IP
         remote = VETH_SERVER_IP if not netns else VETH_CLIENT_IP
         addr = TUNNEL_ROOT_IP if not netns else TUNNEL_PEER_IP
-        prefix = ["ip", "netns", "exec", VETH_NS] if netns else []
+        # _ip() already prepends "ip"; do not include it in the netns prefix.
+        prefix = ["netns", "exec", VETH_NS] if netns else []
         underlay = VETH_CLIENT if not netns else VETH_SERVER
         if mode == "vxlan":
             _ip(
