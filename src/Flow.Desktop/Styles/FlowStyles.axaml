@@ -1,0 +1,352 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Styles.Resources>
+        <!-- Obsidian telemetry palette (dark-first), adapted from flow_designs. -->
+        <SolidColorBrush x:Key="FlowGroundBrush" Color="#0B0F14" />
+        <SolidColorBrush x:Key="FlowSurfaceBrush" Color="#10141A" />
+        <SolidColorBrush x:Key="FlowSurfaceLowBrush" Color="#141920" />
+        <SolidColorBrush x:Key="FlowCardBrush" Color="#151A21" />
+        <SolidColorBrush x:Key="FlowCardHighBrush" Color="#1C2229" />
+        <SolidColorBrush x:Key="FlowCardHighestBrush" Color="#262C34" />
+        <SolidColorBrush x:Key="FlowBorderBrush" Color="#212B36" />
+        <SolidColorBrush x:Key="FlowBorderStrongBrush" Color="#32404D" />
+        <SolidColorBrush x:Key="FlowTextBrush" Color="#DFE2EB" />
+        <SolidColorBrush x:Key="FlowTextMutedBrush" Color="#BCC9CD" />
+        <SolidColorBrush x:Key="FlowTextDimBrush" Color="#819096" />
+        <SolidColorBrush x:Key="FlowTextFaintBrush" Color="#64748B" />
+        <SolidColorBrush x:Key="FlowPrimaryBrush" Color="#4CD7F6" />
+        <SolidColorBrush x:Key="FlowPrimaryDeepBrush" Color="#06B6D4" />
+        <SolidColorBrush x:Key="FlowPrimarySoftBrush" Color="#123540" />
+        <SolidColorBrush x:Key="FlowOnPrimaryBrush" Color="#04252D" />
+        <SolidColorBrush x:Key="FlowSecondaryBrush" Color="#4EDEA3" />
+        <SolidColorBrush x:Key="FlowSecondarySoftBrush" Color="#12312A" />
+        <SolidColorBrush x:Key="FlowTertiaryBrush" Color="#D0BCFF" />
+        <SolidColorBrush x:Key="FlowTertiarySoftBrush" Color="#241D3A" />
+        <SolidColorBrush x:Key="FlowWarningBrush" Color="#F5B44A" />
+        <SolidColorBrush x:Key="FlowWarningSoftBrush" Color="#362B16" />
+        <SolidColorBrush x:Key="FlowErrorBrush" Color="#FF8A93" />
+        <SolidColorBrush x:Key="FlowErrorSoftBrush" Color="#3A1B20" />
+        <SolidColorBrush x:Key="FlowRowHoverBrush" Color="#1A2129" />
+        <SolidColorBrush x:Key="FlowRowSelectedBrush" Color="#1B2C35" />
+
+        <FontFamily x:Key="FlowMonoFont">monospace, DejaVu Sans Mono, Liberation Mono</FontFamily>
+
+        <LinearGradientBrush x:Key="FlowPrimaryGradient" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#664CD7F6" Offset="0" />
+            <GradientStop Color="#084CD7F6" Offset="1" />
+        </LinearGradientBrush>
+        <LinearGradientBrush x:Key="FlowSecondaryGradient" StartPoint="0%,0%" EndPoint="0%,100%">
+            <GradientStop Color="#554EDEA3" Offset="0" />
+            <GradientStop Color="#064EDEA3" Offset="1" />
+        </LinearGradientBrush>
+    </Styles.Resources>
+
+    <Style Selector="Window">
+        <Setter Property="Background" Value="{DynamicResource FlowGroundBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.muted">
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextMutedBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="TextBlock.dim">
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextDimBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="TextBlock.mono">
+        <Setter Property="FontFamily" Value="{StaticResource FlowMonoFont}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="TextBlock.caps">
+        <Setter Property="FontFamily" Value="{StaticResource FlowMonoFont}" />
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextDimBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.headline">
+        <Setter Property="FontSize" Value="24" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.section">
+        <Setter Property="FontSize" Value="15" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.metric">
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.metric-sm">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.rx">
+        <Setter Property="Foreground" Value="{DynamicResource FlowSecondaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.tx">
+        <Setter Property="Foreground" Value="{DynamicResource FlowPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.warn">
+        <Setter Property="Foreground" Value="{DynamicResource FlowWarningBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.error">
+        <Setter Property="Foreground" Value="{DynamicResource FlowErrorBrush}" />
+    </Style>
+
+    <Style Selector="Border.card">
+        <Setter Property="Background" Value="{DynamicResource FlowCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="16" />
+    </Style>
+
+    <Style Selector="Border.card-tight">
+        <Setter Property="Background" Value="{DynamicResource FlowCardBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="12" />
+    </Style>
+
+    <Style Selector="Border.divider">
+        <Setter Property="Background" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="Height" Value="1" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+    </Style>
+
+    <Style Selector="Border.pill">
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="8,3" />
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighBrush}" />
+        <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <Style Selector="Border.pill.primary">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimarySoftBrush}" />
+    </Style>
+
+    <Style Selector="Border.pill.secondary">
+        <Setter Property="Background" Value="{DynamicResource FlowSecondarySoftBrush}" />
+    </Style>
+
+    <Style Selector="Border.pill.warning">
+        <Setter Property="Background" Value="{DynamicResource FlowWarningSoftBrush}" />
+    </Style>
+
+    <Style Selector="Border.pill.error">
+        <Setter Property="Background" Value="{DynamicResource FlowErrorSoftBrush}" />
+    </Style>
+
+    <Style Selector="Button">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderStrongBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="10,6" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighestBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimarySoftBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimaryDeepBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowOnPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowPrimaryDeepBrush}" />
+    </Style>
+
+    <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowOnPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.ghost">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextMutedBrush}" />
+    </Style>
+
+    <Style Selector="Button.ghost:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="Button.tab">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextMutedBrush}" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <Style Selector="Button.tab.active">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimarySoftBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderStrongBrush}" />
+    </Style>
+
+    <Style Selector="Button.sort">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextDimBrush}" />
+        <Setter Property="FontSize" Value="10" />
+        <Setter Property="FontFamily" Value="{StaticResource FlowMonoFont}" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Right" />
+    </Style>
+
+    <Style Selector="Button.sort.left">
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+    </Style>
+
+    <Style Selector="Button.sort:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="Button.nav">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextMutedBrush}" />
+        <Setter Property="HorizontalAlignment" Value="Stretch" />
+        <Setter Property="HorizontalContentAlignment" Value="Left" />
+        <Setter Property="Padding" Value="10,8" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="Normal" />
+    </Style>
+
+    <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+    </Style>
+
+    <Style Selector="Button.nav.active">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimaryDeepBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowOnPrimaryBrush}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+
+    <Style Selector="Button.nav.active:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowOnPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="TextBox">
+        <Setter Property="Background" Value="{DynamicResource FlowSurfaceLowBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="30" />
+    </Style>
+
+    <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowPrimaryBrush}" />
+    </Style>
+
+    <Style Selector="ComboBox">
+        <Setter Property="Background" Value="{DynamicResource FlowSurfaceLowBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="30" />
+    </Style>
+
+    <Style Selector="DatePicker">
+        <Setter Property="Background" Value="{DynamicResource FlowSurfaceLowBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderBrush}" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style Selector="ListBox">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+    </Style>
+
+    <Style Selector="ListBoxItem">
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Margin" Value="0" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+
+    <Style Selector="ListBoxItem:pointerover">
+        <Setter Property="Background" Value="{DynamicResource FlowRowHoverBrush}" />
+    </Style>
+
+    <Style Selector="ListBoxItem:selected">
+        <Setter Property="Background" Value="{DynamicResource FlowRowSelectedBrush}" />
+    </Style>
+
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighestBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource FlowBorderStrongBrush}" />
+        <Setter Property="FontSize" Value="11" />
+    </Style>
+
+    <Style Selector="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ProgressBar">
+        <Setter Property="Background" Value="{DynamicResource FlowCardHighestBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource FlowPrimaryBrush}" />
+        <Setter Property="CornerRadius" Value="2" />
+        <Setter Property="MinHeight" Value="4" />
+    </Style>
+
+    <Style Selector="CheckBox">
+        <Setter Property="Foreground" Value="{DynamicResource FlowTextMutedBrush}" />
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+</Styles>

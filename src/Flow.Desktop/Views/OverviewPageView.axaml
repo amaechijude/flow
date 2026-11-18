@@ -1,0 +1,251 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:controls="using:Flow.Desktop.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.OverviewPageView"
+             x:DataType="vm:OverviewPageViewModel">
+
+    <StackPanel Spacing="16">
+        <!-- Data provenance banner: live IPC vs local SQLite fallback, never fabricated. -->
+        <Border Background="{DynamicResource FlowCardBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
+                BorderThickness="1" CornerRadius="6" Padding="14,10">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <Border Background="{DynamicResource FlowPrimarySoftBrush}" CornerRadius="4" Padding="8,4">
+                        <TextBlock Text="{Binding SourceBadge}" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                    </Border>
+                    <TextBlock Text="{Binding SourceDetail}" Classes="mono" FontSize="11" VerticalAlignment="Center"
+                               TextWrapping="Wrap" Foreground="{DynamicResource FlowTextMutedBrush}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="◷" Foreground="{DynamicResource FlowTextFaintBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding WindowText}" Classes="mono" FontSize="11" VerticalAlignment="Center" />
+                    <Ellipse Width="6" Height="6" Fill="{DynamicResource FlowSecondaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding SyncText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Bento metric cards. -->
+        <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Total throughput" Classes="section" />
+                        <TextBlock Grid.Column="1" Text="⇅" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding TotalValue}" Classes="metric" />
+                        <TextBlock Text="{Binding TotalUnit}" Classes="mono" Foreground="{DynamicResource FlowPrimaryBrush}"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,5" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding RxText}" Classes="mono rx" FontSize="11" />
+                        <TextBlock Text="/" Classes="dim" FontSize="11" />
+                        <TextBlock Text="{Binding TxText}" Classes="mono tx" FontSize="11" />
+                    </StackPanel>
+                    <controls:SplitBar Height="5" First="{Binding RxShare}" Second="{Binding TxShare}"
+                                       FirstBrush="{DynamicResource FlowSecondaryBrush}" SecondBrush="{DynamicResource FlowPrimaryBrush}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding RxShareText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="{Binding TxShareText}" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Attribution split" Classes="section" />
+                        <TextBlock Grid.Column="1" Text="⌗" Foreground="{DynamicResource FlowTertiaryBrush}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding AttributedPercentText}" Classes="metric" />
+                        <TextBlock Text="attributed" Classes="mono" Foreground="{DynamicResource FlowTertiaryBrush}"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,5" FontSize="11" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="{Binding AttributedText}" Classes="mono" FontSize="11" />
+                        <TextBlock Text="·" Classes="dim" FontSize="11" />
+                        <TextBlock Text="{Binding UnattributedText}" Classes="mono warn" FontSize="11" />
+                    </StackPanel>
+                    <controls:SplitBar Height="5" First="{Binding AttributedShare}" Second="{Binding UnattributedShare}"
+                                       FirstBrush="{DynamicResource FlowTertiaryBrush}" SecondBrush="{DynamicResource FlowWarningBrush}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="ATTRIBUTED" Classes="caps" Foreground="{DynamicResource FlowTertiaryBrush}" />
+                        <TextBlock Grid.Column="1" Text="UNATTRIBUTED" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Active interfaces" Classes="section" />
+                        <TextBlock Grid.Column="1" Text="⇄" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding InterfaceCountText}" Classes="metric" />
+                        <TextBlock Text="keys in range" Classes="mono" Foreground="{DynamicResource FlowSecondaryBrush}"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,5" FontSize="11" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding InterfaceNames}" Classes="mono" FontSize="11" TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{Binding InterfaceCaption}" Classes="dim" FontSize="10" TextWrapping="Wrap" MaxLines="2" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="3" Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Window peak" Classes="section" />
+                        <TextBlock Grid.Column="1" Text="⚡" Foreground="{DynamicResource FlowWarningBrush}" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
+                        <TextBlock Text="{Binding PeakValue}" Classes="metric" />
+                        <TextBlock Text="{Binding PeakUnit}" Classes="mono" Foreground="{DynamicResource FlowWarningBrush}"
+                                   VerticalAlignment="Bottom" Margin="0,0,0,5" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding PeakDetail}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding BucketCountText}" Classes="dim" FontSize="10" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Real persisted 1-minute chart. -->
+        <Border Classes="card" Padding="16,12,16,10">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Real-time telemetry stream" Classes="section" />
+                        <Border Classes="pill primary" VerticalAlignment="Center">
+                            <TextBlock Text="1-MIN RESOLUTION" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource FlowSecondaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="RX ingress" Classes="caps" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource FlowPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="TX egress" Classes="caps" />
+                        </StackPanel>
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding ChartCaption}" Classes="dim" FontSize="11" />
+                <Border Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="6">
+                    <controls:TimeSeriesChart Height="252" Points="{Binding ChartPoints}" />
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- Bento bottom: apps + interface/bucket panels. -->
+        <Grid ColumnDefinitions="1.5*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="Top application consumers" Classes="section" />
+                            <Border Classes="pill" VerticalAlignment="Center">
+                                <TextBlock Text="PERSISTED RANGE" Classes="caps" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="share of range total" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <Grid ColumnDefinitions="*,72,72,84" Margin="0,2,0,2">
+                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <ItemsControl ItemsSource="{Binding TopApplications}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ApplicationRow">
+                                <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="*,72,72,84" RowDefinitions="Auto,Auto" ColumnSpacing="4">
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3" Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Key}" Classes="dim" FontSize="10" TextTrimming="CharacterEllipsis"
+                                                       IsVisible="{Binding HasDisplayName}" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding TotalText}" Classes="mono" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                        <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="4" Height="3" Margin="0,7,0,0"
+                                                           Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="No application usage in this range. The provider may not have produced attributed events yet."
+                               IsVisible="{Binding HasNoApplications}" Classes="dim" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <StackPanel Grid.Column="1" Spacing="14">
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Network interfaces" Classes="section" />
+                            <TextBlock Grid.Column="1" Text="ALL INTERFACES" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Interfaces}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InterfaceRow">
+                                    <Grid ColumnDefinitions="*,Auto" Margin="0,5">
+                                        <StackPanel Spacing="1">
+                                            <TextBlock Text="{Binding Title}" FontSize="12" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding TypeText}" Classes="dim" FontSize="10" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Spacing="1">
+                                            <TextBlock Text="{Binding RxText, StringFormat='↓ {0}'}" Classes="mono rx" FontSize="10" TextAlignment="Right" />
+                                            <TextBlock Text="{Binding TxText, StringFormat='↑ {0}'}" Classes="mono tx" FontSize="10" TextAlignment="Right" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No interface rows in range." IsVisible="{Binding HasNoInterfaces}" Classes="dim" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Recent 1-minute buckets" Classes="section" />
+                            <TextBlock Grid.Column="1" Text="SQLITE VIEW" Classes="caps" />
+                        </Grid>
+                        <Grid ColumnDefinitions="*,70,70" Margin="0,1">
+                            <TextBlock Text="LOCAL TIME" Classes="caps" />
+                            <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                            <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                        </Grid>
+                        <Border Classes="divider" />
+                        <ItemsControl ItemsSource="{Binding RecentBuckets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:TimeSeriesRow">
+                                    <Grid ColumnDefinitions="*,70,70" Margin="0,4">
+                                        <TextBlock Text="{Binding Bucket}" Classes="mono" FontSize="10" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Rx}" Classes="mono rx" FontSize="10" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Tx}" Classes="mono tx" FontSize="10" TextAlignment="Right" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="No persisted buckets in this range." IsVisible="{Binding HasNoBuckets}" Classes="dim" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </Grid>
+
+        <TextBlock Classes="dim" FontSize="10" TextWrapping="Wrap"
+                   Text="Attribution caveat: bytes are attributed per application/process only when the active provider produces attributed events. Procfs reports interface-level totals as unattributed by design. eBPF currently counts TCP send/recv return bytes only, requires privileges, and does not yet map bytes per interface. Unattributed traffic is always shown separately and must not be treated as zero." />
+    </StackPanel>
+</UserControl>

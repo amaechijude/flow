@@ -1,7 +1,7 @@
 # Flow handoff
 
 Date: 2026-11-18  
-Repo: `/home/amaechi/code/flow` (git, branch `main`, clean working tree)
+Repo: `/home/amaechi/code/flow` (git, branch `main`; UI/IPC increments from this date are uncommitted — see `docs/progress.md`)
 
 ## What this is
 Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background daemon and Avalonia desktop GUI (see `flow-project-plan.md`). Core requirement: transparent per-application/per-process byte attribution with persistent history. **Do not claim full completion without validated evidence.**
@@ -15,9 +15,9 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ## Current state (what is done and working)
 
 ### Prototype & core
-- **Docs/decisions:** architecture, monitoring, attribution, security, database, implementation-plan, progress, interface-preparation; ADRs 0001–0003 (`docs/decisions/`). IPC v1 session-bus choice pinned in **ADR 0003** (Tmds.DBus 0.95.2, `org.flow.Daemon` `/org/flow/Daemon` `org.flow.Daemon1`, JSON-over-D-Bus); Avalonia/Wayland and system-bus/activation/policy/auth remain follow-ups (ADR 0002 partially superseded).
+- **Docs/decisions:** architecture, monitoring, attribution, security, database, implementation-plan, progress, interface-preparation; ADRs 0001–0004 (`docs/decisions/`). IPC v1 session-bus choice pinned in **ADR 0003** (Tmds.DBus 0.95.2, `org.flow.Daemon` `/org/flow/Daemon` `org.flow.Daemon1`, JSON-over-D-Bus); **ADR 0004** records the page shell, custom chart controls, picker exports, and the v3 coalesced `StatusChanged` signal. Avalonia a11y and system-bus/activation/policy/auth remain follow-ups.
 - **Phase 1 prototype (eBPF, TCP):** `prototype/bpf/` (`vmlinux.h`, `flow_tcp_bytes.bpf.c`, `flow_tcp_bytes_loader.c`, README). Privileged attach works; per-TGID/UID TCP byte attribution with deltas/cached identity/startticks and explicit unattributed (`tgid==0`) observed. Prototype-stage, not full gate completion.
-- **Solution:** `Flow.slnx` with layered projects (`src/Flow.Domain`, `Application`, `Infrastructure`, `Linux`, `Contracts`, `Daemon`, `Desktop`) and `tests/*`. **Build succeeds** (0 errors, 1 pre-existing warning in `tests/Flow.Application.Tests/UsageIngestionPipelineTests.cs` CA1859); **tests pass 16/16** (`dotnet test Flow.slnx`: Domain 1, Application 4, Infrastructure 8, Linux 1, Daemon 1, System 1).
+- **Solution:** `Flow.slnx` with layered projects (`src/Flow.Domain`, `Application`, `Infrastructure`, `Linux`, `Contracts`, `Daemon`, `Desktop`) and `tests/*`. **Build succeeds** (0 warnings/0 errors); **tests pass 20/20** (`dotnet test Flow.slnx`: Domain 1, Application 4, Infrastructure 9, Linux 1, Daemon 1, System 4).
 
 ### Monitoring, ingestion, persistence
 - **Providers:** `NullNetworkMonitor`; `ProcNetDevMonitor` (interface-level `/proc/net/dev` deltas, explicitly **unattributed** fallback, no privileges); `EbpfTcpMonitor` (subprocess TSV integration of prototype loader, **TCP-only** `tcp_sendmsg`/`tcp_recvmsg` return-byte deltas, privileged, boot+startticks-derived start/app hints, explicit unattributed events, no per-interface mapping in events).
@@ -27,39 +27,40 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Verified:** attributed TCP usage persisted with ebpf (privileged); procfs yields real interface totals as unattributed (expected). User-reported desktop/IPC evidence recorded in `docs/progress.md`.
 
 ### IPC & desktop (real data, no fabricated metrics)
-- **D-Bus IPC (v2 contract methods):** shared `Flow.Contracts.Ipc` + `Tmds.DBus` service/client. Daemon exposes real `IMonitoringStatusService` and `IUsageQueryService` (status, summary, top apps, time series, interfaces, processes). Desktop uses `DbusDaemonClient` with retry-on-reconnect; `HybridDaemonStatusClient` reports truthful unavailable when IPC unreachable (no invented live metrics), `HybridUsageQueryClient` prefers daemon IPC and can fall back to direct local SQLite reads of the **same persisted data** when IPC is unavailable.
-- **On-target validation (session bus):** registration/introspection/calls verified (`busctl --user`, contract v2 methods present; status/queries return real JSON). Caveat: running the daemon as root (e.g. for ebpf) can prevent claiming `org.flow.Daemon` due to bus/policy context — IPC may be unavailable while collection/persistence still works (desktop can show real DB history; live IPC diagnostics unavailable).
-- **Desktop UI (Avalonia shell, functional):** Overview with real daemon status/diagnostics, explicit IPC-vs-local-DB data-source notes, rolling ranges (1/6/12/24h, 7/30d), `Today`/`Yesterday` (local day → UTC `[start,end)`), custom date range, interface filter, attributed/unattributed/total summary, top applications, top processes, interfaces, recent 1-minute time-series list (real buckets), and **CSV export** of current view to `~/flow-export-<utc-timestamp>.csv` with range/filter/generation/caveat metadata. Attribution/measurement caveats shown in UI.
+- **D-Bus IPC (contract v3):** shared `Flow.Contracts.Ipc` + `Tmds.DBus` service/client. Daemon exposes real `IMonitoringStatusService` and `IUsageQueryService` (status, summary, top apps, time series, interfaces, processes) and a coalesced `StatusChanged` signal (polled every 2s; emitted only when the real diagnostics snapshot changes). Signals carry JSON `StatusChangedSignalDto` and are treated by the desktop as a refresh hint, not as authoritative values. Desktop uses `DbusDaemonClient` with retry-on-reconnect; `HybridDaemonStatusClient` reports truthful unavailable when IPC unreachable (no invented live metrics), `HybridUsageQueryClient` prefers daemon IPC and can fall back to direct local SQLite reads of the **same persisted data** when IPC is unavailable.
+- **Automated IPC tests:** `Flow.SystemTests` starts a private `dbus-daemon`, registers the real daemon service object, and asserts contract v3, JSON round-trip of every query method over real D-Bus, signal delivery, and publisher coalescing. Requires `dbus-daemon` on `PATH` (Linux); does not cover system bus/policy.
+- **On-target validation (session bus):** registration/introspection/calls verified earlier (`busctl --user`, contract methods present; real JSON results). On 2026-11-18 the same path exposed `.StatusChanged signal s` with contract `i 3`, and `busctl --user monitor org.flow.Daemon` observed coalesced `StatusChanged` JSON payloads (~2s) carrying real procfs pipeline counters. Caveat: running the daemon as root (e.g. for ebpf) can prevent claiming `org.flow.Daemon` due to bus/policy context — IPC may be unavailable while collection/persistence still works (desktop can show real DB history; live IPC diagnostics unavailable).
+- **Desktop UI (Avalonia shell, functional):** fixed header + sidebar navigation with four pages — Overview (bento metrics, RX/TX + attribution split bars, custom RX/TX time-series chart, top apps/interfaces, recent buckets), Apps & Processes (sortable/searchable applications and processes, attributed/unattributed filter, detail panels), Network Interfaces (totals, provider semantics, sortable/searchable breakdown, detail panel), Diagnostics & Daemon (state/provider/health, pipeline counters, drop share, IPC/signal source and contract identity, searchable persisted buckets). Rolling ranges (1/6/12/24h, 7/30d), `Today`/`Yesterday`, custom date range, interface filter. CSV **and JSON** export of the loaded view use a real save-file picker (`Flow__ExportDirectory` overrides for automation) and include provenance + caveats. Attribution/measurement caveats and live-vs-SQLite fallback are explicit in the UI.
 
 ## Current limitations / known issues
 - **Attribution/gate:** ebpf is TCP-only, subprocess+privileged, no per-interface mapping in events; UDP/namespace/VPN/virtual-interface coverage, controlled counter/overhead evidence, and PID-reuse/event-time/process-exit identity hardening incomplete. Procfs is unattributed by design.
-- **IPC:** per-user session-bus v1 only; no live D-Bus signals (poll/refresh), no automated daemon↔client integration tests, no control operations/Polkit, no system-bus policy/activation artifacts. Root-run ebpf daemon may not register IPC name for user-session desktop.
-- **Persistence/reporting:** no rollups (1m→5m→h→d→mo), no retention/cleanup jobs, no JSON export/file-picker UX; comparisons/Reports UI minimal.
+- **IPC:** per-user session-bus v1 only; signals are best-effort/coalesced (no replay, up to ~2s latency) and resubscription after daemon restart is lightly exercised; no control operations/Polkit, no system-bus policy/activation artifacts. Root-run ebpf daemon may not register IPC name for user-session desktop.
+- **Persistence/reporting:** no rollups (1m→5m→h→d→mo), no retention/cleanup jobs; Reports/Settings pages and comparisons are not implemented (diagnostics/export cover current reporting).
 - **Reliability:** flush retry is in-memory/timer-driven (no durable queue/explicit backoff policy); `LastError` not cleared on recovery; monitoring session measurement version/provider details minimal.
-- **UI/productization:** single Overview shell (not full nav/pages), no graphical charts (textual buckets), Wayland/a11y/accessibility not formally validated/polished, no systemd/D-Bus/Polkit packaging or `.deb`.
-- **Reconcile docs:** ADR 0003 text references initial method set; implementation is contract v2 — update/supersede details as needed when changing IPC.
+- **UI/productization:** custom charts are minimal (no zoom/tooltips/per-point inspection) and not a11y-verified; app startup was smoke-tested on Wayland but no screenshot/a11y conformance pass; no systemd/D-Bus/Polkit packaging or `.deb`.
+- **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **UI polish & structure (real data):** app shell/navigation (Overview/Applications/Processes/Interfaces/Reports/History/Settings), shared theme/resources, sortable/searchable tables and detail views, better empty/loading/error/stale/disconnected states, file-picker export (+ optional JSON), and graphical time-series charts after verifying Avalonia chart dependency/Wayland fit. Keep attributed/unattributed, provider caveats, and live-vs-historical explicit.
-2. **IPC hardening:** add status/change signals (batched), automated daemon↔client contract/integration tests, improve reconnect/error mapping, and decide/document privileged-collector + user-desktop topology (system-bus policy/activation/Polkit or split capture/IPC) with evidence.
-3. **Provider/identity hardening & gate evidence:** event-time persisted identity, PID-reuse/process-exit safety, per-interface mapping where feasible, UDP/namespace/VPN/virtual-interface assessment, controlled counter comparisons and overhead; update `docs/attribution.md` and ADRs with evidence (do not weaken claims).
-4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, comparisons/reports UX, and exports with full caveats.
-5. **Productization:** systemd units, D-Bus/Polkit policy, `.deb` packaging, upgrade/uninstall data handling, GNOME Wayland/a11y pass, recovery/system/security/privacy tests.
+1. **Provider/identity hardening & gate evidence:** event-time persisted identity, PID-reuse/process-exit safety, per-interface mapping where feasible, UDP/namespace/VPN/virtual-interface assessment, controlled counter comparisons and overhead; update `docs/attribution.md` and ADRs with evidence (do not weaken claims).
+2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
+3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
+4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.
+5. **Productization:** systemd units, D-Bus/Polkit policy, `.deb` packaging, upgrade/uninstall data handling, recovery/system/security/privacy tests.
 
 ## How to build, test, and run
 ```bash
 cd /home/amaechi/code/flow
 dotnet build Flow.slnx -v minimal
-dotnet test Flow.slnx -v minimal   # expect 16/16
+dotnet test Flow.slnx -v minimal   # expect 20/20
 ```
 - **Daemon (no root, unattributed interface totals):** `Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj`
 - **Daemon (privileged, TCP attributed, prototype):** `sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` (IPC name registration may fail under sudo; DB persistence still works)
 - **Desktop:** `dotnet run --project src/Flow.Desktop/Flow.Desktop.csproj` (uses same DB path/env; connects via D-Bus when available, else truthful unavailable + real local DB fallback)
 - **Inspect DB:** `sqlite3 ~/.local/share/flow/flow.db ".headers on" ".mode column" "select * from usage_buckets order by id desc limit 20;"`
-- **IPC check (daemon running, session bus):** `busctl --user introspect org.flow.Daemon /org/flow/Daemon` (expect contract v2 methods)
+- **IPC check (daemon running, session bus):** `busctl --user introspect org.flow.Daemon /org/flow/Daemon` (expect contract v3 query methods and `StatusChanged` signal); `busctl --user monitor org.flow.Daemon` to observe coalesced status signals.
 
 ## UI polish & design references
-Use these to guide polishing the current Avalonia shell (GNOME-friendly, honest attribution/live-vs-historical/health states) — **inspiration/patterns, not pixel copies**:
+Local design guides for the four pages are in `flow_designs/{network_overview,apps_and_proceses,network_interface,diagnostics}/` (`screen.png` + `DESIGN.md`). Use these plus the external references below to guide polishing the Avalonia shell (GNOME-friendly, honest attribution/live-vs-historical/health states) — **inspiration/patterns, not pixel copies**:
 
 - **GNOME HIG:** https://developer.gnome.org/hig/
 - **Adwaita (style/pattern reference):** https://gnome.pages.gitlab.gnome.org/libadwaita/doc/main/ and https://gitlab.gnome.org/GNOME/libadwaita
@@ -72,7 +73,7 @@ Use these to guide polishing the current Avalonia shell (GNOME-friendly, honest 
 
 ## Quick pointers
 - Plans/status: `docs/progress.md`, `docs/implementation-plan.md`, `docs/interface-preparation.md`, `docs/attribution.md`, `docs/monitoring.md`
-- Decisions: `docs/decisions/` (0001–0003)
+- Decisions: `docs/decisions/` (0001–0004)
 - Prototype: `prototype/bpf/README.md`, `scripts/check-prereqs.sh`
 - Main code: `src/Flow.Daemon/Ipc/*`, `src/Flow.Application/Monitoring/UsageIngestionPipeline.cs`, `src/Flow.Infrastructure/Sqlite/*`, `src/Flow.Linux/Monitoring/*`, `src/Flow.Desktop/*`
 

@@ -10,13 +10,40 @@ using Tmds.DBus;
 namespace Flow.Desktop.Services;
 
 /// <summary>
+/// Raised when the daemon publishes a coalesced <c>StatusChanged</c> D-Bus signal.
+/// The payload is the raw JSON signal body; it is also parsed for convenience.
+/// </summary>
+public sealed class DaemonStatusChangedEventArgs(StatusChangedSignalDto? signal, string rawJson, DateTimeOffset receivedUtc) : EventArgs
+{
+    public StatusChangedSignalDto? Signal { get; } = signal;
+    public string RawJson { get; } = rawJson;
+    public DateTimeOffset ReceivedUtc { get; } = receivedUtc;
+}
+
+/// <summary>
 /// Real IPC client to the running Flow daemon over D-Bus. No fabricated data.
 /// </summary>
-public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, IDisposable
+public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, IDaemonChangeNotifier, IDisposable
 {
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly string? _addressOverride;
     private Connection? _connection;
     private IFlowDaemonDbus? _proxy;
+    private IDisposable? _signalSubscription;
+
+    public DbusDaemonClient(string? address = null) => _addressOverride = address;
+
+    public event EventHandler<DaemonStatusChangedEventArgs>? StatusChanged;
+
+    /// <summary>True when the client is currently subscribed to the daemon status signal.</summary>
+    public bool IsSignalSubscribed { get; private set; }
+
+    /// <summary>Last transport error observed while calling or subscribing (diagnostic only).</summary>
+    public string? LastTransportError { get; private set; }
+
+    public DateTimeOffset? LastSignalAtUtc { get; private set; }
+
+    public DateTimeOffset? LastCallAtUtc { get; private set; }
 
     public Task<MonitoringStatusDto> GetStatusAsync(CancellationToken cancellationToken = default)
         => CallAsync(async p => IpcJson.Deserialize<MonitoringStatusDto>(await p.GetStatusJsonAsync().ConfigureAwait(false)) ?? throw new InvalidOperationException("Invalid status response from daemon."));
@@ -41,13 +68,20 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
         try
         {
             var proxy = await GetProxyAsync().ConfigureAwait(false);
-            return await call(proxy).ConfigureAwait(false);
+            var result = await call(proxy).ConfigureAwait(false);
+            LastCallAtUtc = DateTimeOffset.UtcNow;
+            LastTransportError = null;
+            return result;
         }
-        catch
+        catch (Exception first)
         {
+            LastTransportError = first.Message;
             await ResetAsync().ConfigureAwait(false);
             var proxy = await GetProxyAsync().ConfigureAwait(false);
-            return await call(proxy).ConfigureAwait(false);
+            var result = await call(proxy).ConfigureAwait(false);
+            LastCallAtUtc = DateTimeOffset.UtcNow;
+            LastTransportError = null;
+            return result;
         }
     }
 
@@ -59,7 +93,7 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
             if (_proxy is not null && _connection is not null)
                 return _proxy;
 
-            var address = Address.Session ?? Address.System;
+            var address = _addressOverride ?? Address.Session ?? Address.System;
             if (string.IsNullOrWhiteSpace(address))
                 throw new InvalidOperationException("No D-Bus address available.");
 
@@ -68,6 +102,19 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
             await _connection.ConnectAsync().ConfigureAwait(false);
             _proxy = _connection.CreateProxy<IFlowDaemonDbus>(FlowIpc.ServiceName, FlowIpc.ObjectPath);
             _ = await _proxy.GetContractVersionAsync().ConfigureAwait(false);
+
+            // Signal watch is optional for older daemons that do not expose it.
+            try
+            {
+                _signalSubscription = await _proxy.WatchStatusChangedAsync(OnStatusChanged, OnSignalError).ConfigureAwait(false);
+                IsSignalSubscribed = true;
+            }
+            catch (Exception ex)
+            {
+                IsSignalSubscribed = false;
+                LastTransportError = $"Status signal unavailable: {ex.Message}";
+            }
+
             return _proxy;
         }
         catch
@@ -75,6 +122,7 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
             try { _connection?.Dispose(); } catch { }
             _connection = null;
             _proxy = null;
+            IsSignalSubscribed = false;
             throw;
         }
         finally
@@ -83,11 +131,29 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
         }
     }
 
+    private void OnStatusChanged(string json)
+    {
+        var now = DateTimeOffset.UtcNow;
+        LastSignalAtUtc = now;
+        StatusChangedSignalDto? signal = null;
+        try { signal = IpcJson.Deserialize<StatusChangedSignalDto>(json); } catch { }
+        StatusChanged?.Invoke(this, new DaemonStatusChangedEventArgs(signal, json, now));
+    }
+
+    private void OnSignalError(Exception exception)
+    {
+        IsSignalSubscribed = false;
+        LastTransportError = $"Status signal failed: {exception.Message}";
+    }
+
     private async Task ResetAsync()
     {
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
+            try { _signalSubscription?.Dispose(); } catch { }
+            _signalSubscription = null;
+            IsSignalSubscribed = false;
             try { _connection?.Dispose(); } catch { }
             _connection = null;
             _proxy = null;
@@ -102,9 +168,12 @@ public sealed class DbusDaemonClient : IDaemonStatusClient, IUsageQueryClient, I
 
     public void Dispose()
     {
+        try { _signalSubscription?.Dispose(); } catch { }
+        _signalSubscription = null;
         try { _connection?.Dispose(); } catch { }
         _connection = null;
         _proxy = null;
+        IsSignalSubscribed = false;
         _gate.Dispose();
     }
 }

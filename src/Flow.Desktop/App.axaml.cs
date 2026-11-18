@@ -30,11 +30,11 @@ public partial class App : global::Avalonia.Application
             var dbus = new DbusDaemonClient();
             IUsageQueryClient usageClient = new HybridUsageQueryClient(dbus, localUsage);
             IDaemonStatusClient statusClient = new HybridDaemonStatusClient(dbus);
-            var overview = new OverviewViewModel(statusClient, usageClient);
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = new MainViewModel(overview),
-            };
+
+            var window = new MainWindow();
+            var picker = new StorageProviderExportFilePicker { TopLevel = window };
+            window.DataContext = new MainViewModel(statusClient, usageClient, picker, dbus);
+            desktop.MainWindow = window;
         }
 
         base.OnFrameworkInitializationCompleted();

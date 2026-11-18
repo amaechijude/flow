@@ -1,0 +1,138 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:controls="using:Flow.Desktop.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.InterfacesPageView"
+             x:DataType="vm:InterfacesPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Network interfaces" Classes="headline" FontSize="20" />
+                <Border Classes="pill secondary" VerticalAlignment="Center">
+                    <TextBlock Text="PERSISTED INTERFACE KEYS" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                </Border>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding ScopeText}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
+        </Grid>
+
+        <Border Background="{DynamicResource FlowPrimarySoftBrush}" BorderBrush="{DynamicResource FlowBorderStrongBrush}"
+                BorderThickness="1" CornerRadius="6" Padding="14,10">
+            <StackPanel Spacing="4">
+                <TextBlock Text="MEASUREMENT SEMANTICS" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                <TextBlock Text="{Binding CaveatText}" Classes="muted" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+            <Border Classes="card">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Total ingress (RX)" Classes="section" FontSize="13" />
+                    <TextBlock Text="{Binding TotalIngressText}" Classes="metric-sm rx" />
+                    <TextBlock Text="Attributed + unattributed bytes for selected range." Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+            <Border Classes="card">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Total egress (TX)" Classes="section" FontSize="13" />
+                    <TextBlock Text="{Binding TotalEgressText}" Classes="metric-sm tx" />
+                    <TextBlock Text="Attributed + unattributed bytes for selected range." Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+            <Border Classes="card">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Sampling provider" Classes="section" FontSize="13" />
+                    <TextBlock Text="{Binding SamplingText}" Classes="metric-sm" FontSize="16" TextWrapping="Wrap" />
+                    <TextBlock Text="Provider reported by the daemon status (not inferred by the desktop)." Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Interface breakdown" Classes="section" />
+                    <TextBlock Grid.Column="1" Text="{Binding SortSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Grid.Column="0" Text="{Binding SearchText}" PlaceholderText="Filter by interface name, key or type…" MaxWidth="420" HorizontalAlignment="Left" />
+                    <TextBlock Grid.Column="1" Text="Sort by clicking a column header" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,70,70,86,92" ColumnSpacing="4">
+                    <Button Grid.Column="0" Classes="sort left" Content="INTERFACE" Command="{Binding SortByCommand}" CommandParameter="name" />
+                    <Button Grid.Column="1" Classes="sort" Content="RX" Command="{Binding SortByCommand}" CommandParameter="rx" />
+                    <Button Grid.Column="2" Classes="sort" Content="TX" Command="{Binding SortByCommand}" CommandParameter="tx" />
+                    <Button Grid.Column="3" Classes="sort" Content="UNATTR" Command="{Binding SortByCommand}" CommandParameter="unattributed" />
+                    <Button Grid.Column="4" Classes="sort" Content="TOTAL" Command="{Binding SortByCommand}" CommandParameter="total" />
+                </Grid>
+                <Border Classes="divider" />
+
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <ListBox ItemsSource="{Binding Interfaces}" SelectedItem="{Binding SelectedInterface}" MaxHeight="420">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:InterfaceRow">
+                                    <Border Padding="0,8" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
+                                        <Grid ColumnDefinitions="*,70,70,86,92" RowDefinitions="Auto,Auto" ColumnSpacing="4">
+                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="0,0,8,0">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" />
+                                                <TextBlock Text="{Binding TypeText}" Classes="dim" FontSize="10" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" Margin="0,3,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" Margin="0,3,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding TotalText}" Classes="mono" FontSize="11" TextAlignment="Right" Margin="0,3,0,0" />
+                                            <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="5" Height="3" Margin="0,7,0,0"
+                                                               Value="{Binding Share}" BarBrush="{DynamicResource FlowSecondaryBrush}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="No interface keys in the selected range. Procfs normally records per-interface unattributed totals; eBPF TCP events currently have no interface identity."
+                                   IsVisible="{Binding HasNoInterfaces}" Classes="dim" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
+                            BorderThickness="1" CornerRadius="5" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Interface detail" Classes="section" />
+                            <StackPanel IsVisible="{Binding SelectedInterface, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <StackPanel Spacing="8" DataContext="{Binding SelectedInterface}" x:DataType="vm:InterfaceRow">
+                                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Key}" Classes="mono" FontSize="10" Foreground="{DynamicResource FlowTextFaintBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding TypeText}" Classes="dim" FontSize="10" />
+                                    <Border Classes="divider" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Total" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding TotalText}" Classes="mono" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Attributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AttributedText}" Classes="mono rx" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Unattributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding UnattributedText}" Classes="mono warn" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Share of range" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ShareText}" Classes="mono" />
+                                    </Grid>
+                                    <controls:UsageBar Height="5" Value="{Binding Share}" BarBrush="{DynamicResource FlowSecondaryBrush}" />
+                                    <TextBlock Text="Interface rows come from persisted interface keys. They do not imply that every provider can map bytes to an interface; unknown keys remain visible."
+                                               Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock Text="Select an interface row to inspect it." Classes="dim" IsVisible="{Binding SelectedInterface, Converter={x:Static ObjectConverters.IsNull}}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

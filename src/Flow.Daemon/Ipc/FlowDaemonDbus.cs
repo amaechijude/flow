@@ -21,6 +21,12 @@ public sealed class FlowDaemonDbusService : IFlowDaemonDbus
 
     public ObjectPath ObjectPath => Path;
 
+    /// <summary>
+    /// Raised when the daemon has a coalesced status change to publish. Tmds.DBus
+    /// maps this event to the <c>StatusChanged</c> signal.
+    /// </summary>
+    public event Action<string>? StatusChanged;
+
     public Task<int> GetContractVersionAsync() => Task.FromResult(FlowIpc.ContractVersion);
 
     public Task<string> GetStatusJsonAsync()
@@ -61,6 +67,17 @@ public sealed class FlowDaemonDbusService : IFlowDaemonDbus
         var result = await _queries.GetTopProcessesAsync(start, end, iface, limit <= 0 ? 20 : limit).ConfigureAwait(false);
         return IpcJson.Serialize(result);
     }
+
+    /// <summary>
+    /// Server-side implementation of the <c>StatusChanged</c> signal watch method.
+    /// </summary>
+    public Task<IDisposable> WatchStatusChangedAsync(Action<string> handler, Action<Exception>? onError = null)
+        => SignalWatcher.AddAsync(this, nameof(StatusChanged), handler);
+
+    /// <summary>
+    /// Publishes a coalesced status signal payload to all D-Bus subscribers.
+    /// </summary>
+    public void PublishStatusChanged(string payload) => StatusChanged?.Invoke(payload);
 
     private static (DateTimeOffset start, DateTimeOffset end, string? iface) ParseRange(string startUtcIso, string endUtcIso, string interfaceId)
     {

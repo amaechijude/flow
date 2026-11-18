@@ -1,7 +1,7 @@
 # ADR 0003: D-Bus IPC library and session-bus v1 topology (supersedes ADR 0002 IPC choice)
 
 - **Date:** 2026-11-15
-- **Status:** Accepted (v1, evidence-backed for session bus; system-bus deployment deferred)
+- **Status:** Accepted (v1, evidence-backed for session bus; contract now at v3 with status signals — see ADR 0004; system-bus deployment deferred)
 - **Deciders:** Flow implementation
 - **Supersedes (IPC portion):** ADR 0002
 
@@ -26,6 +26,7 @@ Flow requires a versioned GUI↔daemon IPC mechanism on Ubuntu 26.04 (GNOME/Wayl
 - **System-bus / systemd activation / D-Bus policy files** (and any privileged multi-user collector model) are explicitly deferred; they require separate design, policy/activation artifacts, and authorization before adoption.
 
 ## Follow-ups
+- Contract evolution: v2 added interface/process query methods (`GetInterfaceUsageJson`, `GetTopProcessesJson`); v3 added the coalesced `StatusChanged` signal (`StatusChangedSignalDto`) — see ADR 0004.
 - Add reconnect/timeout/error-mapping hardening and contract/integration tests.
 - Consider batched signals for status/usage updates.
 - If a system-wide daemon is needed, add D-Bus policy + systemd activation + Polkit and re-evaluate bus topology in a superseding ADR with evidence.

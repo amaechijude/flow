@@ -3,164 +3,174 @@
         xmlns:vm="using:Flow.Desktop.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1150" d:DesignHeight="900"
+        mc:Ignorable="d" d:DesignWidth="1440" d:DesignHeight="960"
         x:Class="Flow.Desktop.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="Flow">
+        Width="1440" Height="960" MinWidth="1040" MinHeight="680"
+        Title="Flow — Network Usage"
+        Background="{DynamicResource FlowGroundBrush}">
 
-    <ScrollViewer>
-        <StackPanel Margin="20" Spacing="12">
-            <TextBlock Text="Flow — Network Usage" FontSize="24" FontWeight="SemiBold" />
-            <TextBlock Text="Real daemon status via IPC when available; historical usage from persisted data (daemon query or local DB fallback). No fabricated metrics." Opacity="0.8" TextWrapping="Wrap" />
+    <Grid RowDefinitions="56,*">
+        <!-- Top bar: brand, truthful daemon/IPC status, shared range + filter controls. -->
+        <Border Grid.Row="0" Background="{DynamicResource FlowSurfaceBrush}"
+                BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1" Padding="16,0">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Border Width="22" Height="22" CornerRadius="5" Background="{DynamicResource FlowPrimaryDeepBrush}" VerticalAlignment="Center">
+                            <TextBlock Text="⧉" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource FlowOnPrimaryBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <TextBlock Text="Flow" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
 
-            <Border Padding="12" CornerRadius="8" BorderThickness="1">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Daemon status" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Overview.StatusText}" />
-                    <TextBlock Text="{Binding Overview.StatusDetail}" TextWrapping="Wrap" FontSize="12" Opacity="0.9" />
-                    <TextBlock Text="{Binding Overview.DataSourceNote}" TextWrapping="Wrap" FontSize="12" Opacity="0.8" />
-                    <WrapPanel Orientation="Horizontal">
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,8,0">
-                            <TextBlock Text="Range:" VerticalAlignment="Center" />
-                            <ComboBox ItemsSource="{Binding Overview.Ranges}" SelectedItem="{Binding Overview.SelectedRange}" MinWidth="150">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:RangeOption">
-                                        <TextBlock Text="{Binding Label}" />
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                    <Border Classes="pill" ToolTip.Tip="{Binding ProviderText}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse Width="6" Height="6" Fill="{Binding DaemonStateBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding DaemonStateText}" FontFamily="{StaticResource FlowMonoFont}" FontSize="10" FontWeight="SemiBold"
+                                       Foreground="{Binding DaemonStateBrush}" VerticalAlignment="Center" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,8,0" IsVisible="{Binding Overview.IsCustomRange}">
-                            <TextBlock Text="From:" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding Overview.CustomStartDate}" />
-                            <TextBlock Text="To:" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding Overview.CustomEndDate}" />
-                            <Button Content="Apply" Command="{Binding Overview.RefreshCommand}" />
+                    </Border>
+
+                    <Border Classes="pill" ToolTip.Tip="{Binding SignalStatusText}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="⇅" FontFamily="{StaticResource FlowMonoFont}" FontSize="11" Foreground="{DynamicResource FlowPrimaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding IpcText}" FontFamily="{StaticResource FlowMonoFont}" FontSize="10"
+                                       Foreground="{DynamicResource FlowTextMutedBrush}" VerticalAlignment="Center" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,8,0">
-                            <TextBlock Text="Interface filter:" VerticalAlignment="Center" />
-                            <ComboBox ItemsSource="{Binding Overview.InterfaceFilters}" SelectedItem="{Binding Overview.SelectedInterfaceFilter}" MinWidth="200">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:InterfaceFilterOption">
-                                        <TextBlock Text="{Binding Label}" />
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                        </StackPanel>
-                        <Button Content="Refresh" Command="{Binding Overview.RefreshCommand}" Margin="0,0,8,0" />
-                        <Button Content="Export CSV" Command="{Binding Overview.ExportCsvCommand}" Margin="0,0,8,0" />
-                        <TextBlock Text="Loading..." IsVisible="{Binding Overview.IsBusy}" VerticalAlignment="Center" />
-                    </WrapPanel>
-                    <TextBlock Text="{Binding Overview.ExportStatus}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+                    </Border>
                 </StackPanel>
-            </Border>
 
-            <Border Padding="12" CornerRadius="8" BorderThickness="1">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Usage summary" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Overview.RangeText}" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding Overview.SummaryText}" TextWrapping="Wrap" FontFamily="monospace" />
-                    <TextBlock Text="{Binding Overview.AttributionNote}" TextWrapping="Wrap" FontSize="12" Opacity="0.8" />
-                </StackPanel>
-            </Border>
-
-            <Border Padding="12" CornerRadius="8" BorderThickness="1">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Usage over time (1-minute buckets, real persisted data)" FontWeight="SemiBold" />
-                    <TextBlock Text="Showing up to the most recent 48 buckets in range. Filter applies to summary/apps/processes/series; interface breakdown lists all interfaces in range." FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding Overview.TimeSeries}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:TimeSeriesRow">
-                                <Grid ColumnDefinitions="170,*,120" Margin="0,1">
-                                    <TextBlock Grid.Column="0" Text="{Binding Bucket}" FontFamily="monospace" FontSize="12" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Usage}" FontFamily="monospace" FontSize="12" />
-                                    <TextBlock Grid.Column="2" Text="{Binding Total, StringFormat='Total {0}'}" FontFamily="monospace" FontSize="12" />
-                                </Grid>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="148"
+                              ToolTip.Tip="UTC rolling window, local calendar day, or custom range">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:RangeOption">
+                                <TextBlock Text="{Binding Label}" />
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <TextBlock Text="No time-series buckets in range." IsVisible="{Binding Overview.HasNoSeries}" Opacity="0.7" />
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <ComboBox ItemsSource="{Binding InterfaceFilters}" SelectedItem="{Binding SelectedInterfaceFilter}" MinWidth="176"
+                              ToolTip.Tip="Filter summary, applications, processes and time series by interface">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:InterfaceFilterOption">
+                                <TextBlock Text="{Binding Label}" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh real persisted data and daemon status" />
+                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip.Tip="Export the currently loaded view to CSV" />
+                    <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" ToolTip.Tip="Export the currently loaded view to JSON" />
+                    <TextBlock Text="Loading…" IsVisible="{Binding IsBusy}" VerticalAlignment="Center"
+                               Foreground="{DynamicResource FlowPrimaryBrush}" FontSize="12" Margin="4,0,0,0" />
                 </StackPanel>
-            </Border>
-
-            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                <Border Grid.Column="0" Padding="12" CornerRadius="8" BorderThickness="1">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Top applications" FontWeight="SemiBold" />
-                        <ItemsControl ItemsSource="{Binding Overview.TopApplications}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ApplicationUsageRow">
-                                    <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
-                                        <StackPanel Spacing="2">
-                                            <TextBlock Text="{Binding Key}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding DisplayName}" Opacity="0.8" IsVisible="{Binding DisplayName, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                            <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
-                                            <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                            <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="No application usage in range." IsVisible="{Binding Overview.HasNoApplications}" Opacity="0.7" />
-                    </StackPanel>
-                </Border>
-
-                <Border Grid.Column="1" Padding="12" CornerRadius="8" BorderThickness="1">
-                    <StackPanel Spacing="6">
-                        <TextBlock Text="Top processes" FontWeight="SemiBold" />
-                        <TextBlock Text="Includes historical process keys when available; identity/lifecycle hardening is ongoing." FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
-                        <ItemsControl ItemsSource="{Binding Overview.TopProcesses}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:ProcessUsageRow">
-                                    <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
-                                        <StackPanel Spacing="2">
-                                            <TextBlock Text="{Binding Application}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding Key}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" />
-                                            <TextBlock Text="{Binding Executable}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" IsVisible="{Binding Executable, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-                                            <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
-                                            <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                            <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Text="No process usage in range." IsVisible="{Binding Overview.HasNoProcesses}" Opacity="0.7" />
-                    </StackPanel>
-                </Border>
             </Grid>
+        </Border>
 
-            <Border Padding="12" CornerRadius="8" BorderThickness="1">
-                <StackPanel Spacing="6">
-                    <TextBlock Text="Interfaces (all in range)" FontWeight="SemiBold" />
-                    <TextBlock Text="Per-interface mapping may be unavailable for some providers (e.g. ebpf-tcp events currently lack interface attribution)." FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
-                    <ItemsControl ItemsSource="{Binding Overview.Interfaces}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:InterfaceUsageRow">
-                                <Border Padding="6" Margin="0,2" BorderThickness="0,0,0,1">
-                                    <StackPanel Spacing="2">
-                                        <TextBlock Text="{Binding Key}" FontWeight="SemiBold" />
-                                        <TextBlock>
-                                            <TextBlock.Text>
-                                                <MultiBinding StringFormat="Name: {0}  Type: {1}">
-                                                    <Binding Path="Name" TargetNullValue="(unknown)" FallbackValue="(unknown)" />
-                                                    <Binding Path="Type" TargetNullValue="(unknown)" FallbackValue="(unknown)" />
-                                                </MultiBinding>
-                                            </TextBlock.Text>
-                                        </TextBlock>
-                                        <TextBlock Text="{Binding Total, StringFormat='Total: {0}'}" />
-                                        <TextBlock Text="{Binding Attributed, StringFormat='Attributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                        <TextBlock Text="{Binding Unattributed, StringFormat='Unattributed: {0}'}" FontSize="12" Opacity="0.9" />
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                    <TextBlock Text="No interface usage in range." IsVisible="{Binding Overview.HasNoInterfaces}" Opacity="0.7" />
-                </StackPanel>
+        <Grid Grid.Row="1" ColumnDefinitions="232,*">
+            <!-- Sidebar navigation + honest monitor summary. -->
+            <Border Grid.Column="0" Background="{DynamicResource FlowSurfaceLowBrush}"
+                    BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,1,0" Padding="10">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Row="0" Spacing="2">
+                        <TextBlock Text="NAVIGATION" Classes="caps" Margin="10,8,0,6" />
+                        <Button Classes="nav" Classes.active="{Binding IsOverviewActive}" Command="{Binding NavigateCommand}" CommandParameter="overview">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="▦" FontSize="13" />
+                                <TextBlock Text="Overview" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsApplicationsActive}" Command="{Binding NavigateCommand}" CommandParameter="applications">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="▤" FontSize="13" />
+                                <TextBlock Text="Apps &amp; Processes" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsInterfacesActive}" Command="{Binding NavigateCommand}" CommandParameter="interfaces">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="⇄" FontSize="13" />
+                                <TextBlock Text="Network Interfaces" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsDiagnosticsActive}" Command="{Binding NavigateCommand}" CommandParameter="diagnostics">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="⌗" FontSize="13" />
+                                <TextBlock Text="Diagnostics &amp; Daemon" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <StackPanel Grid.Row="2" Spacing="6">
+                        <Border Classes="card-tight" Background="{DynamicResource FlowCardBrush}">
+                            <StackPanel Spacing="7">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="MONITOR" Classes="caps" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DaemonStateText}" FontFamily="{StaticResource FlowMonoFont}"
+                                               FontSize="10" Foreground="{Binding DaemonStateBrush}" />
+                                </Grid>
+                                <Border Classes="divider" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Provider" Classes="caps" />
+                                    <TextBlock Grid.Column="1" Text="{Binding ProviderText}" Classes="mono" FontSize="10"
+                                               TextTrimming="CharacterEllipsis" MaxWidth="120" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Events" Classes="caps" />
+                                    <TextBlock Grid.Column="1" Text="{Binding EventsText}" Classes="mono" FontSize="10" />
+                                </Grid>
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Drop rate" Classes="caps" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DropRateText}" Classes="mono" FontSize="10" />
+                                </Grid>
+                                <Border Classes="divider" />
+                                <TextBlock Text="Live values come from the daemon over D-Bus or from the same persisted SQLite data when IPC is unreachable."
+                                           Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding LastRefreshText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
             </Border>
-        </StackPanel>
-    </ScrollViewer>
+
+            <!-- Content: shared notice banner + current page. -->
+            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
+                <Border Grid.Row="0" IsVisible="{Binding ShowDaemonNotice}" Margin="24,18,24,0" Padding="12,10"
+                        Background="{DynamicResource FlowWarningSoftBrush}" BorderBrush="{DynamicResource FlowBorderStrongBrush}"
+                        BorderThickness="1" CornerRadius="5">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="⚠" Foreground="{DynamicResource FlowWarningBrush}" FontSize="15" VerticalAlignment="Top" />
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="ATTRIBUTION / CONNECTION NOTICE" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
+                            <TextBlock Text="{Binding DaemonNoticeText}" Classes="muted" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Row="1" Margin="24,12,24,0" Spacing="8">
+                    <Border IsVisible="{Binding IsCustomRange}" Background="{DynamicResource FlowCardBrush}"
+                            BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="12,8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Custom range" Classes="caps" VerticalAlignment="Center" />
+                            <TextBlock Text="From" Classes="muted" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding CustomStartDate}" />
+                            <TextBlock Text="To" Classes="muted" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding CustomEndDate}" />
+                            <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}" />
+                            <TextBlock Text="Local calendar days converted to UTC [start, end) buckets." Classes="dim" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border IsVisible="{Binding ExportStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                            Background="{DynamicResource FlowPrimarySoftBrush}" BorderBrush="{DynamicResource FlowBorderStrongBrush}"
+                            BorderThickness="1" CornerRadius="5" Padding="12,8">
+                        <TextBlock Text="{Binding ExportStatus}" Classes="mono" Foreground="{DynamicResource FlowPrimaryBrush}" TextWrapping="Wrap" />
+                    </Border>
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="2" Padding="24,18,24,28" HorizontalScrollBarVisibility="Disabled">
+                    <ContentControl Content="{Binding CurrentPage}" />
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Grid>
 </Window>

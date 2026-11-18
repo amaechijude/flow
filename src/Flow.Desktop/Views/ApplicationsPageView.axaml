@@ -1,0 +1,203 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:controls="using:Flow.Desktop.Controls"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.ApplicationsPageView"
+             x:DataType="vm:ApplicationsPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Process allocation matrix" Classes="headline" FontSize="20" />
+                <Border Classes="pill primary" VerticalAlignment="Center">
+                    <TextBlock Text="PERSISTED BUCKETS" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                </Border>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding ScopeText}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
+        </Grid>
+
+        <!-- Applications -->
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Applications" Classes="section" />
+                        <Border Classes="pill" VerticalAlignment="Center">
+                            <TextBlock Text="RANKED BY PERSISTED BYTES" Classes="caps" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding AppSortSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <TextBox Grid.Column="0" Text="{Binding AppSearchText}" PlaceholderText="Filter by application name or key…" MaxWidth="420" HorizontalAlignment="Left" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                        <Button Classes="tab" Classes.active="{Binding IsAllFilter}" Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all" />
+                        <Button Classes="tab" Classes.active="{Binding IsAttributedFilter}" Content="Attributed" Command="{Binding SetFilterCommand}" CommandParameter="attributed" />
+                        <Button Classes="tab" Classes.active="{Binding IsUnattributedFilter}" Content="Unattributed" Command="{Binding SetFilterCommand}" CommandParameter="unattributed" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,70,70,86,92" ColumnSpacing="4">
+                    <Button Grid.Column="0" Classes="sort left" Content="APPLICATION" Command="{Binding SortApplicationsCommand}" CommandParameter="name" />
+                    <Button Grid.Column="1" Classes="sort" Content="RX" Command="{Binding SortApplicationsCommand}" CommandParameter="rx" />
+                    <Button Grid.Column="2" Classes="sort" Content="TX" Command="{Binding SortApplicationsCommand}" CommandParameter="tx" />
+                    <Button Grid.Column="3" Classes="sort" Content="UNATTR" Command="{Binding SortApplicationsCommand}" CommandParameter="unattributed" />
+                    <Button Grid.Column="4" Classes="sort" Content="TOTAL" Command="{Binding SortApplicationsCommand}" CommandParameter="total" />
+                </Grid>
+                <Border Classes="divider" />
+
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <ListBox ItemsSource="{Binding Applications}" SelectedItem="{Binding SelectedApplication}" MaxHeight="330">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ApplicationRow">
+                                    <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
+                                        <Grid ColumnDefinitions="*,70,70,86,92" RowDefinitions="Auto,Auto" ColumnSpacing="4">
+                                            <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3" Margin="0,0,8,0">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" />
+                                                <TextBlock Text="{Binding Key}" Classes="dim" FontSize="10" TextTrimming="CharacterEllipsis"
+                                                           IsVisible="{Binding HasDisplayName}" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
+                                            <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding TotalText}" Classes="mono" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
+                                            <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="5" Height="3" Margin="0,7,0,0"
+                                                               Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock Text="No applications match the current filter/search. Filters only hide rows; totals elsewhere are not recomputed." IsVisible="{Binding HasNoApplications}" Classes="dim" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <Border Grid.Column="1" Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
+                            BorderThickness="1" CornerRadius="5" Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Application detail" Classes="section" />
+                            <StackPanel IsVisible="{Binding SelectedApplication, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <StackPanel Spacing="8" DataContext="{Binding SelectedApplication}" x:DataType="vm:ApplicationRow">
+                                    <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Key}" Classes="mono" FontSize="10" Foreground="{DynamicResource FlowTextFaintBrush}" TextWrapping="Wrap" />
+                                    <Border Classes="divider" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Total" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding TotalText}" Classes="mono" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Attributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AttributedText}" Classes="mono rx" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Unattributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding UnattributedText}" Classes="mono warn" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Share of range" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ShareText}" Classes="mono" />
+                                    </Grid>
+                                    <controls:UsageBar Height="5" Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
+                                    <TextBlock Text="Caveat: attributed bytes depend on the provider. Unattributed bytes are real observed traffic that could not be assigned to a process/application key; they are not inferred."
+                                               Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock Text="Select an application row to inspect it." Classes="dim" IsVisible="{Binding SelectedApplication, Converter={x:Static ObjectConverters.IsNull}}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Processes -->
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Processes" Classes="section" />
+                        <Border Classes="pill" VerticalAlignment="Center">
+                            <TextBlock Text="STABLE KEYS · PID START TIME" Classes="caps" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding ProcessSortSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+
+                <TextBox Text="{Binding ProcessSearchText}" PlaceholderText="Filter by process name, application, stable key or executable path…" MaxWidth="520" HorizontalAlignment="Left" />
+
+                <Grid ColumnDefinitions="*,96,70,70,86,92" ColumnSpacing="4">
+                    <Button Grid.Column="0" Classes="sort left" Content="PROCESS / EXECUTABLE" Command="{Binding SortProcessesCommand}" CommandParameter="name" />
+                    <Button Grid.Column="1" Classes="sort" Content="STABLE KEY" Command="{Binding SortProcessesCommand}" CommandParameter="name" />
+                    <Button Grid.Column="2" Classes="sort" Content="RX" Command="{Binding SortProcessesCommand}" CommandParameter="rx" />
+                    <Button Grid.Column="3" Classes="sort" Content="TX" Command="{Binding SortProcessesCommand}" CommandParameter="tx" />
+                    <Button Grid.Column="4" Classes="sort" Content="UNATTR" Command="{Binding SortProcessesCommand}" CommandParameter="unattributed" />
+                    <Button Grid.Column="5" Classes="sort" Content="TOTAL" Command="{Binding SortProcessesCommand}" CommandParameter="total" />
+                </Grid>
+                <Border Classes="divider" />
+
+                <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
+                    <ListBox Grid.Column="0" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess}" MaxHeight="360">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProcessRow">
+                                <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="*,96,70,70,86,92" RowDefinitions="Auto,Auto" ColumnSpacing="4">
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding Subtitle}" Classes="dim" FontSize="10" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+                                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding Key}" Classes="mono" FontSize="9"
+                                                   Foreground="{DynamicResource FlowTextFaintBrush}" TextTrimming="CharacterEllipsis" Margin="0,3,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding RxText}" Classes="mono rx" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding TxText}" Classes="mono tx" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="9" TextAlignment="Right" Margin="0,4,0,0" />
+                                        <TextBlock Grid.Row="0" Grid.Column="5" Text="{Binding TotalText}" Classes="mono" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
+                                        <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="6" Height="3" Margin="0,7,0,0"
+                                                           Value="{Binding Share}" BarBrush="{DynamicResource FlowSecondaryBrush}" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <Border Grid.Column="1" Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
+                            BorderThickness="1" CornerRadius="5" Padding="12">
+                        <StackPanel Spacing="8">
+                            <StackPanel IsVisible="{Binding SelectedProcess, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                <StackPanel Spacing="8" DataContext="{Binding SelectedProcess}" x:DataType="vm:ProcessRow">
+                                    <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Key}" Classes="mono" FontSize="10" Foreground="{DynamicResource FlowTextFaintBrush}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding ExecutablePath}" Classes="mono" FontSize="10" TextWrapping="Wrap"
+                                               IsVisible="{Binding ExecutablePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                    <Border Classes="divider" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Total" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding TotalText}" Classes="mono" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Attributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding AttributedText}" Classes="mono rx" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Unattributed" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding UnattributedText}" Classes="mono warn" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Application" Classes="caps" />
+                                        <TextBlock Grid.Column="1" Text="{Binding ApplicationKey}" Classes="mono" FontSize="10" />
+                                    </Grid>
+                                    <TextBlock Text="Stable keys include PID start time where the provider exposes it; PID-reuse/lifecycle hardening is still in progress."
+                                               Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                            <TextBlock Text="Select a process row to inspect it." Classes="dim" IsVisible="{Binding SelectedProcess, Converter={x:Static ObjectConverters.IsNull}}" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <TextBlock Text="No processes match the current filter/search." IsVisible="{Binding HasNoProcesses}" Classes="dim" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

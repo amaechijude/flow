@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.DiagnosticsPageView"
+             x:DataType="vm:DiagnosticsPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Diagnostics &amp; daemon" Classes="headline" FontSize="20" />
+                <Border Classes="pill" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="6" Height="6" Fill="{Binding StateBrush}" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding StateText}" Classes="caps" Foreground="{Binding StateBrush}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+            <Border Grid.Column="1" Classes="pill secondary" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ContractText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+            </Border>
+        </Grid>
+
+        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Daemon status" Classes="section" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="State" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding StateText}" Classes="mono" Foreground="{Binding StateBrush}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Provider" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProviderText}" Classes="mono" FontSize="11" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Last updated" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastUpdatedText}" Classes="mono" FontSize="10" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Last event" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastEventText}" Classes="mono" FontSize="10" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Last flush" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastFlushText}" Classes="mono" FontSize="10" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <TextBlock Text="{Binding HealthText}" Classes="muted" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding LastErrorText}" IsVisible="{Binding HasLastError}" Classes="error" FontSize="11" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Pipeline counters" Classes="section" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Events received" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding EventsReceivedText}" Classes="mono" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Events aggregated" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding EventsAggregatedText}" Classes="mono" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Events dropped" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding EventsDroppedText}" Classes="mono warn" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Batches written" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding BatchesWrittenText}" Classes="mono" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Write errors" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding WriteErrorsText}" Classes="mono error" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Drop rate" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding DropRateText}" Classes="mono" />
+                    </Grid>
+                    <ProgressBar Minimum="0" Maximum="1" Value="{Binding DropShare}" Height="4" />
+                    <TextBlock Text="Counters are reported by the daemon pipeline over IPC. They are not reconstructed by the desktop." Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Data path &amp; IPC" Classes="section" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Usage source" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding UsageSourceText}" Classes="mono" FontSize="10" TextAlignment="Right" TextWrapping="Wrap" MaxWidth="150" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Status source" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding StatusSourceText}" Classes="mono" FontSize="10" TextAlignment="Right" TextWrapping="Wrap" MaxWidth="150" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Contract" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding ContractText}" Classes="mono" FontSize="9" TextAlignment="Right" TextWrapping="Wrap" MaxWidth="150" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <TextBlock Text="{Binding SignalText}" Classes="muted" TextWrapping="Wrap" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Last signal" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding LastSignalText}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                    </Grid>
+                    <TextBlock Text="{Binding ServicePathText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Persisted 1-minute buckets" Classes="section" />
+                        <Border Classes="pill" VerticalAlignment="Center">
+                            <TextBlock Text="READ-ONLY SNAPSHOT" Classes="caps" />
+                        </Border>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding WindowText}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox Text="{Binding BucketSearchText}" PlaceholderText="Filter persisted buckets…" MaxWidth="360" HorizontalAlignment="Left" />
+                    <TextBlock Grid.Column="1" Text="{Binding BucketSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
+                </Grid>
+                <Grid ColumnDefinitions="*,100,100,110">
+                    <TextBlock Text="BUCKET (LOCAL)" Classes="caps" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                </Grid>
+                <Border Classes="divider" />
+                <ListBox ItemsSource="{Binding Buckets}" MaxHeight="380">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:TimeSeriesRow">
+                            <Grid ColumnDefinitions="*,100,100,110" Margin="0,3" ColumnSpacing="4">
+                                <TextBlock Text="{Binding Bucket}" Classes="mono" FontSize="11" />
+                                <TextBlock Grid.Column="1" Text="{Binding Rx}" Classes="mono rx" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="2" Text="{Binding Tx}" Classes="mono tx" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="3" Text="{Binding Total}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock Text="No buckets match the filter." IsVisible="{Binding HasNoBuckets}" Classes="dim" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Measurement transparency" Classes="section" />
+                <TextBlock Classes="muted" TextWrapping="Wrap"
+                           Text="Flow does not measure kernel CPU overhead, eBPF ring-buffer occupancy, packet-capture drops, socket counts, or per-endpoint latency in this build, so those values are intentionally not displayed. Procfs counters are interface-level and unattributed; eBPF TCP hooks attribute bytes per process but are TCP-only, require privileges, and currently have no per-interface identity. Process identity uses stable keys derived from PID start time where available; PID-reuse and event-time identity hardening remain in progress." />
+                <TextBlock Text="{Binding MeasurementText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                <TextBlock Classes="dim" FontSize="10" TextWrapping="Wrap"
+                           Text="D-Bus topology: per-user session bus, read-only queries + coalesced StatusChanged signal in contract v3. systemd activation, D-Bus policy files, and Polkit authorization are not yet implemented." />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

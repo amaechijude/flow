@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_dashboard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..900&display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{"colors":{"inverse-primary":"#00687a","on-error-container":"#ffdad6","on-primary-fixed":"#001f26","surface-container-highest":"#31353c","on-tertiary-fixed-variant":"#5516be","on-primary-fixed-variant":"#004e5c","on-primary-container":"#00424f","on-primary":"#003640","surface-container":"#1c2026","primary":"#4cd7f6","on-background":"#dfe2eb","primary-fixed-dim":"#4cd7f6","error":"#ffb4ab","background":"#10141a","on-secondary":"#003824","surface-dim":"#10141a","primary-container":"#06b6d4","outline":"#869397","tertiary-fixed-dim":"#d0bcff","secondary-fixed":"#6ffbbe","surface":"#10141a","inverse-surface":"#dfe2eb","error-container":"#93000a","tertiary-fixed":"#e9ddff","on-surface-variant":"#bcc9cd","on-secondary-fixed":"#002113","outline-variant":"#3d494c","secondary-fixed-dim":"#4edea3","tertiary-container":"#b395ff","on-surface":"#dfe2eb","surface-variant":"#31353c","surface-tint":"#4cd7f6","on-tertiary-container":"#4900ae","surface-container-high":"#262a31","secondary-container":"#00a572","on-error":"#690005","inverse-on-surface":"#2d3137","tertiary":"#d0bcff","on-secondary-container":"#00311f","surface-bright":"#353940","on-tertiary":"#3c0091","primary-fixed":"#acedff","surface-container-low":"#181c22","on-secondary-fixed-variant":"#005236","secondary":"#4edea3","on-tertiary-fixed":"#23005c","surface-container-lowest":"#0a0e14"},"borderRadius":{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},"spacing":{"gutter-desktop":"1.5rem","margin-desktop":"2rem","margin":"1rem","space-sm":"0.5rem","gutter":"1rem","space-xl":"2rem","space-xs":"0.25rem","space-lg":"1.25rem","space-md":"0.75rem"},"fontFamily":{"label-caps":["JetBrains Mono"],"headline-lg":["Inter"],"headline-xl":["Inter"],"headline-md":["Inter"],"headline-sm":["Inter"],"body-md":["Inter"],"code-md":["JetBrains Mono"],"code-sm":["JetBrains Mono"],"body-sm":["Inter"],"code-lg":["JetBrains Mono"],"body-lg":["Inter"]},"fontSize":{"label-caps":["10px",{"lineHeight":"14px","letterSpacing":"0.06em","fontWeight":"600"}],"headline-lg":["24px",{"lineHeight":"32px","letterSpacing":"-0.015em","fontWeight":"600"}],"headline-xl":["32px",{"lineHeight":"40px","letterSpacing":"-0.02em","fontWeight":"600"}],"headline-md":["18px",{"lineHeight":"26px","letterSpacing":"-0.01em","fontWeight":"600"}],"headline-sm":["15px",{"lineHeight":"22px","fontWeight":"600"}],"body-md":["13px",{"lineHeight":"20px","fontWeight":"400"}],"code-md":["12px",{"lineHeight":"18px","fontWeight":"500"}],"code-sm":["11px",{"lineHeight":"16px","fontWeight":"400"}],"body-sm":["12px",{"lineHeight":"18px","fontWeight":"400"}],"code-lg":["14px",{"lineHeight":"20px","fontWeight":"500"}],"body-lg":["15px",{"lineHeight":"24px","fontWeight":"400"}]}}}};</script></head><body class="bg-surface font-body-md text-on-surface select-none antialiased"><header class="fixed top-0 left-0 right-0 z-50 h-14 bg-surface-container-lowest/90 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.4)] flex items-center justify-between px-space-md"><div class="flex items-center gap-space-md"><div class="flex items-center gap-space-xs"><span class="material-symbols-outlined text-primary text-[20px]">hub</span><span class="font-headline-sm text-headline-sm text-on-surface tracking-tight font-semibold">Flow</span></div><div class="flex items-center gap-space-sm pl-space-sm"><div class="flex items-center gap-space-xs px-space-sm py-space-xs rounded bg-surface-container text-secondary font-label-caps text-label-caps"><span class="w-1.5 h-1.5 rounded-full bg-secondary animate-pulse"></span><span>DAEMON ACTIVE</span></div><div class="flex items-center gap-space-xs px-space-sm py-space-xs rounded bg-surface-container text-on-surface-variant font-code-sm text-code-sm"><span class="material-symbols-outlined text-primary text-[14px]">speed</span><span>0.42ms IPC</span></div></div></div><div class="flex items-center gap-space-sm"><div class="flex items-center gap-space-xs px-space-sm py-space-xs rounded bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">date_range</span><span class="font-code-sm text-code-sm">Last 30 days</span><span class="material-symbols-outlined text-[14px]">expand_more</span></div><div class="flex items-center gap-space-xs px-space-sm py-space-xs rounded bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"><span class="material-symbols-outlined text-[16px]">filter_alt</span><span class="font-code-sm text-code-sm">all-interfaces</span><span class="material-symbols-outlined text-[14px]">expand_more</span></div><button class="p-space-xs rounded bg-surface-container text-on-surface-variant hover:text-primary hover:bg-surface-container-high transition-colors" title="Refresh Telemetry" type="button"><span class="material-symbols-outlined text-[16px]">refresh</span></button><div class="flex items-center gap-space-xs pl-space-md"><button class="w-4 h-4 rounded-full bg-surface-container-highest hover:bg-surface-bright flex items-center justify-center text-on-surface-variant transition-colors" type="button"><span class="material-symbols-outlined text-[10px]">minimize</span></button><button class="w-4 h-4 rounded-full bg-surface-container-highest hover:bg-surface-bright flex items-center justify-center text-on-surface-variant transition-colors" type="button"><span class="material-symbols-outlined text-[10px]">crop_square</span></button><button class="w-4 h-4 rounded-full bg-error-container hover:bg-error flex items-center justify-center text-on-error transition-colors" type="button"><span class="material-symbols-outlined text-[10px]">close</span></button></div><div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center ml-space-xs"><span class="material-symbols-outlined text-on-primary text-[18px]">person</span></div></div></header><aside class="fixed left-0 top-14 bottom-0 w-64 bg-surface-container-low z-40 flex flex-col justify-between p-space-sm shadow-[0_1px_8px_rgba(0,0,0,0.3)]"><div class="flex flex-col gap-space-xs"><div class="px-space-sm pt-space-xs pb-space-sm"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase tracking-wider">Navigation</span></div><nav class="flex flex-col gap-space-xs" data-active-classes="bg-primary-container text-on-primary-container font-headline-sm"><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="overview" href="#"><span class="material-symbols-outlined text-[18px]">dashboard</span><span>Overview</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="apps-and-processes" href="#"><span class="material-symbols-outlined text-[18px]">apps</span><span>Apps & Processes</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="network-interfaces" href="#"><span class="material-symbols-outlined text-[18px]">settings_ethernet</span><span>Network Interfaces</span></a><a class="flex items-center gap-space-sm px-space-sm py-space-sm rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors font-body-md text-body-md" data-path="diagnostics-and-daemon" href="#"><span class="material-symbols-outlined text-[18px]">terminal</span><span>Diagnostics & Daemon</span></a></nav></div><div class="flex flex-col gap-space-sm p-space-sm bg-surface-container rounded"><div class="flex items-center justify-between"><span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Kernel eBPF / Mon</span><span class="font-code-sm text-code-sm text-secondary">ONLINE</span></div><div class="space-y-space-xs"><div class="flex justify-between font-code-sm text-code-sm text-on-surface-variant"><span>CPU Probe</span><span class="text-on-surface">14.2%</span></div><div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-primary" style="width: 14.2%"></div></div></div><div class="space-y-space-xs"><div class="flex justify-between font-code-sm text-code-sm text-on-surface-variant"><span>Ring Buffer</span><span class="text-on-surface">42 MB / 128 MB</span></div><div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-secondary" style="width: 32.8%"></div></div></div><div class="space-y-space-xs"><div class="flex justify-between font-code-sm text-code-sm text-on-surface-variant"><span>Drop Rate</span><span class="text-on-surface">0.00%</span></div><div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden"><div class="h-full bg-primary" style="width: 1%"></div></div></div></div></aside><div class="pl-64"><main class="relative pt-14 w-full px-gutter-desktop min-h-screen bg-surface"><div class="flex flex-col w-full pb-margin-desktop gap-space-lg">
+<!-- Daemon Health Banner / Emergency State Notice -->
+<div class="relative overflow-hidden rounded-xl bg-surface-container-low p-space-lg shadow-xl">
+<div class="absolute -right-24 -top-24 w-96 h-96 rounded-full bg-error-container/20 blur-3xl pointer-events-none"></div>
+<div class="absolute right-12 bottom-0 w-64 h-32 bg-primary/5 blur-2xl pointer-events-none"></div>
+<div class="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md relative z-10">
+<div class="flex items-start gap-space-md">
+<div class="w-12 h-12 rounded-lg bg-error-container/30 flex items-center justify-center text-error shrink-0 shadow-[0_0_16px_rgba(255,180,171,0.2)]">
+<span class="material-symbols-outlined text-[28px]">warning</span>
+</div>
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<span class="font-headline-md text-headline-md text-on-surface tracking-tight">Daemon Offline • Fallback Mode</span>
+<span class="px-space-sm py-0.5 rounded bg-error-container text-on-error-container font-label-caps text-label-caps uppercase tracking-wider">CRITICAL STATE</span>
+<span class="px-space-sm py-0.5 rounded bg-surface-container-high text-primary font-code-sm text-code-sm flex items-center gap-1">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+              SQLite Snapshot Fallback
+            </span>
+</div>
+<p class="font-code-sm text-code-sm text-on-surface-variant flex items-center gap-space-xs mt-0.5">
+<span class="material-symbols-outlined text-[15px] text-error">cloud_off</span>
+<span class="text-error/90 font-medium">D-Bus IPC Fault:</span>
+<span class="text-on-surface-variant/80 select-all">org.freedesktop.DBus.Error.ServiceUnknown: The name org.flow.Daemon was not provided by any .service files</span>
+</p>
+<div class="flex items-center gap-space-sm mt-1 text-on-surface-variant font-code-sm text-code-sm">
+<span class="flex items-center gap-1 text-secondary">
+<span class="material-symbols-outlined text-[14px]">storage</span>
+              /var/lib/flow/telemetry.db
+            </span>
+<span class="text-outline">•</span>
+<span>Read-Only Snapshot Lock [PID: None]</span>
+<span class="text-outline">•</span>
+<span class="text-on-surface-variant/70">Sync: 12.4s ago</span>
+</div>
+</div>
+</div>
+<!-- Quick Action Toolbar -->
+<div class="flex items-center gap-space-xs flex-wrap self-end lg:self-center">
+<button class="px-space-md py-space-xs rounded bg-primary text-on-primary font-code-md text-code-md font-semibold hover:shadow-[0_0_12px_rgba(76,215,246,0.4)] transition-all flex items-center gap-space-xs active:scale-95" id="btn-restart-svc">
+<span class="material-symbols-outlined text-[16px]">restart_alt</span>
+<span>systemctl restart flow</span>
+</button>
+<button class="px-space-md py-space-xs rounded bg-surface-container-high text-on-surface font-code-md text-code-md hover:bg-surface-bright transition-colors flex items-center gap-space-xs active:scale-95" id="btn-spawn-debug">
+<span class="material-symbols-outlined text-primary text-[16px]">terminal</span>
+<span>Spawn flow-daemon --debug</span>
+</button>
+<button class="px-space-sm py-space-xs rounded bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-code-sm text-code-sm flex items-center gap-1" id="btn-export-csv" title="Export persisted SQLite records to CSV">
+<span class="material-symbols-outlined text-[15px]">download</span>
+<span>Export CSV</span>
+</button>
+<button class="px-space-sm py-space-xs rounded bg-surface-container text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors font-code-sm text-code-sm flex items-center gap-1" id="btn-flush-cache" title="Flush local cache buffers">
+<span class="material-symbols-outlined text-[15px]">delete_sweep</span>
+<span>Flush Cache</span>
+</button>
+<button class="p-space-xs rounded bg-surface-container text-tertiary hover:bg-surface-container-high transition-colors flex items-center justify-center" id="btn-probe-ebpf" title="Probe eBPF Rings & Subsystems">
+<span class="material-symbols-outlined text-[18px]">memory</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Diagnostic Metrics Grid (4 columns) -->
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-space-md">
+<!-- 1. Pipeline Counters -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between shadow-md relative overflow-hidden">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-outline text-[18px]">alt_route</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Pipeline Counters</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-highest text-outline font-label-caps text-label-caps">STALLED</span>
+</div>
+<div class="grid grid-cols-2 gap-space-sm my-space-md">
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">RX Events</span>
+<div class="font-code-lg text-code-lg text-on-surface font-semibold tracking-tight mt-0.5">0 <span class="font-code-sm text-code-sm text-outline font-normal">/s</span></div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Drops</span>
+<div class="font-code-lg text-code-lg text-secondary font-semibold tracking-tight mt-0.5">0</div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Batches</span>
+<div class="font-code-lg text-code-lg text-on-surface font-semibold tracking-tight mt-0.5">0 <span class="font-code-sm text-code-sm text-outline font-normal">blk</span></div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Write Err</span>
+<div class="font-code-lg text-code-lg text-secondary font-semibold tracking-tight mt-0.5">0</div>
+</div>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-code-sm text-code-sm pt-space-xs">
+<span class="text-outline">Queue Depth</span>
+<span class="text-on-surface font-medium">0 / 65,536 (0%)</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden mt-1.5">
+<div class="h-full bg-outline" style="width: 0%"></div>
+</div>
+</div>
+<!-- 2. SQLite Persistence -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between shadow-md relative overflow-hidden">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[18px]">database</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">SQLite Store</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-high text-secondary font-label-caps text-label-caps">HEALTHY</span>
+</div>
+<div class="grid grid-cols-2 gap-space-sm my-space-md">
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">DB File Size</span>
+<div class="font-code-lg text-code-lg text-primary font-semibold tracking-tight mt-0.5">14.8 <span class="font-code-sm text-code-sm text-outline font-normal">MB</span></div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Time Buckets</span>
+<div class="font-code-lg text-code-lg text-on-surface font-semibold tracking-tight mt-0.5">48 <span class="font-code-sm text-code-sm text-outline font-normal">1-min</span></div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">Page Cache</span>
+<div class="font-code-lg text-code-lg text-on-surface font-semibold tracking-tight mt-0.5">4,096 <span class="font-code-sm text-code-sm text-outline font-normal">pg</span></div>
+</div>
+<div class="p-space-xs rounded bg-surface-container">
+<span class="font-label-caps text-label-caps text-on-surface-variant uppercase">VACUUM Flag</span>
+<div class="font-code-lg text-code-lg text-secondary font-semibold tracking-tight mt-0.5">OK</div>
+</div>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-code-sm text-code-sm pt-space-xs">
+<span class="text-outline">WAL Journal Mode</span>
+<span class="text-primary font-medium">PRAGMA synchronous=NORMAL</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden mt-1.5">
+<div class="h-full bg-primary" style="width: 78%"></div>
+</div>
+</div>
+<!-- 3. Kernel Capabilities -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between shadow-md relative overflow-hidden">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-tertiary text-[18px]">verified_user</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Kernel Caps</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-high text-tertiary font-label-caps text-label-caps">AUDITED</span>
+</div>
+<div class="space-y-space-xs my-space-md">
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<span class="text-on-surface-variant">CAP_BPF</span>
+<span class="text-secondary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> GRANTED
+          </span>
+</div>
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<span class="text-on-surface-variant">CAP_NET_ADMIN</span>
+<span class="text-secondary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check_circle</span> GRANTED
+          </span>
+</div>
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<span class="text-on-surface-variant">SOCK_OPS Prog</span>
+<span class="text-tertiary font-semibold flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">schedule</span> STANDBY
+          </span>
+</div>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-code-sm text-code-sm pt-space-xs">
+<span class="text-outline">BTF vmlinux Type ID</span>
+<span class="text-on-surface font-medium">Loaded (BTF#1)</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden mt-1.5">
+<div class="h-full bg-tertiary" style="width: 100%"></div>
+</div>
+</div>
+<!-- 4. Ingestion Hooks -->
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col justify-between shadow-md relative overflow-hidden">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-[18px]">cable</span>
+<span class="font-headline-sm text-headline-sm text-on-surface">Ingestion Hooks</span>
+</div>
+<span class="px-space-xs py-0.5 rounded bg-surface-container-high text-primary font-label-caps text-label-caps">DEGRADED</span>
+</div>
+<div class="space-y-space-xs my-space-md">
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+<span class="text-on-surface">procfs net/dev</span>
+</div>
+<span class="text-secondary font-medium">ACTIVE (Poll)</span>
+</div>
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-tertiary"></span>
+<span class="text-on-surface">eBPF-TCP kprobe</span>
+</div>
+<span class="text-on-surface-variant font-medium">STANDBY</span>
+</div>
+<div class="flex items-center justify-between p-space-xs rounded bg-surface-container font-code-sm text-code-sm">
+<div class="flex items-center gap-1.5">
+<span class="w-2 h-2 rounded-full bg-outline"></span>
+<span class="text-on-surface">XDP Bypass Ring</span>
+</div>
+<span class="text-outline font-medium">DETACHED</span>
+</div>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-code-sm text-code-sm pt-space-xs">
+<span class="text-outline">Hook Mode</span>
+<span class="text-secondary font-medium">Userspace Passive</span>
+</div>
+<div class="w-full h-1 bg-surface-container-highest rounded-full overflow-hidden mt-1.5">
+<div class="h-full bg-secondary" style="width: 50%"></div>
+</div>
+</div>
+</div>
+<!-- Two-Column Telemetry Split Canvas -->
+<div class="grid grid-cols-1 xl:grid-cols-12 gap-space-lg items-start">
+<!-- LEFT PANE: Persisted 1-Minute Telemetry Buckets Explorer (7 Columns) -->
+<div class="xl:col-span-7 flex flex-col gap-space-md bg-surface-container-low rounded-xl p-space-lg shadow-lg">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-sm">
+<div>
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-[20px]">calendar_view_day</span>
+<h2 class="font-headline-sm text-headline-sm text-on-surface font-semibold">Persisted 1-Minute Telemetry Buckets</h2>
+</div>
+<p class="font-code-sm text-code-sm text-on-surface-variant mt-0.5">Read directly from SQLite buffer • Time range: 11-18 01:20 — 02:07 UTC</p>
+</div>
+<div class="flex items-center gap-space-xs">
+<!-- Search input -->
+<div class="relative flex items-center">
+<span class="material-symbols-outlined absolute left-2 text-outline text-[16px]">search</span>
+<input class="bg-surface-container-lowest text-on-surface font-code-sm text-code-sm pl-7 pr-space-sm py-1 rounded w-36 sm:w-44 focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-outline/60" id="bucket-search" placeholder="Filter buckets..." type="text"/>
+</div>
+<button class="px-space-sm py-1 rounded bg-surface-container text-on-surface font-code-sm text-code-sm hover:bg-surface-container-high transition-colors flex items-center gap-1" id="btn-export-table">
+<span class="material-symbols-outlined text-[15px]">file_download</span>
+<span>TSV</span>
+</button>
+</div>
+</div>
+<!-- Sparkline preview banner -->
+<div class="bg-surface-container-lowest rounded-lg p-space-sm flex flex-col gap-1">
+<div class="flex justify-between items-center font-code-sm text-code-sm text-on-surface-variant px-space-xs">
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-primary"></span> Ingress Rate (Max: 142.1 MB/s)</span>
+<span class="flex items-center gap-1"><span class="w-2 h-2 rounded-sm bg-secondary"></span> Egress Rate (Max: 89.4 MB/s)</span>
+<span class="text-outline">48 Sample Windows</span>
+</div>
+<div class="w-full h-12 flex items-end">
+<svg class="w-full h-12" preserveaspectratio="none" viewbox="0 0 600 48">
+<defs>
+<lineargradient id="grad-ingress" x1="0" x2="0" y1="0" y2="1">
+<stop offset="0%" stop-color="#4cd7f6" stop-opacity="0.4"></stop>
+<stop offset="100%" stop-color="#4cd7f6" stop-opacity="0.0"></stop>
+</lineargradient>
+</defs>
+<path d="M0,40 Q30,12 60,30 T120,18 T180,36 T240,8 T300,24 T360,14 T420,28 T480,10 T540,22 T600,16 L600,48 L0,48 Z" fill="url(#grad-ingress)"></path>
+<path d="M0,40 Q30,12 60,30 T120,18 T180,36 T240,8 T300,24 T360,14 T420,28 T480,10 T540,22 T600,16" fill="none" stroke="#4cd7f6" stroke-width="1.75"></path>
+<path d="M0,44 Q35,28 70,38 T140,30 T210,42 T280,22 T350,34 T420,20 T490,32 T560,26 T600,24" fill="none" stroke="#4edea3" stroke-dasharray="3,3" stroke-width="1.5"></path>
+</svg>
+</div>
+</div>
+<!-- Data Table -->
+<div class="overflow-x-auto rounded-lg bg-surface-container-lowest">
+<table class="w-full text-left font-code-sm text-code-sm" id="telemetry-table">
+<thead>
+<tr class="bg-surface-container text-on-surface-variant font-label-caps text-label-caps uppercase tracking-wider">
+<th class="py-2.5 px-space-md">Bucket UTC</th>
+<th class="py-2.5 px-space-md text-right">Ingress (RX)</th>
+<th class="py-2.5 px-space-md text-right">Egress (TX)</th>
+<th class="py-2.5 px-space-md text-right">Aggregate</th>
+<th class="py-2.5 px-space-md text-right">Pkts / Frame</th>
+<th class="py-2.5 px-space-md text-center">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-surface-container-high/40 text-on-surface">
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:07
+              </td>
+<td class="py-2 px-space-md text-right font-medium">138.42 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">84.18 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">222.60 MB</td>
+<td class="py-2 px-space-md text-right text-outline">189,420</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:06
+              </td>
+<td class="py-2 px-space-md text-right font-medium">142.10 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">89.44 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">231.54 MB</td>
+<td class="py-2 px-space-md text-right text-outline">194,812</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:05
+              </td>
+<td class="py-2 px-space-md text-right font-medium">112.95 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">62.30 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">175.25 MB</td>
+<td class="py-2 px-space-md text-right text-outline">152,010</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:04
+              </td>
+<td class="py-2 px-space-md text-right font-medium">96.88 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">54.12 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">151.00 MB</td>
+<td class="py-2 px-space-md text-right text-outline">128,944</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:03
+              </td>
+<td class="py-2 px-space-md text-right font-medium">88.20 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">49.05 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">137.25 MB</td>
+<td class="py-2 px-space-md text-right text-outline">116,400</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:02
+              </td>
+<td class="py-2 px-space-md text-right font-medium">104.50 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">58.70 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">163.20 MB</td>
+<td class="py-2 px-space-md text-right text-outline">139,112</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:01
+              </td>
+<td class="py-2 px-space-md text-right font-medium">120.34 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">71.02 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">191.36 MB</td>
+<td class="py-2 px-space-md text-right text-outline">164,880</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+<tr class="hover:bg-surface-container transition-colors group cursor-pointer">
+<td class="py-2 px-space-md text-primary font-medium flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[14px] text-outline group-hover:text-primary">schedule</span>
+                11-18 02:00
+              </td>
+<td class="py-2 px-space-md text-right font-medium">130.80 MB</td>
+<td class="py-2 px-space-md text-right text-secondary font-medium">78.50 MB</td>
+<td class="py-2 px-space-md text-right text-on-surface font-semibold">209.30 MB</td>
+<td class="py-2 px-space-md text-right text-outline">179,200</td>
+<td class="py-2 px-space-md text-center">
+<span class="px-space-xs py-0.5 rounded bg-surface-container text-secondary font-label-caps text-label-caps">COMMITTED</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between text-on-surface-variant font-code-sm text-code-sm pt-space-xs">
+<span>Displaying latest 8 of 48 buckets (1-minute aggregated intervals)</span>
+<div class="flex items-center gap-space-xs">
+<button class="px-space-xs py-0.5 rounded bg-surface-container text-outline hover:text-on-surface disabled:opacity-30" disabled="">< Prev</button>
+<span class="text-on-surface">Page 1 / 6</span>
+<button class="px-space-xs py-0.5 rounded bg-surface-container text-on-surface-variant hover:text-on-surface">Next ></button>
+</div>
+</div>
+</div>
+<!-- RIGHT PANE: System Terminal & Diagnostics Log Viewer (5 Columns) -->
+<div class="xl:col-span-5 flex flex-col bg-surface-container-low rounded-xl shadow-lg overflow-hidden">
+<!-- Terminal Window Bar -->
+<div class="bg-surface-container-lowest px-space-md py-space-sm flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="w-3 h-3 rounded-full bg-error inline-block"></span>
+<span class="w-3 h-3 rounded-full bg-surface-container-highest inline-block"></span>
+<span class="w-3 h-3 rounded-full bg-secondary inline-block"></span>
+<span class="font-code-sm text-code-sm text-on-surface-variant ml-space-xs">root@workstation:~# /usr/lib/flow/flow-diag</span>
+</div>
+<div class="flex items-center gap-space-xs">
+<button class="text-outline hover:text-primary p-1 rounded" id="btn-copy-log" title="Copy Raw Diagnostic Output">
+<span class="material-symbols-outlined text-[15px]">content_copy</span>
+</button>
+<button class="text-outline hover:text-on-surface p-1 rounded" id="btn-clear-term" title="Clear Console View">
+<span class="material-symbols-outlined text-[15px]">backspace</span>
+</button>
+</div>
+</div>
+<!-- Log Tabs -->
+<div class="flex items-center bg-surface-container px-space-md gap-space-sm overflow-x-auto text-on-surface-variant font-code-sm text-code-sm py-1.5">
+<button class="tab-btn px-space-sm py-0.5 rounded bg-surface-container-highest text-primary font-semibold flex items-center gap-1 shrink-0" data-view="check-all">
+<span class="material-symbols-outlined text-[14px]">checklist</span>
+          flow-diag --check-all
+        </button>
+<button class="tab-btn px-space-sm py-0.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1 shrink-0" data-view="systemd">
+<span class="material-symbols-outlined text-[14px]">tune</span>
+          systemd status
+        </button>
+<button class="tab-btn px-space-sm py-0.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1 shrink-0" data-view="dmesg">
+<span class="material-symbols-outlined text-[14px]">terminal</span>
+          dmesg | grep bpf
+        </button>
+<button class="tab-btn px-space-sm py-0.5 rounded hover:bg-surface-container-high text-on-surface-variant hover:text-on-surface flex items-center gap-1 shrink-0" data-view="audit">
+<span class="material-symbols-outlined text-[14px]">shield</span>
+          cap-audit
+        </button>
+</div>
+<!-- Terminal Output Content Area -->
+<div class="p-space-md bg-surface-container-lowest font-code-sm text-code-sm leading-relaxed overflow-y-auto max-h-[512px] min-h-[460px] text-on-surface selection:bg-primary-container selection:text-on-primary-container" id="terminal-content">
+<div class="space-y-1">
+<p class="text-outline select-none">$ /usr/lib/flow/flow-diag --check-all --verbose</p>
+<p class="text-on-surface-variant">[0.00012] Initializing Flow Subsystem Diagnostic Runner v2.14.0-linux-amd64</p>
+<p class="text-on-surface-variant">[0.00045] OS Release: Ubuntu 24.04 LTS (Noble Numbat) • Kernel: 6.8.0-45-generic</p>
+<div class="pt-space-xs text-primary font-semibold">[ PHASE 1: D-BUS INTERFACE PROBE ]</div>
+<p class="text-on-surface pl-2">> Querying bus: system_bus → target: org.flow.Daemon</p>
+<p class="text-error pl-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">close</span>
+            FAIL: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown: The name org.flow.Daemon was not provided by any .service files
+          </p>
+<p class="text-on-surface-variant pl-4">• Checked path: /usr/share/dbus-1/system-services/org.flow.Daemon.service [MISSING]</p>
+<p class="text-on-surface-variant pl-4">• Checked path: /etc/systemd/system/flow-daemon.service [INACTIVE/DEAD]</p>
+<div class="pt-space-xs text-primary font-semibold">[ PHASE 2: TELEMETRY PERSISTENCE VERIFICATION ]</div>
+<p class="text-on-surface pl-2">> Inspecting SQLite storage: /var/lib/flow/telemetry.db</p>
+<p class="text-secondary pl-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check</span>
+            OK: SQLite DB accessible in read-only mode (14.8 MB, 48 buckets committed)
+          </p>
+<p class="text-secondary pl-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">check</span>
+            OK: Schema validation succeeded (Tables: `flow_buckets_1m`, `flow_meta_idx`, `flow_rules`)
+          </p>
+<p class="text-on-surface-variant pl-4">• Integrity check: PRAGMA quick_check → result: ok</p>
+<div class="pt-space-xs text-primary font-semibold">[ PHASE 3: KERNEL CAPABILITIES & BPF VERIFIER ]</div>
+<p class="text-on-surface pl-2">> CapGet: Effective thread capability audit:</p>
+<p class="text-secondary pl-4 font-mono">• CAP_BPF: ALLOWED (sys_bpf syscall uninhibited)</p>
+<p class="text-secondary pl-4 font-mono">• CAP_NET_ADMIN: ALLOWED (netlink raw sock permitted)</p>
+<p class="text-tertiary pl-4 font-mono">• CAP_SYS_RESOURCE: ALLOWED (RLIMIT_MEMLOCK set to unlimited)</p>
+<p class="text-on-surface pl-2">> BPF map allocation test: BPF_MAP_TYPE_RINGBUF (size: 131072)</p>
+<p class="text-secondary pl-4">• Ring buffer initialization OK (fd: 4)</p>
+<div class="pt-space-xs text-primary font-semibold">[ PHASE 4: INGESTION PIPELINE DIAGNOSTIC ]</div>
+<p class="text-error pl-2 flex items-center gap-1">
+<span class="material-symbols-outlined text-[14px]">priority_high</span>
+            WARN: flow-daemon inactive; switching local metrics view to procfs net/dev passive ingest
+          </p>
+<p class="text-secondary pl-4">• Interface wlan0 / eth0 sampled via /proc/net/dev every 1000ms</p>
+<p class="text-outline pl-4">• Kprobe hooks disabled due to absent daemon event loop</p>
+<div class="pt-space-xs text-on-surface font-semibold">[ CONCLUSION & RECOMMENDED REMEDIATION ]</div>
+<p class="text-on-surface pl-2">System state is functional for metric inspection using persisted historical SQLite frames.</p>
+<p class="text-on-surface pl-2">To restore real-time kernel eBPF stream processing, execute:</p>
+<div class="p-space-xs rounded bg-surface-container my-1 font-mono text-primary flex items-center justify-between">
+<span>sudo systemctl enable --now flow-daemon.service</span>
+<button class="text-outline hover:text-on-surface text-[12px]" onclick="navigator.clipboard.writeText('sudo systemctl enable --now flow-daemon.service')">Copy</button>
+</div>
+<p class="text-outline select-none mt-2 flex items-center gap-1">
+<span>flow-diag finished with exit status 2 (SERVICE_UNAVAILABLE)</span>
+<span class="inline-block w-2 h-4 bg-primary animate-pulse ml-1"></span>
+</p>
+</div>
+</div>
+<!-- Terminal Footer Bar with Quick Trigger -->
+<div class="bg-surface-container p-space-sm flex items-center justify-between">
+<span class="font-code-sm text-code-sm text-on-surface-variant">Last execution completed in 148ms</span>
+<button class="px-space-md py-1 rounded bg-primary text-on-primary font-code-sm text-code-sm font-semibold hover:shadow-[0_0_8px_rgba(76,215,246,0.3)] transition-all flex items-center gap-1" id="btn-re-run">
+<span class="material-symbols-outlined text-[14px]">play_arrow</span>
+<span>Re-run Diagnostics</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<script>
+  // Micro-interactions and interactive console feedback
+  const termContent = document.getElementById('terminal-content');
+  const btnReRun = document.getElementById('btn-re-run');
+  const btnRestart = document.getElementById('btn-restart-svc');
+  const btnSpawnDebug = document.getElementById('btn-spawn-debug');
+  const btnCopyLog = document.getElementById('btn-copy-log');
+  const btnClear = document.getElementById('btn-clear-term');
+  const searchInput = document.getElementById('bucket-search');
+  const tableRows = document.querySelectorAll('#telemetry-table tbody tr');
+
+  // Search filtering in buckets table
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      tableRows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+      });
+    });
+  }
+
+  // Copy raw output
+  if (btnCopyLog && termContent) {
+    btnCopyLog.addEventListener('click', () => {
+      navigator.clipboard.writeText(termContent.innerText).then(() => {
+        const orig = btnCopyLog.innerHTML;
+        btnCopyLog.innerHTML = '<span class="material-symbols-outlined text-[15px] text-secondary">check</span>';
+        setTimeout(() => { btnCopyLog.innerHTML = orig; }, 1400);
+      });
+    });
+  }
+
+  // Clear Terminal
+  if (btnClear && termContent) {
+    btnClear.addEventListener('click', () => {
+      termContent.innerHTML = '<p class="text-outline">$ console cleared. Click "Re-run Diagnostics" or quick action to execute.</p>';
+    });
+  }
+
+  // Simulated re-run
+  if (btnReRun && termContent) {
+    btnReRun.addEventListener('click', () => {
+      termContent.innerHTML += `<div class="mt-space-sm pt-space-xs text-primary font-semibold">[ RUNNING MANUAL DIAGNOSTIC TRIGGER ]</div><p class="text-on-surface-variant font-code-sm">[probe] Checking D-Bus daemon endpoint... unreachable.</p><p class="text-secondary font-code-sm">[sqlite] Snapshot stream OK at /var/lib/flow/telemetry.db (48 buckets ready)</p>`;
+      termContent.scrollTop = termContent.scrollHeight;
+    });
+  }
+
+  // Systemctl restart feedback
+  if (btnRestart && termContent) {
+    btnRestart.addEventListener('click', () => {
+      termContent.innerHTML += `<div class="mt-space-sm p-space-xs rounded bg-surface-container text-primary font-mono">$ systemctl restart flow.service<br/><span class="text-error">Job for flow.service failed because unit not found. Verify /etc/systemd/system/flow.service</span></div>`;
+      termContent.scrollTop = termContent.scrollHeight;
+    });
+  }
+
+  // Spawn debug feedback
+  if (btnSpawnDebug && termContent) {
+    btnSpawnDebug.addEventListener('click', () => {
+      termContent.innerHTML += `<div class="mt-space-sm p-space-xs rounded bg-surface-container font-mono text-tertiary">$ flow-daemon --debug --foreground<br/><span class="text-on-surface-variant">[DEBUG] Binding eBPF map: ringbuf_flow_events (size 128MB)...</span><br/><span class="text-secondary">[OK] Attached kprobe:tcp_v4_connect</span></div>`;
+      termContent.scrollTop = termContent.scrollHeight;
+    });
+  }
+
+  // Tab switching inside diagnostic console
+  const tabBtns = document.querySelectorAll('.tab-btn');
+  const views = {
+    'systemd': `<p class="text-outline">$ systemctl status flow-daemon.service</p><p class="text-error">• flow-daemon.service - Flow eBPF Telemetry Core Daemon</p><p class="text-on-surface-variant pl-4">Loaded: loaded (/lib/systemd/system/flow-daemon.service; disabled; vendor preset: enabled)</p><p class="text-on-surface-variant pl-4">Active: <span class="text-error font-semibold">inactive (dead)</span> since Tue 2024-11-18 01:14:02 UTC; 53min ago</p><p class="text-on-surface-variant pl-4">Main PID: 18241 (code=exited, status=0/SUCCESS)</p>`,
+    'dmesg': `<p class="text-outline">$ dmesg -T | grep -E "bpf|flow"</p><p class="text-on-surface-variant">[Tue Nov 18 01:10:04 2024] bpf_trace: registered tracepoint sys_enter_connect</p><p class="text-on-surface-variant">[Tue Nov 18 01:10:04 2024] BPF:[1048] STRUCT sock size=728 vlen=84</p><p class="text-secondary">[Tue Nov 18 01:10:05 2024] flow_ebpf: verified prog "flow_sock_ops" with 1,280 insns</p><p class="text-on-surface-variant">[Tue Nov 18 01:14:02 2024] flow_ebpf: detached map and rings cleanly during unregister</p>`,
+    'audit': `<p class="text-outline">$ capsh --print | grep Current</p><p class="text-on-surface-variant">Current: = cap_bpf,cap_net_admin,cap_sys_resource+eip</p><p class="text-secondary pl-2">[OK] BPF privilege subsystem compliant</p><p class="text-secondary pl-2">[OK] NET_ADMIN promiscuous probe capability valid</p>`,
+    'check-all': null // handled by default
+  };
+
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tabBtns.forEach(b => {
+        b.classList.remove('bg-surface-container-highest', 'text-primary', 'font-semibold');
+        b.classList.add('text-on-surface-variant');
+      });
+      btn.classList.add('bg-surface-container-highest', 'text-primary', 'font-semibold');
+      btn.classList.remove('text-on-surface-variant');
+
+      const view = btn.getAttribute('data-view');
+      if (views[view]) {
+        termContent.innerHTML = `<div class="space-y-1">${views[view]}</div>`;
+      } else {
+        // Reset check-all
+        location.reload();
+      }
+    });
+  });
+</script></main></div></body></html>

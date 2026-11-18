@@ -3,6 +3,8 @@
 Date: 2026-11-15  
 Status: preparation/incremental scaffolding (no final D-Bus library pinned yet; see ADR 0002)
 
+> **Update (2026-11-18):** Much of this preparation is now implemented: Tmds.DBus session-bus IPC with contract v3, daemon query/status methods, coalesced `StatusChanged` signals, Avalonia shell with four pages, graphical charts, and CSV/JSON picker exports (see ADR 0003/0004 and `docs/progress.md`). Still pending: control operations/authorization, process/interface detail depth, Reports/History/Settings, system-bus/activation/Polkit packaging, and full Wayland/a11y verification.
+
 ## Goal
 Build a GNOME-friendly Avalonia desktop UI that queries the Flow daemon for live/historical usage and health, without replacing per-process attribution semantics with interface totals and without requiring a system tray.
 

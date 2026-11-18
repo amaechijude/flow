@@ -456,3 +456,26 @@
 
 ### Notes / remaining next steps
 - Export writes to a fixed user-home path (no file picker yet). Graphical charts, live D-Bus signals, automated IPC integration tests, retention/rollups, and provider/identity/gate hardening remain pending.
+
+## 2026-11-18 (UI shell/pages, graphical charts, picker exports, IPC v3 signals, integration tests)
+
+### Completed
+- **Desktop shell and pages (real data only):** replaced the single Overview window with a fixed header + sidebar shell and four pages — Overview, Apps & Processes (`flow_designs/apps_and_proceses`), Network Interfaces (`flow_designs/network_interface`), Diagnostics & Daemon (`flow_designs/diagnostics`). Shared header shows truthful daemon state, IPC/signal state, range and interface filters, refresh, CSV/JSON export. Dark "Obsidian Telemetry" palette and card/pill/nav/table styles in `Styles/FlowStyles.axaml`.
+- **Shared snapshot orchestration:** `MainViewModel` performs one coherent refresh and passes the same real `UsageSnapshot` to all page view models. Pages add presentation only: sortable columns, search filters, attributed/unattributed filters, selection/detail panels. Header totals are not recomputed from filtered rows.
+- **Graphical charts (no new dependency):** added custom `TimeSeriesChart` (RX/TX dual-series area chart from persisted 1-minute buckets), `SplitBar` (RX/TX and attributed/unattributed), and `UsageBar` (row share), rendered with Avalonia vector primitives. Rationale recorded in **ADR 0004**; avoids unverified chart packages on the Skia/Wayland path. Bucket list remains the textual/accessible source of truth.
+- **Exports:** CSV retained and JSON added; both include range/filter/generation time, data source/provider, and attribution/measurement/identity/coverage caveats. Destinations use the Avalonia `StorageProvider.SaveFilePickerAsync`; `Flow__ExportDirectory` overrides the picker for automation.
+- **IPC contract v3 + status signals:** `FlowIpc.ContractVersion = 3`; new `StatusChanged` D-Bus signal carrying JSON `StatusChangedSignalDto(ObservedUtc, Reason, Status)`. The daemon polls real diagnostics every 2s and publishes only when the serialized snapshot changes (`initial`/`changed`), so signals are coalesced. `DbusDaemonClient` subscribes best-effort, exposes signal state, and treats signals as a refresh hint (authoritative values are re-queried). Older daemons without the signal remain usable.
+- **Automated daemon↔client tests:** `tests/Flow.SystemTests/DbusIntegrationTests.cs` starts a private `dbus-daemon`, registers the real `FlowDaemonDbusService`, and drives the real `DbusDaemonClient`: contract v3, JSON round-trip for every query method over real D-Bus, signal delivery, and publisher coalescing (stable snapshots do not repeat signals) using the real hosted service. Added `StatusChangedSignalDto` JSON round-trip coverage in `IpcContractSerializationTests`. Test-only seams: hosted service `AddressOverride`/`StatusPollInterval` (internal).
+- **Docs:** added ADR 0004 (shell/pages, custom charts, exports, contract v3 signals, private-bus tests); noted contract evolution in ADR 0003.
+
+### Verification / test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal --no-build` → **passed 20/20** (Domain 1, Application 4, Infrastructure 9, Linux 1, Daemon 1, System 4).
+- **On-target session-bus check (non-root, `Flow__Monitor=procfs`, temp DB):** `busctl --user introspect org.flow.Daemon /org/flow/Daemon` exposed contract v3 methods plus `.StatusChanged signal s`; `GetContractVersion` returned `i 3`; `busctl --user monitor org.flow.Daemon` observed `StatusChanged` JSON payloads roughly every 2s with real pipeline counters/state (`ProcNetDevMonitor`, `state=Monitoring`, increasing `eventsReceived`/`eventsAggregated`), confirming the production signal path and coalescing interval.
+- Non-root desktop smoke: launched the built app in the existing GNOME/Wayland session; it stayed running for the smoke window with no startup/XAML errors. This is a launch smoke check, not a screenshot/a11y verification; chart interaction and full Wayland/accessibility conformance remain unverified.
+
+### Notes / remaining gaps
+- Signals are best-effort and coalesced (no replay; up to ~2s detection latency). Reconnect/resubscribe after daemon restart and error mapping are still lightly exercised.
+- Charts are intentionally minimal (no zoom/tooltip/per-point inspection) and not a11y-verified; the textual bucket list remains the honest source of detail.
+- Private-bus integration tests are Linux-only and require `dbus-daemon`; they do not cover system-bus activation/policy/Polkit or privileged-daemon topology.
+- Provider/identity/gate hardening, rollups/retention, Reports/Settings pages, and packaging remain pending.

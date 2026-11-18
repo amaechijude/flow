@@ -33,6 +33,22 @@ public sealed class IpcContractSerializationTests
     }
 
     [Fact]
+    public void StatusChangedSignalRoundTripsAsJson()
+    {
+        var status = new MonitoringStatusDto(MonitoringState.Degraded, null, "ProcNetDevMonitor", "desc", "test", 1, 2);
+        var dto = new StatusChangedSignalDto(new DateTimeOffset(2026, 11, 18, 9, 30, 0, TimeSpan.Zero), "changed", status);
+
+        var json = IpcJson.Serialize(dto);
+        var back = IpcJson.Deserialize<StatusChangedSignalDto>(json);
+
+        Assert.NotNull(back);
+        Assert.Equal(dto.ObservedUtc, back.ObservedUtc);
+        Assert.Equal(dto.Reason, back.Reason);
+        Assert.Equal(status, back.Status);
+        Assert.Equal(3, FlowIpc.ContractVersion);
+    }
+
+    [Fact]
     public void UsageDtosRoundTripAsJson()
     {
         var summary = new UsageSummaryDto(new DateTimeOffset(2026,11,15,0,0,0,TimeSpan.Zero), new DateTimeOffset(2026,11,15,1,0,0,TimeSpan.Zero), null, 1,2,3,4);
