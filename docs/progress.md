@@ -630,3 +630,13 @@
 - Veth endpoints now use /32 addresses plus explicit onlink peer routes in both directions.
 - Transfer `OSError`s now produce a diagnostic SystemExit instead of a bare traceback.
 - No BPF/loader code changed; baseline remains 35/35 passing.
+
+## 2026-11-18 (veth route flag rejected)
+
+### Measured failure
+- The second veth attempt failed during setup: `ip route add 192.0.2.2/32 dev flowvA onlink` → `Invalid flags for nexthop - PERVASIVE and ONLINK can not be set.` The pair was cleaned up.
+
+### Fix (not yet rerun)
+- Removed the `onlink` flag (verified plain `ip route add ... dev ...` syntax is accepted by this iproute2).
+- Added permanent neighbor entries using each veth peer's MAC from `/sys/class/net/<dev>/address`, so local addresses do not depend on ARP replies.
+- Docs updated; no BPF/loader change; baseline remains 35/35 passing.

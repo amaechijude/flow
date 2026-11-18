@@ -133,15 +133,21 @@ class VethPair:
                 )
         _ip("link", "add", VETH_CLIENT, "type", "veth", "peer", "name", VETH_SERVER)
         try:
+            # Both addresses are local to this namespace. /32 plus explicit peer
+            # routes give SO_BINDTODEVICE one valid egress route per side;
+            # duplicate /24 connected routes caused EHOSTUNREACH in attempt 1.
             _ip("addr", "add", f"{VETH_CLIENT_IP}/{VETH_PREFIX}", "dev", VETH_CLIENT)
             _ip("addr", "add", f"{VETH_SERVER_IP}/{VETH_PREFIX}", "dev", VETH_SERVER)
             _ip("link", "set", VETH_CLIENT, "up")
             _ip("link", "set", VETH_SERVER, "up")
-            # Both addresses are local to this namespace. /32 plus explicit
-            # peer routes give SO_BINDTODEVICE a single valid egress route on
-            # each side; duplicate /24 connected routes caused EHOSTUNREACH.
-            _ip("route", "add", f"{VETH_SERVER_IP}/32", "dev", VETH_CLIENT, "onlink")
-            _ip("route", "add", f"{VETH_CLIENT_IP}/32", "dev", VETH_SERVER, "onlink")
+            _ip("route", "add", f"{VETH_SERVER_IP}/32", "dev", VETH_CLIENT)
+            _ip("route", "add", f"{VETH_CLIENT_IP}/32", "dev", VETH_SERVER)
+            # Static neighbor entries avoid relying on ARP for addresses that
+            # are local to this namespace (some kernels will not answer).
+            client_mac = Path(f"/sys/class/net/{VETH_CLIENT}/address").read_text().strip()
+            server_mac = Path(f"/sys/class/net/{VETH_SERVER}/address").read_text().strip()
+            _ip("neigh", "add", VETH_SERVER_IP, "lladdr", server_mac, "dev", VETH_CLIENT, "nud", "permanent")
+            _ip("neigh", "add", VETH_CLIENT_IP, "lladdr", client_mac, "dev", VETH_SERVER, "nud", "permanent")
         except SystemExit:
             self.stop()
             raise
@@ -796,7 +802,7 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            "temporary veth pair (192.0.2.1/32 <-> 192.0.2.2/32 with explicit peer routes)"
+            "temporary veth pair (192.0.2.1/32 <-> 192.0.2.2/32 with explicit peer routes and static neighbors)"
             if veth
             else "loopback `lo`"
         ),

@@ -145,10 +145,11 @@ TCP then 16 MiB over UDP). `--mode veth` (not yet privileged-run) creates a
 temporary veth pair (`flowvA` 192.0.2.1/32, `flowvB` 192.0.2.2/32), binds the
 client sockets to `flowvA` and the server sockets to `flowvB` via
 `SO_BINDTODEVICE`, and requires TX to attribute to `flowvA` and RX to `flowvB`
-for both protocols. /32 addresses with explicit peer routes avoid the duplicate
-connected-route ambiguity that caused an initial `No route to host` failure.
-The devices are deleted after the run; an existing device with either name
-causes an error instead of being modified. The script writes a Markdown report under
+for both protocols. /32 addresses, explicit peer routes, and static neighbor
+entries avoid the route/ARP issues seen with duplicate /24 connected routes and
+the unsupported `onlink` flag on this kernel. The devices are deleted after the
+run; an existing device with either name causes an error instead of being
+modified. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
