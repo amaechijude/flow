@@ -12,6 +12,12 @@ public sealed record ProcessIdentity(
     string? CgroupId = null,
     string? NetworkNamespaceId = null)
 {
+    /// <summary>
+    /// Stable key for a process generation. Deliberately excludes executable path and
+    /// other enrichment-only metadata: those may become known later (or differ between
+    /// snapshots) and must not split one process generation into multiple identities.
+    /// PID reuse is disambiguated by the event-time start time.
+    /// </summary>
     public string StableKey => FormattableString.Invariant(
-        $"{Pid}:{StartTimeUtc.ToUnixTimeMilliseconds()}:{(Uid.HasValue ? Uid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")}:{ExecutablePath ?? "-"}");
+        $"{Pid}:{StartTimeUtc.ToUnixTimeMilliseconds()}:{(Uid.HasValue ? Uid.Value.ToString(System.Globalization.CultureInfo.InvariantCulture) : "-")}");
 }

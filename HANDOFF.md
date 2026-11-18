@@ -1,7 +1,7 @@
 # Flow handoff
 
 Date: 2026-11-18  
-Repo: `/home/amaechi/code/flow` (git, branch `main`; UI/IPC increments from this date are uncommitted — see `docs/progress.md`)
+Repo: `/home/amaechi/code/flow` (git, branch `main`; UI/IPC increment committed as `474bf00`; attribution identity hardening is uncommitted — see `docs/progress.md`)
 
 ## What this is
 Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background daemon and Avalonia desktop GUI (see `flow-project-plan.md`). Core requirement: transparent per-application/per-process byte attribution with persistent history. **Do not claim full completion without validated evidence.**
@@ -15,12 +15,12 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ## Current state (what is done and working)
 
 ### Prototype & core
-- **Docs/decisions:** architecture, monitoring, attribution, security, database, implementation-plan, progress, interface-preparation; ADRs 0001–0004 (`docs/decisions/`). IPC v1 session-bus choice pinned in **ADR 0003** (Tmds.DBus 0.95.2, `org.flow.Daemon` `/org/flow/Daemon` `org.flow.Daemon1`, JSON-over-D-Bus); **ADR 0004** records the page shell, custom chart controls, picker exports, and the v3 coalesced `StatusChanged` signal. Avalonia a11y and system-bus/activation/policy/auth remain follow-ups.
-- **Phase 1 prototype (eBPF, TCP):** `prototype/bpf/` (`vmlinux.h`, `flow_tcp_bytes.bpf.c`, `flow_tcp_bytes_loader.c`, README). Privileged attach works; per-TGID/UID TCP byte attribution with deltas/cached identity/startticks and explicit unattributed (`tgid==0`) observed. Prototype-stage, not full gate completion.
-- **Solution:** `Flow.slnx` with layered projects (`src/Flow.Domain`, `Application`, `Infrastructure`, `Linux`, `Contracts`, `Daemon`, `Desktop`) and `tests/*`. **Build succeeds** (0 warnings/0 errors); **tests pass 20/20** (`dotnet test Flow.slnx`: Domain 1, Application 4, Infrastructure 9, Linux 1, Daemon 1, System 4).
+- **Docs/decisions:** architecture, monitoring, attribution, security, database, implementation-plan, progress, interface-preparation; ADRs 0001–0005 (`docs/decisions/`). IPC v1 session-bus choice pinned in **ADR 0003** (Tmds.DBus 0.95.2, `org.flow.Daemon` `/org/flow/Daemon` `org.flow.Daemon1`, JSON-over-D-Bus); **ADR 0004** records the page shell, custom chart controls, picker exports, and the v3 coalesced `StatusChanged` signal; **ADR 0005** records event-time process identity, guarded `/proc` enrichment, and the narrowed stable key. Avalonia a11y and system-bus/activation/policy/auth remain follow-ups.
+- **Phase 1 prototype (eBPF, TCP):** `prototype/bpf/` (`vmlinux.h`, `flow_tcp_bytes.bpf.c`, `flow_tcp_bytes_loader.c`, README). Privileged attach works; per-TGID/UID TCP byte attribution with deltas and explicit unattributed (`tgid==0`) observed. Identity hardening now captures `{start_ns, tgid, uid}` plus first-observed `cgroup_id`/`comm` in-kernel and only enriches `/proc` when the live PID matches the event-time start time. Source/unit verified; **privileged rerun after the identity change is still pending**. Prototype-stage, not full gate completion.
+- **Solution:** `Flow.slnx` with layered projects (`src/Flow.Domain`, `Application`, `Infrastructure`, `Linux`, `Contracts`, `Daemon`, `Desktop`) and `tests/*`. **Build succeeds** (0 code warnings/errors; offline NuGet vulnerability warnings only); **tests pass 31/31** (`dotnet test Flow.slnx`: Domain 1, Application 4, Infrastructure 9, Linux 12, Daemon 1, System 4).
 
 ### Monitoring, ingestion, persistence
-- **Providers:** `NullNetworkMonitor`; `ProcNetDevMonitor` (interface-level `/proc/net/dev` deltas, explicitly **unattributed** fallback, no privileges); `EbpfTcpMonitor` (subprocess TSV integration of prototype loader, **TCP-only** `tcp_sendmsg`/`tcp_recvmsg` return-byte deltas, privileged, boot+startticks-derived start/app hints, explicit unattributed events, no per-interface mapping in events).
+- **Providers:** `NullNetworkMonitor`; `ProcNetDevMonitor` (interface-level `/proc/net/dev` deltas, explicitly **unattributed** fallback, no privileges); `EbpfTcpMonitor` (subprocess TSV integration of prototype loader, **TCP-only** `tcp_sendmsg`/`tcp_recvmsg` return-byte deltas, privileged, event-time start time/cgroup/comm identity with guarded `/proc` enrichment, explicit unattributed events, no per-interface mapping in events).
 - **Pipeline:** bounded-channel ingestion + 1-minute UTC aggregation + batched/idempotent flush (`UsageIngestionPipeline`), diagnostics/provider labeling, health recovery after transient write failure, failed flushes retained for retry (in-memory, timer-driven), idempotent shutdown/cancellation handling.
 - **SQLite (Microsoft.Data.Sqlite):** WAL/pragmas, migrator v1+v2. **v2** fixes bucket consolidation with NULL-safe logical uniqueness/index and `ON CONFLICT` upserts (dedupes existing rows), coalescing repeated flushes (including null app/process/interface/unattributed cases). `UsageRepository` supports metadata/session upserts, minute-bucket writes, summary, top apps, interfaces, processes, and time series queries.
 - **Daemon:** DB init/migration, DI, monitor selection (`Flow:Monitor=null|procfs|ebpf|ebpf-tcp`), pipeline start/diagnostics. Example: `Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` or privileged ebpf: `sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj`.
@@ -33,7 +33,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Desktop UI (Avalonia shell, functional):** fixed header + sidebar navigation with four pages — Overview (bento metrics, RX/TX + attribution split bars, custom RX/TX time-series chart, top apps/interfaces, recent buckets), Apps & Processes (sortable/searchable applications and processes, attributed/unattributed filter, detail panels), Network Interfaces (totals, provider semantics, sortable/searchable breakdown, detail panel), Diagnostics & Daemon (state/provider/health, pipeline counters, drop share, IPC/signal source and contract identity, searchable persisted buckets). Rolling ranges (1/6/12/24h, 7/30d), `Today`/`Yesterday`, custom date range, interface filter. CSV **and JSON** export of the loaded view use a real save-file picker (`Flow__ExportDirectory` overrides for automation) and include provenance + caveats. Attribution/measurement caveats and live-vs-SQLite fallback are explicit in the UI.
 
 ## Current limitations / known issues
-- **Attribution/gate:** ebpf is TCP-only, subprocess+privileged, no per-interface mapping in events; UDP/namespace/VPN/virtual-interface coverage, controlled counter/overhead evidence, and PID-reuse/event-time/process-exit identity hardening incomplete. Procfs is unattributed by design.
+- **Attribution/gate:** ebpf is TCP-only, subprocess+privileged, no per-interface mapping in events. Event-time/PID-reuse identity is implemented in source and unit-tested, but the modified BPF/loader has not been rerun with privileges; controlled accuracy/overhead evidence, UDP/namespace/VPN/virtual-interface coverage, and map expiry for dead process generations remain open. Procfs is unattributed by design.
 - **IPC:** per-user session-bus v1 only; signals are best-effort/coalesced (no replay, up to ~2s latency) and resubscription after daemon restart is lightly exercised; no control operations/Polkit, no system-bus policy/activation artifacts. Root-run ebpf daemon may not register IPC name for user-session desktop.
 - **Persistence/reporting:** no rollups (1m→5m→h→d→mo), no retention/cleanup jobs; Reports/Settings pages and comparisons are not implemented (diagnostics/export cover current reporting).
 - **Reliability:** flush retry is in-memory/timer-driven (no durable queue/explicit backoff policy); `LastError` not cleared on recovery; monitoring session measurement version/provider details minimal.
@@ -41,7 +41,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **Provider/identity hardening & gate evidence:** event-time persisted identity, PID-reuse/process-exit safety, per-interface mapping where feasible, UDP/namespace/VPN/virtual-interface assessment, controlled counter comparisons and overhead; update `docs/attribution.md` and ADRs with evidence (do not weaken claims).
+1. **Provider/identity gate evidence:** run the updated BPF/loader with privileges and the new `scripts/validate-ebpf-attribution.py` harness; record controlled counter comparisons, unattributed share, and CPU/RSS overhead in `docs/attribution.md`. Then assess UDP, per-interface mapping, namespaces/containers, and VPN/virtual-interface behavior (do not widen claims without evidence).
 2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
 3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
 4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.
@@ -51,11 +51,12 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ```bash
 cd /home/amaechi/code/flow
 dotnet build Flow.slnx -v minimal
-dotnet test Flow.slnx -v minimal   # expect 20/20
+dotnet test Flow.slnx -v minimal   # expect 31/31
 ```
 - **Daemon (no root, unattributed interface totals):** `Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj`
 - **Daemon (privileged, TCP attributed, prototype):** `sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` (IPC name registration may fail under sudo; DB persistence still works)
 - **Desktop:** `dotnet run --project src/Flow.Desktop/Flow.Desktop.csproj` (uses same DB path/env; connects via D-Bus when available, else truthful unavailable + real local DB fallback)
+- **eBPF controlled validation (root required):** rebuild prototype artifacts, then `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`; review the Markdown report under `docs/measurements/` before making accuracy/overhead claims.
 - **Inspect DB:** `sqlite3 ~/.local/share/flow/flow.db ".headers on" ".mode column" "select * from usage_buckets order by id desc limit 20;"`
 - **IPC check (daemon running, session bus):** `busctl --user introspect org.flow.Daemon /org/flow/Daemon` (expect contract v3 query methods and `StatusChanged` signal); `busctl --user monitor org.flow.Daemon` to observe coalesced status signals.
 
@@ -73,11 +74,11 @@ Local design guides for the four pages are in `flow_designs/{network_overview,ap
 
 ## Quick pointers
 - Plans/status: `docs/progress.md`, `docs/implementation-plan.md`, `docs/interface-preparation.md`, `docs/attribution.md`, `docs/monitoring.md`
-- Decisions: `docs/decisions/` (0001–0004)
-- Prototype: `prototype/bpf/README.md`, `scripts/check-prereqs.sh`
+- Decisions: `docs/decisions/` (0001–0005)
+- Prototype: `prototype/bpf/README.md`, `scripts/check-prereqs.sh`, `scripts/validate-ebpf-attribution.py`
 - Main code: `src/Flow.Daemon/Ipc/*`, `src/Flow.Application/Monitoring/UsageIngestionPipeline.cs`, `src/Flow.Infrastructure/Sqlite/*`, `src/Flow.Linux/Monitoring/*`, `src/Flow.Desktop/*`
 
 ## Starting fresh
 1. Read this file, `docs/progress.md`, and `flow-project-plan.md`.
 2. Run `dotnet build Flow.slnx` and `dotnet test Flow.slnx` to confirm baseline.
-3. Pick the next prioritized item (recommend **UI polish & structure** or **IPC hardening**) and work incrementally, keeping all metrics/caveats real and evidence-backed.
+3. Pick the next prioritized item (recommend **provider/identity gate evidence**: privileged rerun + controlled validation, then remaining coverage assessment) and work incrementally, keeping all metrics/caveats real and evidence-backed.

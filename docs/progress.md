@@ -479,3 +479,24 @@
 - Charts are intentionally minimal (no zoom/tooltip/per-point inspection) and not a11y-verified; the textual bucket list remains the honest source of detail.
 - Private-bus integration tests are Linux-only and require `dbus-daemon`; they do not cover system-bus activation/policy/Polkit or privileged-daemon topology.
 - Provider/identity/gate hardening, rollups/retention, Reports/Settings pages, and packaging remain pending.
+
+## 2026-11-18 (attribution identity hardening: event-time identity + PID-reuse safety)
+
+### Completed
+- **Event-time identity in BPF (ADR 0005):** changed the TCP map key from `(tgid, uid)` to `{start_ns, tgid, uid}`, where `start_ns` is `task_struct.start_time` read via CO-RE at byte-event time. The value now captures first-observed `cgroup_id` and `comm`, so short-lived processes retain identity after exit and PID reuse creates a distinct counter row instead of merging generations. Removed the unused `traffic_by_pid` map.
+- **Loader identity verification:** extended the TSV `E` line backward-compatibly with `start_ns` and `cgroup_id`; the loader uses `/proc` `comm`/`exe` only when live start ticks match the event-time start time (±2 ticks), caches identity per process generation, and otherwise keeps kernel-captured `comm` with `exe` unknown. Non-TSV output labels unverified/exited identity explicitly.
+- **Parser/provider integration:** extracted `EbpfTcpSnapshotParser` (internal, testable). It accepts 11-field legacy lines, prefers `start_ns` over `startticks` for `StartTimeUtc`, populates `ProcessIdentity.CgroupId`, and emits honest attribution notes for unverified/exited identities and unknown executables. `EbpfTcpMonitor` now delegates TSV parsing to it.
+- **Stable-key semantics:** `ProcessIdentity.StableKey` is now `pid:startUnixMs:uid`; executable path is enrichment metadata rather than key material, so a process generation cannot split when exe becomes known later (ADR 0005 documents the migration/legacy-key consequence).
+- **Tests:** replaced the placeholder Linux test with 11 parser/identity tests (extended line + cgroup + event-time start, PID reuse distinct stable keys, stable key ignores exe enrichment, legacy loader compatibility, exited-process comm fallback/notes, malformed/zero-delta handling, unattributed parsing, metadata defaults).
+- **Controlled validation harness:** added `scripts/validate-ebpf-attribution.py` (root-only) to run a known-size loopback TCP transfer, compare per-process attributed TX/RX with payload and `/proc/net/dev` `lo` counters, record unattributed bytes/loader CPU/peak RSS, and write a Markdown report under `docs/measurements/`.
+- **Build verification:** rebuilt `flow_tcp_bytes.bpf.o`, regenerated `flow_tcp_bytes.skel.h`, and compiled the loader with clang/bpftool/libbpf (0 errors; only pre-existing `vmlinux.h` warnings). Build artifacts remain untracked.
+- **Docs:** added ADR 0005; updated `prototype/bpf/README.md` (identity semantics, TSV protocol, controlled validation) and `docs/attribution.md` (implemented identity behavior, unit-test evidence, explicit remaining gate gaps).
+
+### Test results
+- `dotnet build Flow.slnx -v minimal` → **succeeded** (0 code warnings/errors; 6 `NU1900` package-vulnerability warnings because the NuGet service index was unreachable).
+- `dotnet test Flow.slnx -v minimal` → **passed 31/31** (Domain 1, Application 4, Infrastructure 9, Linux 12, Daemon 1, System 4).
+
+### Not verified yet / next
+- Privileged live run of the modified BPF/loader was **not** performed in this increment (requires root/CAP_BPF; no non-interactive privilege path). Compile-only verification is recorded above.
+- Controlled accuracy/overhead evidence still requires running `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` (and variants) and reviewing the generated report.
+- UDP/QUIC, per-interface attribution, namespaces/container mapping, VPN/tunnel/virtual-interface behavior, map expiry for dead generations, and production packaging of the privileged provider remain open gate items.

@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using Flow.Application.Monitoring;
-using Flow.Domain.Identity;
 using Flow.Domain.Measurement;
 
 namespace Flow.Linux.Monitoring;
@@ -105,107 +104,25 @@ public sealed class EbpfTcpMonitor : INetworkMonitor, IDisposable
             if (line.Length == 0) continue;
             if (line.StartsWith("M\t", StringComparison.Ordinal))
             {
-                var p = line.Split('\t');
-                if (p.Length >= 3)
-                {
-                    _ = long.TryParse(p[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out clkTck);
-                    _ = long.TryParse(p[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out bootUnixMs);
-                    if (clkTck <= 0) clkTck = 100;
-                }
+                EbpfTcpSnapshotParser.ParseMeta(line, out clkTck, out bootUnixMs);
                 continue;
             }
 
             if (line.StartsWith("E\t", StringComparison.Ordinal))
             {
-                var ev = ParseEntry(line, clkTck, bootUnixMs);
+                var ev = EbpfTcpSnapshotParser.ParseEntry(line, Point, clkTck, bootUnixMs);
                 if (ev is not null) yield return ev;
                 continue;
             }
 
             if (line.StartsWith("U\t", StringComparison.Ordinal))
             {
-                var ev = ParseUnattributed(line);
+                var ev = EbpfTcpSnapshotParser.ParseUnattributed(line, Point);
                 if (ev is not null) yield return ev;
                 continue;
             }
 
             // Ignore S and any other lines
-        }
-    }
-
-    private static NetworkUsageEvent? ParseEntry(string line, long clkTck, long bootUnixMs)
-    {
-        // E\ttgid\tuid\ttx_total\trx_total\ttx_delta\trx_delta\tcomm\texe\tstartticks\talive
-        var p = line.Split('\t');
-        if (p.Length < 11) return null;
-        if (!int.TryParse(p[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var tgid)) return null;
-        if (!uint.TryParse(p[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var uid)) return null;
-        _ = long.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out var txDelta);
-        _ = long.TryParse(p[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out var rxDelta);
-        if (txDelta <= 0 && rxDelta <= 0) return null;
-
-        var comm = p[7];
-        var exe = p[8];
-        _ = ulong.TryParse(p[9], NumberStyles.Integer, CultureInfo.InvariantCulture, out var startTicks);
-        _ = int.TryParse(p[10], NumberStyles.Integer, CultureInfo.InvariantCulture, out var alive);
-
-        var startTimeUtc = DeriveStartTimeUtc(startTicks, clkTck, bootUnixMs);
-        var exePath = string.IsNullOrWhiteSpace(exe) || exe == "-" ? null : exe;
-        var proc = new ProcessIdentity(tgid, startTimeUtc, exePath, uid);
-
-        string? appKey = exePath;
-        var appHint = string.IsNullOrWhiteSpace(appKey) && string.IsNullOrWhiteSpace(comm)
-            ? null
-            : new ApplicationIdentity(
-                ApplicationKey: appKey ?? $"comm:{comm}",
-                DisplayName: !string.IsNullOrWhiteSpace(comm) && comm != "?" ? comm : (exePath ?? $"PID {tgid}"),
-                ExecutablePath: exePath);
-
-        var note = alive == 0 ? "Process not live at snapshot enrichment time (cached/unknown identity possible)." : null;
-        return new NetworkUsageEvent(
-            DateTimeOffset.UtcNow,
-            proc,
-            appHint,
-            InterfaceName: null, // per-interface attribution not provided by this hook
-            RxBytesDelta: rxDelta > 0 ? rxDelta : 0,
-            TxBytesDelta: txDelta > 0 ? txDelta : 0,
-            MeasurementPoint: Point,
-            IsAttributed: true,
-            AttributionNote: note);
-    }
-
-    private static NetworkUsageEvent? ParseUnattributed(string line)
-    {
-        // U\ttx_total\trx_total\ttx_delta\trx_delta\ttx_events\trx_events
-        var p = line.Split('\t');
-        if (p.Length < 5) return null;
-        _ = long.TryParse(p[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out var txDelta);
-        _ = long.TryParse(p[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out var rxDelta);
-        if (txDelta <= 0 && rxDelta <= 0) return null;
-        return new NetworkUsageEvent(
-            DateTimeOffset.UtcNow,
-            Process: null,
-            ApplicationHint: null,
-            InterfaceName: null,
-            RxBytesDelta: rxDelta > 0 ? rxDelta : 0,
-            TxBytesDelta: txDelta > 0 ? txDelta : 0,
-            MeasurementPoint: Point,
-            IsAttributed: false,
-            AttributionNote: "eBPF hook context without attributable task (tgid==0) at observation time.");
-    }
-
-    private static DateTimeOffset DeriveStartTimeUtc(ulong startTicks, long clkTck, long bootUnixMs)
-    {
-        if (startTicks == 0 || clkTck <= 0 || bootUnixMs <= 0)
-            return DateTimeOffset.UtcNow; // fallback; reduces identity stability but avoids invalid time
-        try
-        {
-            var ms = (double)startTicks * 1000.0 / clkTck;
-            return DateTimeOffset.FromUnixTimeMilliseconds(bootUnixMs).AddMilliseconds(ms);
-        }
-        catch
-        {
-            return DateTimeOffset.UtcNow;
         }
     }
 

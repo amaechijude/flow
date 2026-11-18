@@ -1,6 +1,6 @@
 # Flow attribution model (initial)
 
-> Status: **Phase 0 baseline / planning**. Measurement semantics and attribution quality must be finalized only after a working prototype on the target Ubuntu 26.04 kernel.
+> Status: **Phase 0 baseline / planning**, with an event-time identity hardening increment implemented in the prototype and parser (ADR 0005). Privileged accuracy, coverage, and overhead evidence is still outstanding; do not treat the gate as closed.
 
 ## 1. Why attribution is non-trivial
 
@@ -19,6 +19,24 @@ A PID is not stable (PIDs are reused). Flow must represent process identity with
 - Relevant cgroup/container metadata when available
 
 Where useful and supported, investigate **socket cookies** or equivalent identifiers to correlate socket events with process/task identity. Application grouping must only merge processes when supported by reliable metadata (XDG desktop entries/IDs, executable paths, Snap/Flatpak metadata, icons) and must keep unknown/system processes inspectable.
+
+### Implemented identity behavior (development increment, ADR 0005)
+
+- The eBPF provider keys counters by `{start_ns, tgid, uid}` where `start_ns` is
+  `task_struct.start_time` captured at event time. PID reuse creates a separate
+  counter row/process generation instead of merging bytes.
+- `start_ns`, `cgroup_id`, and task `comm` are captured on first observation in
+  the kernel, so short-lived processes retain event-time identity after exit.
+- `ProcessIdentity.StartTimeUtc` prefers `boot_unix_ms + start_ns`, then
+  `startticks / clk_tck`, then the current time (degraded, documented in the
+  event's attribution note).
+- `ProcessIdentity.StableKey` is `pid:startUnixMs:uid`. Executable path is
+  metadata, not key material, so later enrichment cannot split one process
+  generation.
+- The loader enriches `exe` from `/proc` only when the live PID's start ticks
+  match the event-time start time (±2 ticks). Otherwise the executable remains
+  unknown and the kernel-captured `comm` is used; the event note says identity
+  was not verified.
 
 ## 3. Measurement semantics (to be documented precisely)
 
@@ -67,24 +85,35 @@ Prototype and product must handle (to supported extent):
 - **Measurement point (current prototype):** bytes taken from positive return values of `tcp_sendmsg` / `tcp_recvmsg` kernel functions (TCP-path bytes at those hooks). Not equivalent to IP/link/interface counters.
 - **Tooling note:** loader `startticks` parsing bug produced `0` in an earlier run; fixed and subsequently confirmed to report non-zero startticks in rerun.
 
-### Recent prototype enhancements (source updated)
-- **Explicit unattributed accounting:** BPF now increments an unattributed counter/map for hook events where `tgid==0` (instead of silently ignoring), and loader reports unattributed totals/deltas/events.
-- **Identity caching:** loader caches first-seen/alive `/proc` identity (comm/exe/startticks) per TGID+UID so exited processes can retain last-known context in snapshots (partial progress; full stable identity/PID-reuse-safe persistence still pending).
+### Recent prototype enhancements (source + unit tests; privileged rerun pending)
+- **Explicit unattributed accounting:** BPF increments an unattributed counter/map for hook events where `tgid==0` (instead of silently ignoring), and loader reports unattributed totals/deltas/events.
+- **Event-time identity / PID-reuse safety (2026-11-18, ADR 0005):** BPF map key is now `{start_ns, tgid, uid}`; the value carries first-observed `cgroup_id` and `comm`. The loader verifies live `/proc` identity against event-time start ticks before using `exe`, caches enrichment per process generation, and emits an extended TSV `E` line with `start_ns`/`cgroup_id`. Counter rows for reused PIDs are now distinct.
+- **Consumers and persisted identity:** `Flow.Linux.Monitoring.EbpfTcpSnapshotParser` reads the extended line (still accepting 11-field legacy lines), prefers event-time `start_ns` for `StartTimeUtc`, populates `ProcessIdentity.CgroupId` from the kernel cgroup id, and records an explicit attribution note when live identity could not be verified. `ProcessIdentity.StableKey` was narrowed to `pid:startUnixMs:uid` so enrichment does not split a generation.
 - **Machine-readable loader mode:** `prototype/bpf/flow_tcp_bytes_loader` supports `tsv` output (`M` meta with clk_tck/boot time, `S` snapshots, `E` per-TGID deltas with identity fields, `U` unattributed deltas/events) to enable integration.
-- **Flow.Linux provider integration (initial):** `Flow.Linux.Monitoring.EbpfTcpMonitor` launches the privileged prototype loader in TSV mode and converts snapshot deltas into `NetworkUsageEvent`s with:
+- **Flow.Linux provider integration:** `Flow.Linux.Monitoring.EbpfTcpMonitor` launches the privileged prototype loader in TSV mode and converts snapshot deltas into `NetworkUsageEvent`s with:
   - **Measurement semantics:** `ebpf-tcp` / `fexit/tcp_sendmsg + kretprobe/tcp_recvmsg`; bytes from positive return values of TCP send/recv functions (TCP-path bytes at hook point). UDP/non-TCP not counted. Interface-level per-event attribution not provided by this hook.
-  - **Process identity:** `ProcessIdentity` built from TGID, UID, executable path (when available), and start time derived from boot time + startticks/clk_tck (fallback to current time if unavailable; reduces stability).
+  - **Process identity:** `ProcessIdentity` built from TGID, UID, event-time start time, executable path when live-enrichment was verified, and kernel cgroup id when available.
   - **Attribution:** attributed per-process/TGID events for `E` deltas; explicit unattributed events for `U` deltas (`tgid==0` hook context). Application hint derived from exe/comm when available.
-  - **Limitations:** requires privileged loader/BPF attach, subprocess-based integration (not in-process libbpf), snapshot-delta granularity, no PID-reuse-proof persisted identity lifecycle yet, no per-interface mapping, and coverage/accuracy/overhead still subject to gate validation.
+  - **Limitations:** requires privileged loader/BPF attach, subprocess-based integration (not in-process libbpf), snapshot-delta granularity, no map expiry for dead generations, cgroup id is opaque (not a path/container name), no per-interface mapping, and coverage/accuracy/overhead still subject to gate validation.
+
+### Unit-test evidence for this increment (non-privileged)
+- `dotnet test Flow.slnx` → **31/31 passed** (Domain 1, Application 4, Infrastructure 9, Linux 12, Daemon 1, System 4).
+- Parser tests cover: extended identity fields and cgroup propagation, PID reuse producing distinct stable keys, stable key ignoring mutable exe enrichment, legacy 11-field loader compatibility, exited-process comm fallback + attribution notes, malformed/zero-delta handling, unattributed events, and metadata defaults.
+- BPF program and loader were **compiled** with clang/bpftool/libbpf (`0` errors; only pre-existing vmlinux.h warnings). They were **not loaded/attached** in this increment because that requires root/CAP_BPF and no non-interactive privilege path is available here.
+
+### Controlled validation harness (added; not yet run with privileges)
+- `scripts/validate-ebpf-attribution.py` performs a known-size loopback TCP transfer while the loader samples, then compares per-process attributed TX/RX against userspace payload counts and `lo` counters from `/proc/net/dev`; it also records unattributed bytes, loader CPU time, and peak RSS and writes a Markdown report under `docs/measurements/`.
+- Must be run as root: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`.
+- No result from this harness is recorded yet, so no accuracy/overhead claim is made.
 
 ### Not yet satisfied (gate still open)
-- **Stable identity:** prototype keys are `(tgid, uid)` only; no PID/start-time/generation correlation, no exe/cmdline/cgroup/namespace metadata persisted for attribution records.
-- **PID reuse / process exit:** no lifecycle handling or historical identity binding demonstrated.
-- **Unattributed traffic:** no explicit unattributed bucket/diagnostics in current prototype maps.
-- **Coverage:** UDP/QUIC, ICMP, non-TCP paths, and traffic outside attach lifetime not counted.
-- **Controlled comparison:** no documented side-by-side comparison against `/proc/net/dev`/`ip -s link` for the same controlled transfers in this recorded run.
-- **Overhead/edge cases:** CPU/memory overhead, namespaces/containers, VPN/tunnels, virtual interfaces, short-lived processes, and double-counting risks not yet measured/documented.
-- **Application grouping:** not implemented.
+- **Privileged rerun of the identity changes:** the modified BPF/loader passed compilation and unit-level parser tests, but a privileged live run has not been recorded since the identity change.
+- **Controlled comparison:** the harness exists but has not produced evidence; no side-by-side accuracy numbers against `/proc/net/dev`/`ip -s link` are recorded yet.
+- **Coverage:** UDP/QUIC, ICMP, non-TCP paths, traffic outside attach lifetime, and per-interface attribution are not counted by this provider.
+- **Namespaces/containers/VPNs:** cgroup id is captured but not mapped to a path/container; network namespaces and tunnel/VPN layers are not yet handled or measured.
+- **Overhead/edge cases:** CPU/memory overhead, map growth/expiry, short-lived process churn, virtual-interface double-counting, and provider start/stop gaps are not yet measured.
+- **Application grouping:** not implemented beyond exe/comm hints.
+
 
 ### Working hypothesis (subject to revision)
 `fexit/tcp_sendmsg` + `kretprobe/tcp_recvmsg` is a viable **TCP-only** starting point for per-task byte observation on this kernel; Flow’s production provider must expand/replace this based on validated semantics for broader protocol coverage and robust attribution.

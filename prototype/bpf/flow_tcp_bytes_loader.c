@@ -16,6 +16,7 @@ static void on_sig(int sig) { (void)sig; exiting = 1; }
 static int g_tsv = 0;
 
 struct traffic_key {
+    __u64 start_ns;
     __u32 tgid;
     __u32 uid;
 };
@@ -23,11 +24,14 @@ struct traffic_key {
 struct traffic_val {
     __u64 tx_bytes;
     __u64 rx_bytes;
+    __u64 cgroup_id;
+    char comm[16];
 };
 
 struct prev_entry {
     __u32 tgid;
     __u32 uid;
+    __u64 start_ns;
     __u64 tx;
     __u64 rx;
     int used;
@@ -35,6 +39,7 @@ struct prev_entry {
     char comm[64];
     char exe[256];
     unsigned long long startticks;
+    unsigned long long cgroup_id;
 };
 
 struct unattributed_val {
@@ -44,13 +49,13 @@ struct unattributed_val {
     __u64 rx_events;
 };
 
-#define MAX_PREV 4096
+#define MAX_PREV 10240
 static struct prev_entry prev[MAX_PREV];
 
-static struct prev_entry *find_prev(__u32 tgid, __u32 uid)
+static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns)
 {
     for (int i = 0; i < MAX_PREV; i++) {
-        if (prev[i].used && prev[i].tgid == tgid && prev[i].uid == uid)
+        if (prev[i].used && prev[i].tgid == tgid && prev[i].uid == uid && prev[i].start_ns == start_ns)
             return &prev[i];
     }
     for (int i = 0; i < MAX_PREV; i++) {
@@ -59,6 +64,7 @@ static struct prev_entry *find_prev(__u32 tgid, __u32 uid)
             prev[i].used = 1;
             prev[i].tgid = tgid;
             prev[i].uid = uid;
+            prev[i].start_ns = start_ns;
             snprintf(prev[i].comm, sizeof(prev[i].comm), "?");
             snprintf(prev[i].exe, sizeof(prev[i].exe), "-");
             return &prev[i];
@@ -119,49 +125,86 @@ static void tsv_sanitize(char *s)
     }
 }
 
+static int startticks_match(__u64 start_ns, unsigned long long st, long clk_tck)
+{
+    if (start_ns == 0 || st == 0 || clk_tck <= 0)
+        return 0;
+    unsigned long long ticks = (start_ns * (unsigned long long)clk_tck) / 1000000000ULL;
+    unsigned long long diff = ticks > st ? ticks - st : st - ticks;
+    return diff <= 2;
+}
+
+static long read_clk_tck(void);
+
 static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
 {
     struct traffic_key key = {}, next_key;
     struct traffic_val val;
     int fd = bpf_map__fd(skel->maps.traffic);
     int ufd = bpf_map__fd(skel->maps.unattributed);
+    long clk_tck = read_clk_tck();
 
     if (!g_tsv) {
-        printf("\n--- snapshot %d: TCP attribution (cumulative, delta, cached identity) ---\n", snapshot_idx);
-        printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/STARTTICKS/STATE");
+        printf("\n--- snapshot %d: TCP attribution (cumulative, delta, event-time identity) ---\n", snapshot_idx);
+        printf("%-8s %-6s %-14s %-14s %-14s %-14s %-16s %s\n", "TGID", "UID", "TX_TOTAL", "RX_TOTAL", "TX_DELTA", "RX_DELTA", "COMM", "EXE/START/STATE");
     } else {
         printf("S\t%d\n", snapshot_idx);
     }
 
     while (bpf_map_get_next_key(fd, &key, &next_key) == 0) {
         if (bpf_map_lookup_elem(fd, &next_key, &val) == 0) {
-            struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid);
-            unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
-            int alive = 0;
-            char live_comm[64] = {0}, live_exe[256] = {0};
-            read_proc_comm(next_key.tgid, live_comm, sizeof(live_comm));
-            read_proc_exe(next_key.tgid, live_exe, sizeof(live_exe));
             unsigned long long st = read_proc_startticks(next_key.tgid);
-            if (live_comm[0] != '?' || live_exe[0] != '-' || st != 0)
-                alive = 1;
+            char bpf_comm[17] = {0};
+            memcpy(bpf_comm, val.comm, sizeof(val.comm));
+            bpf_comm[sizeof(bpf_comm) - 1] = 0;
+            struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid, next_key.start_ns ? next_key.start_ns : st);
+            unsigned long long dtx = val.tx_bytes, drx = val.rx_bytes;
+            char live_comm[64] = {0}, live_exe[256] = {0};
+            int have_live = 0;
+            int identity_verified = 0;
+
+            // Only enrich from /proc when the live PID still refers to the same
+            // process generation observed at event time. This prevents PID reuse
+            // from attaching a different executable to historical counters.
+            if (next_key.start_ns != 0) {
+                if (startticks_match(next_key.start_ns, st, clk_tck)) {
+                    read_proc_comm(next_key.tgid, live_comm, sizeof(live_comm));
+                    read_proc_exe(next_key.tgid, live_exe, sizeof(live_exe));
+                    have_live = 1;
+                    identity_verified = 1;
+                }
+            } else {
+                read_proc_comm(next_key.tgid, live_comm, sizeof(live_comm));
+                read_proc_exe(next_key.tgid, live_exe, sizeof(live_exe));
+                have_live = live_comm[0] != '?' || (live_exe[0] != '-' && live_exe[0] != 0) || st != 0;
+                identity_verified = have_live;
+            }
+
             if (pe) {
                 dtx = (val.tx_bytes >= pe->tx) ? (val.tx_bytes - pe->tx) : val.tx_bytes;
                 drx = (val.rx_bytes >= pe->rx) ? (val.rx_bytes - pe->rx) : val.rx_bytes;
                 pe->tx = val.tx_bytes;
                 pe->rx = val.rx_bytes;
-                if (alive) {
+                if (identity_verified) {
                     snprintf(pe->comm, sizeof(pe->comm), "%s", live_comm);
                     snprintf(pe->exe, sizeof(pe->exe), "%s", live_exe);
                     pe->startticks = st;
                     pe->identity_cached = 1;
                 }
+                if (bpf_comm[0] && (pe->comm[0] == '?' || pe->comm[0] == 0))
+                    snprintf(pe->comm, sizeof(pe->comm), "%s", bpf_comm);
+                pe->cgroup_id = val.cgroup_id;
             }
-            const char *comm = pe ? pe->comm : live_comm;
+            const char *comm = pe ? pe->comm : (bpf_comm[0] ? bpf_comm : live_comm);
             const char *exe = pe ? pe->exe : live_exe;
             unsigned long long show_st = pe ? pe->startticks : st;
+            unsigned long long show_ns = pe && pe->start_ns ? pe->start_ns : next_key.start_ns;
+            unsigned long long show_cgroup = pe ? pe->cgroup_id : val.cgroup_id;
             if (!g_tsv) {
                 char extra[360];
-                snprintf(extra, sizeof(extra), "%s (startticks=%llu%s)", exe, show_st, alive ? "" : ", exited/unknown");
+                snprintf(extra, sizeof(extra), "%s (start_ns=%llu startticks=%llu cgroup=%llu%s)",
+                         exe, show_ns, show_st, show_cgroup,
+                         identity_verified ? "" : ", exited/unknown identity");
                 printf("%-8u %-6u %-14llu %-14llu %-14llu %-14llu %-16s %s\n",
                        next_key.tgid, next_key.uid,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
@@ -172,10 +215,11 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                 snprintf(exe2, sizeof(exe2), "%s", exe);
                 tsv_sanitize(comm2);
                 tsv_sanitize(exe2);
-                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\n",
+                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\n",
                        next_key.tgid, next_key.uid,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
-                       dtx, drx, comm2, exe2, show_st, alive);
+                       dtx, drx, comm2, exe2, show_st, identity_verified ? 1 : 0,
+                       show_ns, show_cgroup);
             }
         }
         key = next_key;
