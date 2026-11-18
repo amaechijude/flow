@@ -936,6 +936,12 @@ def fmt_ifname(value: str) -> str:
     return value if value else "(unresolved)"
 
 
+def format_tgid_list(tgids: list[int]) -> str:
+    if len(tgids) <= 12:
+        return ", ".join(str(t) for t in tgids)
+    return f"{', '.join(str(t) for t in tgids[:6])}, ... ({len(tgids)} total)"
+
+
 def write_report(path: Path, ctx: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     chown_to_invoker(path.parent)
@@ -959,7 +965,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Loader: `{ctx['loader']}` (interval {ctx['interval']} s)",
         f"- Payload per protocol: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB), {ctx['mode_description']}",
         f"- Transfers: {ctx['transfer_scope']}",
-        f"- Expected process TGID(s): {', '.join(str(t) for t in s.get('expected_tgids', [s['expected_tgid']]))}",
+        f"- Expected process TGID(s): {format_tgid_list(s.get('expected_tgids', [s['expected_tgid']]))}",
         f"- Loader wall time: {ctx['elapsed_s']:.2f} s",
         "",
         "## Results by protocol",
@@ -1488,6 +1494,9 @@ def main() -> int:
         int(v) == 1 for v in generations.values()
     ) and len(generations) == len(expected_tgids)
     check_identity = bool(summary["expected_identity_verified"])
+    check_netns_collision: bool | None = None
+    check_churn_bytes: bool | None = None
+    check_map_target: bool | None = None
     if nic:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         expected_interface_description = (
@@ -1742,8 +1751,8 @@ def main() -> int:
         "soak_map_entries": [s["map_entries"] for s in soak_samples if s["map_entries"] is not None],
         "soak_cpu_samples": [s["cpu_s"] for s in soak_samples if s["cpu_s"] is not None],
         "soak_rss_samples": [s["rss_kb"] for s in soak_samples if s["rss_kb"] is not None],
-        "size_bytes": size_bytes,
-        "size_mib": args.size_mib,
+        "size_bytes": churn_child_bytes if map_churn else size_bytes,
+        "size_mib": (args.churn_child_size_kib / 1024.0) if map_churn else args.size_mib,
         "tcp_sent": tcp_sent,
         "tcp_received": tcp_received,
         "tcp_elapsed_s": round(tcp_s, 3),

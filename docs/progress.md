@@ -903,3 +903,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - Privileged run:
   `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000`
 - Expectation: map entries approach target with CPU/RSS samples and byte totals still exact. Any shortfall near capacity must be recorded as measured; the map has no expiry and this is not a bounded-memory claim.
+
+## 2026-11-18 (accepted high-churn map-growth observation)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000` produced `docs/measurements/ebpf-controlled-20261118T193832Z.md`.
+- 3,840 short-lived TCP+UDP children in 180 s (60 batches), all successful. BPF map entries grew 130 → 7,653 (max 7,653) of 10,240; the 9,000 target was not reached before timeout.
+- Attributed bytes stayed exact: 15,728,640 per protocol/direction, `check_churn_bytes: True`, 0 unattributed, expected rows on `lo`. Background traffic separated.
+- Loader CPU 14.574 s total (7.815% of one core); peak RSS rose 3,940 → 6,380 KiB as entries accumulated.
+
+### Interpretation
+- Accepts stable accounting at high map occupancy, not a hard-capacity or bounded-memory claim. Memory growth tracks retained process generations because the map has no expiry; the 10,240-entry cap remains untested.
+- The harness crashed after writing the report with `UnboundLocalError` on `check_netns_collision` (not initialized in map-churn mode). Fixed by initializing collision/churn/target checks to `None`; report values were unaffected.
+
+### Changes
+- Accepted/annotated report and index; fixed harness initialization, capped displayed TGIDs/payload wording, and updated `docs/attribution.md`, `HANDOFF.md`.
+- No BPF/loader change; build/test baseline remains 38/38 passing.
