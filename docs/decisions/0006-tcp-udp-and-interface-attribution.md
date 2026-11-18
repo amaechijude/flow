@@ -105,11 +105,18 @@ claims that are not observed.
   expiry; this extends the growth observation but is still not a capacity,
   high-churn, or bounded-memory claim. 69 short-lived child generations were
   background rows, some without complete post-exit `/proc` enrichment.
-- **Byte accuracy, the loopback interface fix, controlled two-interface
-  separation, and 60 s/300 s overhead/map-growth observations are validated.**
-  Physical NICs, VPN/tunnel paths, wildcard multi-interface sockets,
-  cross-namespace key merging, and map-capacity/high-churn behavior remain
-  unproven (`docs/attribution.md`).
+- **Physical NIC 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T131724Z.md`):**
+  a 16 MiB TCP echo through `wlp0s20f3` to an Android/Termux hotspot peer
+  matched exactly for TX/RX, the expected row resolved to `wlp0s20f3` in the
+  root netns, one verified generation, 0 unattributed, and the peer reported
+  the same 16,777,216 bytes. This accepts hardware-interface attribution for
+  TCP on this path. It does not cover UDP on physical NICs, VPN/tunnel paths,
+  multiple simultaneous interfaces, or wildcard multi-interface sockets.
+- **Byte accuracy, loopback/UDP fix, controlled two-interface separation, 60 s/300 s
+  overhead/map observations, and physical-NIC TCP attribution are validated.**
+  VPN/tunnel paths, wildcard multi-interface sockets, cross-namespace key
+  merging, map capacity/high churn, and physical-NIC UDP remain unproven
+  (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
 - The first controlled run showed unconnected UDP RX resolving to `ifindex=0`

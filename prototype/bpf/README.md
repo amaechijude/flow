@@ -177,14 +177,17 @@ iterations × 1 MiB per protocol matched exactly, all checks passed, loader CPU
 no expiry, 69 child-churn background rows. These are sustained observations,
 not capacity/high-churn/production-load evidence.
 
-`--mode nic` (not yet privileged-run) sends a known TCP payload through the
-default-route physical interface to a peer TCP echo listener (e.g. Termux on an
-Android phone hotspot) and requires the expected rows to resolve to that
-interface in the root netns. Peer/interface are inferred from the default route
-or supplied with `--peer-host`/`--interface`. It is TCP-only; pass
-`--peer-bytes` if the peer listener reports a byte count. This validates
-hardware-interface attribution only, not VPN/tunnel, wildcard multi-interface,
-or multiple-simultaneous-interface behavior. The script writes a Markdown report under
+`--mode nic` sends a known TCP payload through the default-route physical
+interface to a peer TCP echo listener (e.g. Termux on an Android phone hotspot)
+and requires the expected rows to resolve to that interface in the root netns.
+Peer/interface are inferred from the default route or supplied with
+`--peer-host`/`--interface`. It is TCP-only; pass `--peer-bytes` if the peer
+listener reports a byte count. Accepted run
+(`docs/measurements/ebpf-controlled-20261118T131724Z.md`): 16 MiB TCP echo
+through `wlp0s20f3` matched exactly, expected row on `wlp0s20f3`, peer reported
+16,777,216 bytes, all applicable checks passed. This validates hardware-interface
+attribution for TCP only; VPN/tunnel, multiple simultaneous interfaces, and
+wildcard multi-interface sockets remain unmeasured. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,

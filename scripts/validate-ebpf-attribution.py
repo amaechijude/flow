@@ -794,7 +794,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Kernel: `{ctx['kernel']}`",
         f"- Loader: `{ctx['loader']}` (interval {ctx['interval']} s)",
         f"- Payload per protocol: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB), {ctx['mode_description']}",
-        f"- Transfers: TCP then UDP, {ctx['transfer_scope']}",
+        f"- Transfers: {ctx['transfer_scope']}",
         f"- Expected process TGID(s): {', '.join(str(t) for t in s.get('expected_tgids', [s['expected_tgid']]))}",
         f"- Loader wall time: {ctx['elapsed_s']:.2f} s",
         "",
@@ -1174,7 +1174,9 @@ def main() -> int:
         expected_interface_description = (
             f"TCP TX and RX on `{peer_interface}` in the root netns via peer {peer_host}:{args.peer_port}"
         )
-        transfer_scope = f"TCP echo through {peer_interface} to {peer_host}:{args.peer_port}"
+        transfer_scope = (
+            f"TCP echo through {peer_interface} to {peer_host}:{args.peer_port} (TCP only; no UDP)"
+        )
         counter_caveat = f"`{peer_interface}` counters include IP/link and Wi-Fi overhead."
         process_scope_caveat = (
             "The expected row is the parent client process; the peer listener's byte "
@@ -1207,7 +1209,7 @@ def main() -> int:
             f"RX via `{VETH_CLIENT}` in the root netns; TX via flowvB ifindex "
             f"{veth.server_ifindex} in netns {helper_netns}"
         )
-        transfer_scope = "root server plus client helpers in flowvns"
+        transfer_scope = "TCP then UDP, root server plus client helpers in flowvns"
         counter_caveat = "`flowvA` counters count IP/link bytes including headers."
         process_scope_caveat = (
             "The expected rows include the root server and the client helpers in "
@@ -1242,7 +1244,7 @@ def main() -> int:
     elif soak:
         expected_interface_description = "all expected-process rows on `lo`"
         transfer_scope = (
-            f"repeated loopback transfers for {args.duration:.0f}s with short-lived child churn"
+            f"TCP and UDP repeated loopback transfers for {args.duration:.0f}s with short-lived child churn"
         )
         counter_caveat = "`lo` counters count IP/link bytes including headers."
         process_scope_caveat = (
@@ -1261,7 +1263,7 @@ def main() -> int:
         )
     else:
         expected_interface_description = "all expected-process rows on `lo`"
-        transfer_scope = "same process"
+        transfer_scope = "TCP then UDP, same process"
         counter_caveat = "`lo` counters count IP/link bytes including headers."
         process_scope_caveat = (
             "The expected-process rows are the load generator itself (its server "

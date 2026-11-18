@@ -778,3 +778,20 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - With the Termux listener running on the phone:
   `sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host 10.61.133.76 --peer-port 9000 --interface wlp0s20f3 --peer-bytes 16777216`
 - Expectation: exact TCP TX/RX, expected rows on `wlp0s20f3`, background separated, all checks true. Record the measured result rather than claiming hardware-interface coverage before the run.
+
+## 2026-11-18 (accepted physical-NIC TCP evidence)
+
+### Measured result
+- With a Termux TCP echo listener on the Android hotspot peer (`10.61.133.76:9000`), `sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host 10.61.133.76 --peer-port 9000 --interface wlp0s20f3 --peer-bytes 16777216` produced `docs/measurements/ebpf-controlled-20261118T131724Z.md`.
+- Expected TGID 8053: TCP **16,777,216 TX / 16,777,216 RX**, one verified generation, row on `wlp0s20f3` in the root netns, 0 unresolved/unattributed bytes.
+- Phone listener independently printed `bytes 16777216`, matching `--peer-bytes` and the harness check.
+- `wlp0s20f3` counter deltas: TX 17,224,856, RX 17,739,281 (IP/link/Wi-Fi overhead above socket payload). Background opencode/chronyd/avahi rows separated; one unresolved avahi UDP TX row reported.
+- Loader CPU 0.05 s (0.088% of one core), peak RSS 3,884 KiB (short run).
+
+### Interpretation
+- Accepts TCP per-process attribution on a real hardware interface (`wlp0s20f3`) with an independent peer byte count.
+- Scope: TCP only; no UDP through hotspot, VPN/tunnel, multiple simultaneous interfaces, wildcard multi-interface sockets, or cellular-offload behavior. No cellular payload used (traffic terminated at the phone).
+
+### Changes
+- Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
+- Fixed report wording for nic mode (TCP-only, no misleading "TCP then UDP" line). No BPF/loader change; build/test baseline remains 36/36 passing.
