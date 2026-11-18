@@ -158,15 +158,15 @@ public partial class OverviewPageViewModel : ViewModelBase
             RecentBuckets.Add(TimeSeriesRow.From(p));
         HasNoBuckets = RecentBuckets.Count == 0;
 
-        WindowText = $"{snapshot.StartUtc:yyyy-MM-dd HH:mm} → {snapshot.EndUtc:yyyy-MM-dd HH:mm} UTC";
+        WindowText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
         SyncText = snapshot.IpcLive
-            ? (snapshot.LastSignalAtUtc is null ? "IPC LIVE (no signal yet)" : $"SIGNAL {snapshot.LastSignalAtUtc:HH:mm:ss} UTC")
+            ? (snapshot.LastSignalAtUtc is null ? "IPC LIVE (no signal yet)" : $"SIGNAL {snapshot.LastSignalAtUtc.Value.ToLocalTime():HH:mm:ss}")
             : "SQLITE SNAPSHOT";
         IsFallback = !snapshot.IpcLive;
         SourceBadge = snapshot.IpcLive ? "IPC LIVE MODE" : "SQLITE FALLBACK MODE";
         SourceDetail = snapshot.IpcLive
             ? $"Queried via daemon IPC ({snapshot.UsageDataSource}); live status from daemon."
-            : $"Live daemon IPC unreachable. Reading persisted data from local SQLite ({snapshot.UsageDataSource}); status is reported unavailable rather than fabricated.";
+            : $"Live daemon IPC unreachable. Reading persisted data via {snapshot.UsageDataSource}; status is reported unavailable rather than fabricated.";
 
         StatusText = snapshot.Status.State switch
         {

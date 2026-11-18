@@ -96,7 +96,7 @@ public partial class DiagnosticsPageViewModel : ViewModelBase
         ContractText = $"org.flow.Daemon1 · contract v{Flow.Contracts.Ipc.FlowIpc.ContractVersion}";
         ServicePathText = $"{Flow.Contracts.Ipc.FlowIpc.ServiceName} · {Flow.Contracts.Ipc.FlowIpc.ObjectPath}";
 
-        WindowText = $"{snapshot.StartUtc:yyyy-MM-dd HH:mm} → {snapshot.EndUtc:yyyy-MM-dd HH:mm} UTC";
+        WindowText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
         _allBuckets = snapshot.Series.Select(TimeSeriesRow.From).ToList();
         ApplyBuckets();
     }

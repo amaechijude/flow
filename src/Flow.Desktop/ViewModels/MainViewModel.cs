@@ -173,7 +173,7 @@ public partial class MainViewModel : ViewModelBase
             var (start, end, rangeLabel) = GetCurrentRange();
             var ifaceId = SelectedInterfaceFilter?.InterfaceId;
 
-            RangeText = $"{rangeLabel} (UTC): {start:yyyy-MM-dd HH:mm} – {end:yyyy-MM-dd HH:mm}" +
+            RangeText = $"{rangeLabel} (local): {start.ToLocalTime():yyyy-MM-dd HH:mm} – {end.ToLocalTime():yyyy-MM-dd HH:mm}" +
                         (ifaceId is null ? "" : $" · interface {ifaceId}");
 
             // Interface breakdown is intentionally unfiltered so users can see every mapped interface in range.

@@ -43,7 +43,7 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="148"
-                              ToolTip.Tip="UTC rolling window, local calendar day, or custom range">
+                              ToolTip.Tip="Rolling window or local calendar day; times are shown in local time">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:RangeOption">
                                 <TextBlock Text="{Binding Label}" />
@@ -156,7 +156,7 @@
                             <TextBlock Text="To" Classes="muted" VerticalAlignment="Center" />
                             <DatePicker SelectedDate="{Binding CustomEndDate}" />
                             <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}" />
-                            <TextBlock Text="Local calendar days converted to UTC [start, end) buckets." Classes="dim" VerticalAlignment="Center" />
+                            <TextBlock Text="Local days → UTC buckets; display is local time." Classes="dim" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
 

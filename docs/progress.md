@@ -696,3 +696,19 @@
 ### Changes
 - Accepted/annotated the new report; updated the report index, `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
 - Fixed report wording for multi-process veth runs (TGID list, mode-specific scope/counter caveats, background-unresolved note). Non-privileged synthetic report check passed; baseline remains 36/36 passing.
+
+## 2026-11-18 (Overview banner layout + local-time display)
+
+### Reported issue
+- Screenshot showed blurred/jagged text in the Overview data-provenance banner: the source-detail text overlapped the window/sync block because a horizontal `StackPanel` measured the wrapping `TextBlock` at its full desired width.
+- Displayed range/window timestamps were labeled UTC instead of the OS local time required by the plan.
+
+### Changes
+- `OverviewPageView.axaml`: replaced the horizontal left `StackPanel` with `Grid ColumnDefinitions="Auto,*"` so `SourceDetail` is constrained and wraps without overlapping the right-hand window/sync block. Shortened the fallback text to avoid `local SQLite (local SQLite fallback)` duplication.
+- Displayed times now use `ToLocalTime()` and are labeled `local`: `OverviewPageViewModel.WindowText`/`SyncText`, `DiagnosticsPageViewModel.WindowText`, `MainViewModel.RangeText`. Range tooltip/custom-range note reworded to say display is local while storage/conversion remains UTC.
+- Exports remain explicitly UTC-labeled machine-readable fields; only UI display changed.
+
+### Verification
+- `dotnet build Flow.slnx -v minimal` → succeeded (3 warnings, 0 errors).
+- `dotnet test Flow.slnx -v minimal --no-build` → **36/36 passed**.
+- GUI was not relaunched/screenshotted in this step; visual confirmation is requested from the user after rebuild.
