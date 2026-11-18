@@ -20,6 +20,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16
     sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
     sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --soak-size-mib 1
+    sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host <gateway-ip> --peer-port 9000 --interface wlp0s20f3
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -28,6 +29,12 @@ periodically spawns short-lived child processes (`--soak-child-every`) to create
 process churn. It samples loader CPU, peak RSS, and BPF map entry count (emitted
 by the loader as `X` lines) to provide steady-state overhead/map-growth evidence.
 Exactness checks cover only the parent TGID; child rows are reported as background.
+
+NIC mode sends a known TCP payload through the default-route physical interface
+to a peer listener (e.g. a phone hotspot gateway running a TCP echo server) and
+requires the expected rows to resolve to that interface in the root netns. It is
+TCP-only; UDP through the hotspot is not exercised. If the peer reports a byte
+count, pass it with `--peer-bytes` to include it as a check.
 """
 
 from __future__ import annotations
@@ -367,6 +374,49 @@ def spawn_client_helper(proto: str, host: str, port: int, size: int) -> tuple[su
         proc.kill()
         raise SystemExit(f"client helper failed to start: {(line or 'no output')!r}")
     return proc, int(line.split()[1])
+
+
+def default_route() -> tuple[str | None, str | None]:
+    """Return (gateway, interface) of the default route via `ip route`."""
+    try:
+        out = subprocess.run(
+            ["ip", "route"], capture_output=True, text=True, check=False
+        ).stdout
+    except OSError:
+        return None, None
+    for line in out.splitlines():
+        if not line.startswith("default "):
+            continue
+        parts = line.split()
+        gateway = parts[parts.index("via") + 1] if "via" in parts else None
+        dev = parts[parts.index("dev") + 1] if "dev" in parts else None
+        return gateway, dev
+    return None, None
+
+
+def run_tcp_transfer_remote(
+    size_bytes: int, host: str, port: int
+) -> tuple[int, int, float]:
+    """Send size_bytes to a remote echo server and read the echoed bytes back."""
+    started = time.monotonic()
+    sock = socket.create_connection((host, port), timeout=30)
+    chunk = b"x" * (1 << 20)
+    sent = 0
+    try:
+        while sent < size_bytes:
+            n = min(len(chunk), size_bytes - sent)
+            sock.sendall(chunk[:n])
+            sent += n
+        sock.shutdown(socket.SHUT_WR)
+        received = 0
+        while True:
+            data = sock.recv(1 << 20)
+            if not data:
+                break
+            received += len(data)
+    finally:
+        sock.close()
+    return sent, received, time.monotonic() - started
 
 
 def run_soak_child(size_bytes: int) -> int:
@@ -775,6 +825,13 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"| `lo` TX delta (IP/link, both protocols) | {lo_tx} |",
             f"| `lo` RX delta (IP/link, both protocols) | {lo_rx} |",
         ]
+    if ctx.get("nic_before") and ctx.get("nic_after"):
+        nic_tx = ctx["nic_after"]["tx_bytes"] - ctx["nic_before"]["tx_bytes"]
+        nic_rx = ctx["nic_after"]["rx_bytes"] - ctx["nic_before"]["rx_bytes"]
+        lines += [
+            f"| `{ctx['nic_interface']}` TX delta (IP/link/Wi-Fi) | {nic_tx} |",
+            f"| `{ctx['nic_interface']}` RX delta (IP/link/Wi-Fi) | {nic_rx} |",
+        ]
     for dev in ("client", "server"):
         before = ctx.get(f"veth_{dev}_before")
         after = ctx.get(f"veth_{dev}_after")
@@ -837,12 +894,23 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         f"- TCP attributed TX within ±1% of payload sent: {ctx['check_tcp_tx']}",
         f"- TCP attributed RX within ±1% of payload received: {ctx['check_tcp_rx']}",
-        f"- UDP attributed TX within ±1% of payload accepted by send(): {ctx['check_udp_tx']}",
-        f"- UDP attributed RX within ±1% of payload delivered to recvfrom(): {ctx['check_udp_rx']}",
+        f"- UDP attributed TX within ±1% of payload accepted by send(): {ctx['check_udp_tx'] if ctx['check_udp_tx'] is not None else 'n/a (TCP-only mode)'}",
+        f"- UDP attributed RX within ±1% of payload delivered to recvfrom(): {ctx['check_udp_rx'] if ctx['check_udp_rx'] is not None else 'n/a (TCP-only mode)'}",
         f"- Expected TGID has exactly one process generation (no thread/start-time split): {ctx['check_single_generation']}",
         f"- Expected process identity verified against live `/proc`: {ctx['check_identity']}",
         f"- Expected-process traffic on expected interface(s): {ctx['check_interface']}",
         f"- No unattributed bytes in a fully controlled transfer: {ctx['check_unattributed']}",
+    ]
+    if ctx.get("nic"):
+        peer_note = (
+            f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
+            if ctx.get("nic_peer_bytes") is not None
+            else "not supplied; compare manually with the phone listener output"
+        )
+        lines += [
+            f"- Peer listener byte count ({peer_note}): {ctx['check_peer_bytes'] if ctx['check_peer_bytes'] is not None else 'n/a'}",
+        ]
+    lines += [
         "",
         "## Interpretation and caveats",
         "",
@@ -868,13 +936,19 @@ def main() -> int:
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
     parser.add_argument("--soak-child", type=int, metavar="SIZE_BYTES",
                         help=argparse.SUPPRESS)  # internal: short-lived churn process
+    parser.add_argument("--peer-host", help="nic mode: peer address (default: default-route gateway)")
+    parser.add_argument("--peer-port", type=int, default=9000,
+                        help="nic mode: peer TCP echo port (default: 9000)")
+    parser.add_argument("--interface", help="nic mode: physical interface to assert (default: default-route device)")
+    parser.add_argument("--peer-bytes", type=int,
+                        help="nic mode: optional byte count reported by the peer listener")
     parser.add_argument("--size-mib", type=float, default=16.0, help="payload per protocol")
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak"),
+        choices=("lo", "veth", "soak", "nic"),
         default="lo",
-        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence.",
+        help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP echo through a physical interface to a peer (phone hotspot).",
     )
     parser.add_argument("--duration", type=float, default=300.0,
                         help="soak duration in seconds (default: 300)")
@@ -902,6 +976,17 @@ def main() -> int:
         return 2
 
     soak = args.mode == "soak"
+    nic = args.mode == "nic"
+    peer_host = args.peer_host
+    peer_interface = args.interface
+    if nic:
+        gw, dev = default_route()
+        peer_host = peer_host or gw
+        peer_interface = peer_interface or dev
+        if not peer_host or not peer_interface:
+            raise SystemExit(
+                "nic mode needs --peer-host and --interface (could not infer them from the default route)"
+            )
     soak_bytes = int(args.soak_size_mib * 1024 * 1024)
     if soak and (args.duration <= 0 or soak_bytes <= 0 or args.soak_child_every <= 0):
         print("error: soak mode needs positive --duration, --soak-size-mib, and --soak-child-every",
@@ -922,6 +1007,8 @@ def main() -> int:
     cpu_before = None
     lo_before = None
     lo_after = None
+    nic_before: dict[str, int] | None = None
+    nic_after: dict[str, int] | None = None
     veth_before: dict[str, dict[str, int] | None] = {}
     veth_after: dict[str, dict[str, int] | None] = {}
     tcp_sent = udp_sent = tcp_received = udp_received = 0
@@ -937,7 +1024,8 @@ def main() -> int:
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
-        lo_before = read_net_dev("lo")
+        if not nic:
+            lo_before = read_net_dev("lo")
         if veth:
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
         if soak:
@@ -987,6 +1075,17 @@ def main() -> int:
                     "unattributed_rx": last_map.get("urx"),
                 }
             )
+        elif nic:
+            expected_tgids.add(os.getpid())
+            nic_before = read_net_dev(peer_interface)
+            tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
+                size_bytes, peer_host, args.peer_port
+            )
+            # nic mode is TCP echo only; no local UDP listener is implied.
+            udp_sent = udp_received = 0
+            udp_s = 0.0
+            time.sleep(max(1.0, args.interval * 1.5))
+            nic_after = read_net_dev(peer_interface)
         elif veth:
             expected_tgids.add(os.getpid())
             # The server runs in the root namespace, where only flowvA
@@ -1011,7 +1110,7 @@ def main() -> int:
             expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
-        lo_after = read_net_dev("lo") if not veth else None
+        lo_after = read_net_dev("lo") if not veth and not nic else None
         if veth:
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
@@ -1054,14 +1153,53 @@ def main() -> int:
 
     check_tcp_tx = abs(tcp_attributed_tx - tcp_sent) <= tcp_sent * 0.01
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
-    check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
-    check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
+    if nic:
+        check_udp_tx = None
+        check_udp_rx = None
+    else:
+        check_udp_tx = udp_sent > 0 and abs(udp_attributed_tx - udp_sent) <= udp_sent * 0.01
+        check_udp_rx = udp_received > 0 and abs(udp_attributed_rx - udp_received) <= udp_received * 0.01
+    check_peer_bytes = (
+        None
+        if not nic or args.peer_bytes is None
+        else abs(int(args.peer_bytes) - tcp_sent) <= tcp_sent * 0.01
+    )
     generations = summary.get("expected_generations_by_tgid", {})
     check_single_generation = bool(expected_tgids) and all(
         int(v) == 1 for v in generations.values()
     ) and len(generations) == len(expected_tgids)
     check_identity = bool(summary["expected_identity_verified"])
-    if veth:
+    if nic:
+        root_netns = os.stat("/proc/self/ns/net").st_ino
+        expected_interface_description = (
+            f"TCP TX and RX on `{peer_interface}` in the root netns via peer {peer_host}:{args.peer_port}"
+        )
+        transfer_scope = f"TCP echo through {peer_interface} to {peer_host}:{args.peer_port}"
+        counter_caveat = f"`{peer_interface}` counters include IP/link and Wi-Fi overhead."
+        process_scope_caveat = (
+            "The expected row is the parent client process; the peer listener's byte "
+            "count is reported separately when supplied via --peer-bytes."
+        )
+        interface_caveat = (
+            f"TCP echo through physical {peer_interface} to a peer on the phone hotspot. "
+            "This validates hardware-interface attribution only; it does not cover VPN/tunnel "
+            "paths, multiple simultaneous interfaces, or wildcard multi-interface sockets. "
+            "Traffic terminates at the phone, so no cellular payload is used for this test."
+        )
+        tcp_rows = [
+            p for p in summary["processes"]
+            if int(p["proto"]) == 1 and int(p["tgid"]) in expected_tgids
+        ]
+        check_interface = (
+            len(tcp_rows) == 1
+            and tcp_rows[0]["ifname"] == peer_interface
+            and int(tcp_rows[0]["netns_id"]) == root_netns
+            and int(tcp_rows[0]["tx"]) > 0
+            and int(tcp_rows[0]["rx"]) > 0
+            and int(by_proto[1]["unresolved_tx"]) == 0
+            and int(by_proto[1]["unresolved_rx"]) == 0
+        )
+    elif veth:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         helper_tgids = expected_tgids - {os.getpid()}
         expected_helper_ifname = f"{veth.server_ifindex}@{helper_netns}"
@@ -1151,9 +1289,13 @@ def main() -> int:
             "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
             if veth
             else (
-                f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                if soak
-                else "loopback `lo`"
+                f"TCP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port}"
+                if nic
+                else (
+                    f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                    if soak
+                    else "loopback `lo`"
+                )
             )
         ),
         "expected_interface_description": expected_interface_description,
@@ -1163,6 +1305,13 @@ def main() -> int:
         "process_scope_caveat": process_scope_caveat,
         "root_netns_id": os.stat("/proc/self/ns/net").st_ino,
         "helper_netns_id": helper_netns,
+        "nic": nic,
+        "nic_interface": peer_interface if nic else None,
+        "nic_peer_host": peer_host if nic else None,
+        "nic_peer_port": args.peer_port if nic else None,
+        "nic_peer_bytes": args.peer_bytes if nic else None,
+        "nic_before": nic_before,
+        "nic_after": nic_after,
         "soak": soak,
         "soak_duration_s": args.duration,
         "soak_iterations": soak_iterations,
@@ -1198,6 +1347,7 @@ def main() -> int:
         "check_identity": check_identity,
         "check_interface": check_interface,
         "check_unattributed": check_unattributed,
+        "check_peer_bytes": check_peer_bytes,
     }
 
     write_report(report_path, ctx)
@@ -1208,11 +1358,12 @@ def main() -> int:
     passed = (
         check_tcp_tx
         and check_tcp_rx
-        and check_udp_tx
-        and check_udp_rx
+        and (check_udp_tx if check_udp_tx is not None else True)
+        and (check_udp_rx if check_udp_rx is not None else True)
         and check_single_generation
         and check_identity
         and check_interface
+        and (check_peer_bytes if check_peer_bytes is not None else True)
     )
     return 0 if passed else 1
 

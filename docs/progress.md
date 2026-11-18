@@ -765,3 +765,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Changes
 - Accepted/annotated the report and report index; updated `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
 - No product code changed; build/test baseline remains 36/36 passing.
+
+## 2026-11-18 (physical-NIC probe added, not yet run)
+
+### Implementation
+- Added `--mode nic` to `scripts/validate-ebpf-attribution.py`. It infers the default-route gateway/device (`ip route`) as `--peer-host`/`--interface` and sends a known TCP payload to a peer TCP echo listener, e.g. Termux on an Android phone hotspot.
+- Requires expected rows to resolve to the physical interface in the root netns; records that interface's `/proc/net/dev` delta; reports background/unattributed separately.
+- TCP-only. UDP through the hotspot is not exercised. Optional `--peer-bytes` adds the peer listener's reported byte count as a check.
+- Verified locally: default-route inference returned `10.61.133.76`/`wlp0s20f3`; remote echo transfer and synthetic NIC report generation passed. No BPF change; loader unchanged.
+
+### Pending
+- With the Termux listener running on the phone:
+  `sudo python3 scripts/validate-ebpf-attribution.py --mode nic --peer-host 10.61.133.76 --peer-port 9000 --interface wlp0s20f3 --peer-bytes 16777216`
+- Expectation: exact TCP TX/RX, expected rows on `wlp0s20f3`, background separated, all checks true. Record the measured result rather than claiming hardware-interface coverage before the run.
