@@ -518,3 +518,23 @@
 ### Not verified yet / next
 - Rerun the privileged validation after the group-leader fix: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`. The run should now show one row for the expected TGID with `identity verified: yes`; commit that report before making accuracy/overhead claims.
 - The stale first report remains untracked evidence of the defect; ownership may need `sudo chown -R "$USER:$USER" docs/measurements`.
+
+## 2026-11-18 (accepted controlled validation after group-leader identity fix)
+
+### Completed
+- **Accepted rerun:** `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` produced `docs/measurements/ebpf-controlled-20261118T044634Z.md`.
+  - Expected process TGID 47748 appeared as **one row** with `identity verified: yes`, executable `/usr/bin/python3.14`, cgroup `24677`, and attributed TX/RX of exactly **16,777,216** each (100.0% of payload).
+  - Background traffic was separated correctly: VS Code (`code`, TGID 44356) contributed 2,777 TX / 10,108 RX and was also identity-verified.
+  - Unattributed TX/RX: **0**.
+  - `lo` deltas: 16,796,684 per direction (IP/link headers/ACKs above payload).
+  - Loader overhead datapoint: 0.004 s CPU (0.097% of one core), peak RSS 3,672 KiB.
+  - All harness checks passed, including one process generation and verified identity for the expected TGID.
+- **Interpretation:** confirms TCP payload accounting and process-generation identity (including multithreaded traffic) on this kernel for a controlled loopback transfer. It does not establish physical-interface, UDP/QUIC, namespace/container, VPN/tunnel, virtual-interface, or sustained-load behavior; the CPU/RSS numbers are a single short-run datapoint.
+- **Reports:** committed both the rejected first run (annotated) and the accepted rerun under `docs/measurements/`, with a README explaining status. Updated `docs/attribution.md` and ADR 0005 accordingly.
+
+### Test results
+- No product code changed in this step; prior `dotnet build Flow.slnx -v minimal` / `dotnet test Flow.slnx -v minimal` baseline remains **31/31 passing**.
+
+### Next
+- Per-interface correlation/assessment and UDP/QUIC coverage are now the largest attribution-gate gaps.
+- Run a longer/high-connection-count validation for overhead and map behavior before making steady-state overhead claims.

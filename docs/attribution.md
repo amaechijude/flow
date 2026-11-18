@@ -1,6 +1,6 @@
 # Flow attribution model (initial)
 
-> Status: **Phase 0 baseline / planning**, with an event-time identity hardening increment implemented in the prototype and parser (ADR 0005). Privileged accuracy, coverage, and overhead evidence is still outstanding; do not treat the gate as closed.
+> Status: **Phase 0 baseline / planning**, with event-time process identity implemented and one accepted controlled TCP-loopback run (ADR 0005, `docs/measurements/`). Coverage (UDP, per-interface, namespaces, VPNs) and sustained overhead evidence are still outstanding; do not treat the gate as closed.
 
 ## 1. Why attribution is non-trivial
 
@@ -102,19 +102,18 @@ Prototype and product must handle (to supported extent):
 - Parser tests cover: extended identity fields and cgroup propagation, PID reuse producing distinct stable keys, stable key ignoring mutable exe enrichment, legacy 11-field loader compatibility, exited-process comm fallback + attribution notes, malformed/zero-delta handling, unattributed events, and metadata defaults.
 - BPF program and loader were **compiled** with clang/bpftool/libbpf (`0` errors; only pre-existing vmlinux.h warnings). They were **not loaded/attached** in this increment because that requires root/CAP_BPF and no non-interactive privilege path is available here.
 
-### Controlled validation harness (first run recorded; identity fix needs rerun)
-- `scripts/validate-ebpf-attribution.py` performs a known-size loopback TCP transfer while the loader samples, then compares the expected process's attributed TX/RX against userspace payload counts and `lo` counters from `/proc/net/dev`; it also records background/unattributed bytes, loader CPU time, and peak RSS and writes a Markdown report under `docs/measurements/`.
-- Must be run as root: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`.
-- **First run (2026-11-18, report `docs/measurements/ebpf-controlled-20261118T042842Z.md`):** 16 MiB payload was measured as 16,777,216 TX and 16,777,216 RX for the expected process (100.0%), with 0 unattributed bytes. `lo` deltas were 16,793,734 per direction (IP/link headers). Loader CPU was ~0.01 s (0.242% of one core) and peak RSS 3,592 KiB; the CPU sample is coarse and is not accepted as overhead evidence.
-- **Identity defect exposed by that run:** the same Python TGID appeared as two rows with different `start_ns` (main thread and server thread), and the server-thread row failed live `/proc` verification. Cause: `task_struct.start_time` is per-thread. The BPF program now reads `group_leader->start_time`, and the harness asserts one generation per expected TGID and verified identity. The recorded byte totals remain useful, but **the run is not accepted as gate evidence until the fixed program is rerun**.
-- Background traffic from other processes was also captured (18 bytes each direction), which is expected for a system-wide hook; the harness now reports it separately from the expected process.
+### Controlled validation evidence (two runs, 2026-11-18)
+- `scripts/validate-ebpf-attribution.py` performs a known-size loopback TCP transfer while the loader samples, then compares the expected process's attributed TX/RX against userspace payload counts and `lo` counters from `/proc/net/dev`; it also records background/unattributed bytes, loader CPU time, and peak RSS and writes a Markdown report under `docs/measurements/`. Run as root: `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16`.
+- **Rejected first run** (`ebpf-controlled-20261118T042842Z.md`): 16 MiB payload measured as 16,777,216 TX/RX for the expected process with 0 unattributed bytes, but the same Python TGID appeared as two rows with different `start_ns` (main thread and server thread) and the server-thread row failed `/proc` verification. Cause: `task_struct.start_time` is per-thread. The BPF program now reads `group_leader->start_time`; the harness now asserts one generation and verified identity for the expected TGID.
+- **Accepted rerun** (`ebpf-controlled-20261118T044634Z.md`, after the fix): expected TGID 47748 produced **one row** with `identity verified: yes`, executable `/usr/bin/python3.14`, cgroup `24677`, and attributed TX/RX of exactly **16,777,216** each (100.0% of payload). Background traffic was separated: VS Code (`code`, TGID 44356) contributed 2,777 TX / 10,108 RX and was also identity-verified. Unattributed TX/RX were 0. `lo` deltas were 16,796,684 per direction (IP/link headers and ACKs above payload). Loader CPU was 0.004 s (0.097% of one core) with peak RSS 3,672 KiB.
+- **What this proves:** on this kernel, the TCP hooks account for the controlled payload exactly at the process level, the process-generation key survives multithreaded traffic, the live-identity guard works, and the explicit unattributed bucket stayed empty for this transfer.
+- **What this does not prove:** physical-interface behavior, UDP/QUIC/ICMP coverage, namespaces/containers, VPNs/tunnels, virtual-interface double-counting, long-running/steady-state overhead, map growth/expiry, or accuracy for high-connection-count workloads. The CPU/RSS numbers are a single short-run datapoint, not a production overhead claim.
 
 ### Not yet satisfied (gate still open)
-- **Privileged rerun after the thread-identity fix:** the modified BPF/loader compiles and the parser is unit-tested, but the group-leader start-time fix has not been rerun with privileges.
-- **Controlled comparison:** the first run matched payload bytes exactly but exposed the thread-split identity defect; no accepted accuracy/overhead numbers are recorded until the fixed program is rerun.
+- **Scope of accuracy evidence:** one 16 MiB loopback TCP run (plus one rejected run) is not coverage or load evidence. Physical interfaces and sustained/high-connection workloads are unmeasured.
 - **Coverage:** UDP/QUIC, ICMP, non-TCP paths, traffic outside attach lifetime, and per-interface attribution are not counted by this provider.
 - **Namespaces/containers/VPNs:** cgroup id is captured but not mapped to a path/container; network namespaces and tunnel/VPN layers are not yet handled or measured.
-- **Overhead/edge cases:** only a single coarse CPU/RSS datapoint exists; longer runs, map growth/expiry, short-lived process churn, virtual-interface double-counting, and provider start/stop gaps are not yet measured.
+- **Overhead/edge cases:** only a single short CPU/RSS datapoint exists; longer runs, map growth/expiry, short-lived process churn, virtual-interface double-counting, and provider start/stop gaps are not yet measured.
 - **Application grouping:** not implemented beyond exe/comm hints.
 
 

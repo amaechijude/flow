@@ -116,3 +116,10 @@ JSON summary. It must run as root because it loads BPF programs. It is a
 controlled sanity check, not proof of complete attribution: it does not
 exercise UDP, physical interfaces, namespaces, containers, VPNs/tunnels, or
 virtual-interface double-counting.
+
+Accepted TCP-loopback result (2026-11-18, kernel `7.0.0-43-generic`): one
+verified process generation for the expected TGID, exactly 16,777,216 TX/RX
+for a 16 MiB payload, background traffic separated, 0 unattributed bytes, and
+0.004 s loader CPU / 3,672 KiB peak RSS. See
+`docs/measurements/ebpf-controlled-20261118T044634Z.md`. The CPU/RSS sample is
+short-run only; do not treat it as steady-state overhead evidence.

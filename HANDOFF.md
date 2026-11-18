@@ -1,7 +1,7 @@
 # Flow handoff
 
 Date: 2026-11-18  
-Repo: `/home/amaechi/code/flow` (git, branch `main`; UI/IPC increment committed as `474bf00`; attribution identity hardening is uncommitted — see `docs/progress.md`)
+Repo: `/home/amaechi/code/flow` (git, branch `main`; UI/IPC increment committed as `474bf00`; attribution identity hardening committed as `f435571`; controlled measurement reports are uncommitted — see `docs/progress.md`)
 
 ## What this is
 Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background daemon and Avalonia desktop GUI (see `flow-project-plan.md`). Core requirement: transparent per-application/per-process byte attribution with persistent history. **Do not claim full completion without validated evidence.**
@@ -16,7 +16,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 
 ### Prototype & core
 - **Docs/decisions:** architecture, monitoring, attribution, security, database, implementation-plan, progress, interface-preparation; ADRs 0001–0005 (`docs/decisions/`). IPC v1 session-bus choice pinned in **ADR 0003** (Tmds.DBus 0.95.2, `org.flow.Daemon` `/org/flow/Daemon` `org.flow.Daemon1`, JSON-over-D-Bus); **ADR 0004** records the page shell, custom chart controls, picker exports, and the v3 coalesced `StatusChanged` signal; **ADR 0005** records event-time process identity, guarded `/proc` enrichment, and the narrowed stable key. Avalonia a11y and system-bus/activation/policy/auth remain follow-ups.
-- **Phase 1 prototype (eBPF, TCP):** `prototype/bpf/` (`vmlinux.h`, `flow_tcp_bytes.bpf.c`, `flow_tcp_bytes_loader.c`, README). Privileged attach works; per-TGID/UID TCP byte attribution with deltas and explicit unattributed (`tgid==0`) observed. Identity hardening keys `{start_ns, tgid, uid}` using the thread-group leader's start time, captures first-observed `cgroup_id`/`comm`, and only enriches `/proc` when the live PID matches. A first controlled 16 MiB loopback run measured payload exactly and 0 unattributed bytes, but exposed and led to a fix for a per-thread start-time split; **the fixed program still needs a privileged rerun**. Prototype-stage, not full gate completion.
+- **Phase 1 prototype (eBPF, TCP):** `prototype/bpf/` (`vmlinux.h`, `flow_tcp_bytes.bpf.c`, `flow_tcp_bytes_loader.c`, README). Privileged attach works; per-TGID/UID TCP byte attribution with deltas and explicit unattributed (`tgid==0`) observed. Identity hardening keys `{start_ns, tgid, uid}` using the thread-group leader's start time, captures first-observed `cgroup_id`/`comm`, and only enriches `/proc` when the live PID matches. **Accepted controlled TCP-loopback rerun** (`docs/measurements/ebpf-controlled-20261118T044634Z.md`): one verified process generation, exactly 16,777,216 TX/RX for a 16 MiB payload, background traffic separated, 0 unattributed, 0.004 s loader CPU / 3,672 KiB peak RSS (short-run only). Prototype-stage, not full gate completion.
 - **Solution:** `Flow.slnx` with layered projects (`src/Flow.Domain`, `Application`, `Infrastructure`, `Linux`, `Contracts`, `Daemon`, `Desktop`) and `tests/*`. **Build succeeds** (0 code warnings/errors; offline NuGet vulnerability warnings only); **tests pass 31/31** (`dotnet test Flow.slnx`: Domain 1, Application 4, Infrastructure 9, Linux 12, Daemon 1, System 4).
 
 ### Monitoring, ingestion, persistence
@@ -33,7 +33,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Desktop UI (Avalonia shell, functional):** fixed header + sidebar navigation with four pages — Overview (bento metrics, RX/TX + attribution split bars, custom RX/TX time-series chart, top apps/interfaces, recent buckets), Apps & Processes (sortable/searchable applications and processes, attributed/unattributed filter, detail panels), Network Interfaces (totals, provider semantics, sortable/searchable breakdown, detail panel), Diagnostics & Daemon (state/provider/health, pipeline counters, drop share, IPC/signal source and contract identity, searchable persisted buckets). Rolling ranges (1/6/12/24h, 7/30d), `Today`/`Yesterday`, custom date range, interface filter. CSV **and JSON** export of the loaded view use a real save-file picker (`Flow__ExportDirectory` overrides for automation) and include provenance + caveats. Attribution/measurement caveats and live-vs-SQLite fallback are explicit in the UI.
 
 ## Current limitations / known issues
-- **Attribution/gate:** ebpf is TCP-only, subprocess+privileged, no per-interface mapping in events. The first controlled loopback run matched payload bytes and had 0 unattributed bytes, but exposed a per-thread start-time split that is now fixed (group-leader start time); a privileged rerun and committed report are still required before accepting accuracy/overhead evidence. UDP/namespace/VPN/virtual-interface coverage and map expiry for dead process generations remain open. Procfs is unattributed by design.
+- **Attribution/gate:** ebpf is TCP-only, subprocess+privileged, no per-interface mapping in events. Controlled TCP-loopback evidence is accepted (exact payload, one verified process generation, 0 unattributed, short-run CPU/RSS). Remaining gate gaps: physical-interface behavior, UDP/QUIC/ICMP coverage, namespaces/containers, VPN/tunnel/virtual-interface behavior, sustained/high-connection overhead, and map expiry for dead process generations. Procfs is unattributed by design.
 - **IPC:** per-user session-bus v1 only; signals are best-effort/coalesced (no replay, up to ~2s latency) and resubscription after daemon restart is lightly exercised; no control operations/Polkit, no system-bus policy/activation artifacts. Root-run ebpf daemon may not register IPC name for user-session desktop.
 - **Persistence/reporting:** no rollups (1m→5m→h→d→mo), no retention/cleanup jobs; Reports/Settings pages and comparisons are not implemented (diagnostics/export cover current reporting).
 - **Reliability:** flush retry is in-memory/timer-driven (no durable queue/explicit backoff policy); `LastError` not cleared on recovery; monitoring session measurement version/provider details minimal.
@@ -41,7 +41,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **Provider/identity gate evidence:** rerun `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16` with the fixed group-leader identity, commit the report, and record controlled counter comparisons/overhead in `docs/attribution.md`. Then assess UDP, per-interface mapping, namespaces/containers, and VPN/virtual-interface behavior (do not widen claims without evidence).
+1. **Remaining attribution coverage:** assess per-interface correlation and UDP/QUIC coverage; test namespaces/containers, VPN/virtual-interface behavior, and run longer/high-connection workloads for steady-state overhead and map growth. Keep the accepted TCP-loopback result scoped to what it measured.
 2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
 3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
 4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.
@@ -81,4 +81,4 @@ Local design guides for the four pages are in `flow_designs/{network_overview,ap
 ## Starting fresh
 1. Read this file, `docs/progress.md`, and `flow-project-plan.md`.
 2. Run `dotnet build Flow.slnx` and `dotnet test Flow.slnx` to confirm baseline.
-3. Pick the next prioritized item (recommend **provider/identity gate evidence**: privileged rerun + controlled validation, then remaining coverage assessment) and work incrementally, keeping all metrics/caveats real and evidence-backed.
+3. Pick the next prioritized item (recommend **remaining attribution coverage**: per-interface correlation, UDP/QUIC, namespaces/VPNs, and sustained overhead) and work incrementally, keeping all metrics/caveats real and evidence-backed.

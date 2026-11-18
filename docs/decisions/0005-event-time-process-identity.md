@@ -55,6 +55,12 @@ identity from `/proc` at snapshot time. Two problems followed:
 - The stable-key change means previously persisted rows keyed with the old
   `pid:start:uid:exe` format are not merged with new rows. This is a
   development-stage schema/identity migration; no automatic rewrite is done.
+- **Validated (2026-11-18, TCP loopback):** after the group-leader fix, the
+  controlled 16 MiB rerun produced one verified process-generation row for the
+  expected TGID with exactly 16,777,216 TX/RX, background traffic separated,
+  and 0 unattributed bytes (`docs/measurements/ebpf-controlled-20261118T044634Z.md`).
+  This validates the identity semantics for that controlled case, not broader
+  coverage.
 - This ADR does **not** close the attribution gate. UDP, per-interface mapping,
-  controlled counter comparison, overhead, namespaces, and VPN/tunnel behavior
-  still require measurement evidence (`docs/attribution.md`).
+  namespaces, VPN/tunnel behavior, virtual interfaces, and sustained-load
+  overhead still require measurement evidence (`docs/attribution.md`).
