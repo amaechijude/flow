@@ -81,9 +81,19 @@ claims that are not observed.
   including the previously failing unconnected UDP RX case. It does not cover
   physical interfaces, namespaces, VPN/tunnel paths, wildcard sockets
   receiving on multiple interfaces, or sustained load.
-- **Byte accuracy and the loopback interface fix are validated for one
-  controlled run.** Broader per-interface behavior, protocols, and load
-  conditions remain unproven (`docs/attribution.md`).
+- **Two-interface run 2026-11-18 (`docs/measurements/ebpf-controlled-20261118T101857Z.md`):**
+  with a veth pair split across two network namespaces, TCP and UDP again
+  matched exactly 16,777,216 TX/RX bytes. Root server RX resolved to `flowvA`;
+  helper TX resolved to flowvB's netns-local `ifindex@netns`. Each expected
+  TGID had one verified generation, expected unresolved bytes were 0, and all
+  checks passed. This accepts TX/RX interface separation across two virtual
+  interfaces in the controlled case. The BPF key is unchanged, so identical
+  keys in different namespaces would still merge; the run distinguishes them
+  only at observation time via the emitted netns id.
+- **Byte accuracy, the loopback interface fix, and controlled two-interface
+  separation are validated.** Physical NICs, VPN/tunnel paths, wildcard
+  multi-interface sockets, cross-namespace key merging, and load behavior
+  remain unproven (`docs/attribution.md`).
 - Loader attachment is all-or-nothing: if any TCP/UDP TX/RX hook fails to
   attach, the loader exits instead of running with silent partial coverage.
 - The first controlled run showed unconnected UDP RX resolving to `ifindex=0`

@@ -677,3 +677,22 @@
 ### Incidental report review (09:42Z loopback rerun)
 - A default-mode report `docs/measurements/ebpf-controlled-20261118T094231Z.md` existed in the worktree and was reviewed: all loopback checks true with the new netns-id field.
 - It also shows background traffic attributed to physical `wlp0s20f3` for code/opencode/systemd-resolved. This is real observed output but **not** controlled physical-interface validation; it is annotated as incidental in the report index.
+
+## 2026-11-18 (accepted two-interface veth validation)
+
+### Measured result
+- `sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth` produced `docs/measurements/ebpf-controlled-20261118T101857Z.md`.
+- TCP: **16,777,216 TX / 16,777,216 RX**; UDP: **16,777,216 TX / 16,777,216 RX**; 100.0% UDP delivery.
+- Root server TGID 59914: TCP/UDP RX on `flowvA` (root netns).
+- Client helpers TGID 59958 (TCP) and 59959 (UDP): TX on `22@4026532907` (flowvB's netns-local ifindex in `flowvns`).
+- One verified process generation per expected TGID; expected-process unresolved bytes 0; unattributed 0. Background `python3`/`avahi-daemon` UDP rows had unresolved interfaces, reported separately.
+- All harness checks passed, including `check_interface`.
+- Loader overhead: 0.007 s CPU (0.096% of one core), peak RSS 3,900 KiB (short-run only).
+
+### Interpretation
+- This accepts per-interface TX/RX separation across two virtual interfaces in two network namespaces, with namespace-scoped interfaces reported as `ifindex@netns`.
+- Scope limits: physical NICs, VPN/tunnel paths, wildcard multi-interface sockets, cross-namespace BPF-key merging (key has no netns dimension), and sustained load remain unproven. Some background UDP interfaces remain unresolved.
+
+### Changes
+- Accepted/annotated the new report; updated the report index, `docs/attribution.md`, ADR 0006, `prototype/bpf/README.md`, and `HANDOFF.md`.
+- Fixed report wording for multi-process veth runs (TGID list, mode-specific scope/counter caveats, background-unresolved note). Non-privileged synthetic report check passed; baseline remains 36/36 passing.

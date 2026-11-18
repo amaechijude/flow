@@ -709,8 +709,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         f"- Kernel: `{ctx['kernel']}`",
         f"- Loader: `{ctx['loader']}` (interval {ctx['interval']} s)",
         f"- Payload per protocol: {ctx['size_bytes']} bytes ({ctx['size_mib']:.3f} MiB), {ctx['mode_description']}",
-        f"- Transfers: TCP then UDP, same process",
-        f"- Expected process TGID: {s['expected_tgid']}",
+        f"- Transfers: TCP then UDP, {ctx['transfer_scope']}",
+        f"- Expected process TGID(s): {', '.join(str(t) for t in s.get('expected_tgids', [s['expected_tgid']]))}",
         f"- Loader wall time: {ctx['elapsed_s']:.2f} s",
         "",
         "## Results by protocol",
@@ -793,12 +793,12 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         "",
         "## Interpretation and caveats",
         "",
-        "- eBPF counts TCP and UDP payload bytes at the send/recv function return; UDP/QUIC",
-        "  framing is not identified, so QUIC traffic is expected to appear as UDP payload.",
-        "  `lo` counters count IP/link bytes including headers. Ratios near 100% are expected",
-        "  but exact equality is not.",
-        "- The expected-process rows are the load generator itself (its server threads share the TGID);",
-        "  background traffic from other processes during the run is reported separately.",
+        f"  framing is not identified, so QUIC traffic is expected to appear as UDP payload.",
+        f"  {ctx['counter_caveat']} Ratios near 100% are expected but exact equality",
+        "  is not.",
+        f"- {ctx['process_scope_caveat']}",
+        "- Background traffic from other processes is reported separately; unresolved `-`",
+        "  rows for unrelated background traffic do not affect the expected-process gate.",
         "- UDP datagrams may be dropped by the receiver; the UDP RX comparison uses bytes actually",
         "  delivered to recvfrom(), and dropped bytes are not counted as attributed RX.",
         f"- {ctx['interface_caveat']}",
@@ -944,6 +944,12 @@ def main() -> int:
             f"RX via `{VETH_CLIENT}` in the root netns; TX via flowvB ifindex "
             f"{veth.server_ifindex} in netns {helper_netns}"
         )
+        transfer_scope = "root server plus client helpers in flowvns"
+        counter_caveat = "`flowvA` counters count IP/link bytes including headers."
+        process_scope_caveat = (
+            "The expected rows include the root server and the client helpers in "
+            "flowvns; each TGID has exactly one verified process generation."
+        )
         interface_caveat = (
             "A temporary veth pair spans two network namespaces, forcing packets over "
             "both interfaces. ifindex is namespace-scoped, so the helper namespace's "
@@ -972,6 +978,12 @@ def main() -> int:
         check_interface = veth_direction_ok(1) and veth_direction_ok(2)
     else:
         expected_interface_description = "all expected-process rows on `lo`"
+        transfer_scope = "same process"
+        counter_caveat = "`lo` counters count IP/link bytes including headers."
+        process_scope_caveat = (
+            "The expected-process rows are the load generator itself (its server "
+            "threads share the TGID)."
+        )
         interface_caveat = (
             "Loopback traffic appears once in each interface direction; this run does "
             "not exercise physical-interface, namespace, VPN, or container paths, and "
@@ -997,6 +1009,9 @@ def main() -> int:
         ),
         "expected_interface_description": expected_interface_description,
         "interface_caveat": interface_caveat,
+        "transfer_scope": transfer_scope,
+        "counter_caveat": counter_caveat,
+        "process_scope_caveat": process_scope_caveat,
         "root_netns_id": os.stat("/proc/self/ns/net").st_ino,
         "helper_netns_id": helper_netns,
         "size_bytes": size_bytes,

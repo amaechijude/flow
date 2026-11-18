@@ -144,12 +144,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --size-mib 16 --mode veth
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over
-TCP then 16 MiB over UDP). `--mode veth` (not yet privileged-run with the namespace topology) creates a
-temporary `flowvns` namespace and veth pair: the server runs in the root
-namespace on `flowvA` (192.0.2.1), while a client helper runs in `flowvns` on
-`flowvB` (192.0.2.2). Traffic must traverse both interfaces. The gate requires
-RX on `flowvA` and TX as `ifindex@netns` for the helper namespace, for both
-protocols. The namespace and devices are deleted after the run. The script writes a Markdown report under
+TCP then 16 MiB over UDP). Accepted two-interface run
+(`docs/measurements/ebpf-controlled-20261118T101857Z.md`): with `--mode veth`,
+TCP and UDP again matched exactly 16,777,216 TX/RX. Root RX resolved to
+`flowvA`; helper TX resolved to `22@4026532907` (flowvB's ifindex in `flowvns`).
+All checks passed, one verified generation per TGID, expected unresolved bytes
+0. Background UDP from unrelated processes still produced unresolved-interface
+rows. This accepts controlled two-interface separation across two virtual
+interfaces only; physical NICs, VPN/tunnel paths, wildcard multi-interface
+sockets, and namespace-level key merging remain unmeasured. The script writes a Markdown report under
 `docs/measurements/` and prints a JSON summary. It must run as root because it
 loads BPF programs. It is a controlled sanity check, not proof of complete
 attribution: it does not exercise physical interfaces, namespaces, containers,
