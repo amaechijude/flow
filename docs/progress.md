@@ -955,3 +955,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16`
 - Expectation: exact TCP bytes, `check_tunnel: True`, expected rows only on tunnel devices, underlay counter delta > 0 (overlap documented), 0 unattributed. If tunnel creation fails, record the kernel/module limitation rather than claiming tunnel coverage.
+
+## 2026-11-19 (accepted GRE tunnel attribution)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261118T234935Z.md`: 16 MiB TCP echo over GRE above veth. Client TX/RX on `flowtun0` (root) and server TX/RX on `6@4026532906` (peer netns), each exactly 16,777,216 bytes; `check_tunnel: True`, no expected rows on the veth underlay, 0 unattributed.
+- Overlay and underlay counters both grew by ~16.8 MB, documenting the known double-counting; only the tunnel device is attributed to the processes.
+
+### Harness fix
+- The raw TCP/UDP checks were false because expected rows include both endpoints (33,554,432 combined) while the harness compared to a single 16 MiB payload; UDP was not exercised. Harness now aggregates both endpoints for tunnel mode and treats UDP as n/a.
+
+### Scope
+- TCP-only GRE tunnel above veth; no real VPN daemon, physical NIC, or multiple simultaneous interfaces. Production-load overhead, hard map cap, and real VPN behavior remain unmeasured.
+
+### Verification
+- `py_compile` passed; no BPF/loader change; baseline 38/38 passing.

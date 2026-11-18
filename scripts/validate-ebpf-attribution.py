@@ -1566,6 +1566,7 @@ def main() -> int:
     wildcard_port = 17001
     tunnel_port = 17002
     tunnel_helper_netns = 0
+    tunnel_payload = 0
     tunnel_counters: dict[str, dict[str, int] | None] = {}
     started = time.monotonic()
     cpu_before = None
@@ -1698,6 +1699,8 @@ def main() -> int:
             tunnel_counters["tunnel_after"] = read_net_dev(TUNNEL_NAME)
             tunnel_counters["underlay_after"] = read_net_dev(VETH_CLIENT)
             tunnel_counters["peer_tunnel_after"] = read_net_dev_netns(TUNNEL_NAME, VETH_NS)
+            tcp_sent = tcp_received = 2 * tunnel_bytes
+            tunnel_payload = tunnel_bytes
             udp_sent = udp_received = 0
         elif wildcard:
             assert veth is not None
@@ -1829,7 +1832,7 @@ def main() -> int:
 
     check_tcp_tx = abs(tcp_attributed_tx - tcp_sent) <= tcp_sent * 0.01
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
-    if nic or netns_key:
+    if nic or netns_key or tunnel:
         check_udp_tx = None
         check_udp_rx = None
     else:
@@ -1926,11 +1929,11 @@ def main() -> int:
             len(parent_tx) == 1
             and parent_tx[0]["ifname"] == TUNNEL_NAME
             and int(parent_tx[0]["netns_id"]) == root_netns
-            and int(parent_tx[0]["tx"]) == tcp_sent
+            and int(parent_tx[0]["tx"]) == tunnel_payload
             and len(peer_rx) == 1
             and peer_rx[0]["ifname"] == expected_peer_ifname
             and int(peer_rx[0]["netns_id"]) == helper_netns
-            and int(peer_rx[0]["rx"]) == tcp_received
+            and int(peer_rx[0]["rx"]) == tunnel_payload
             and not underlay_rows
         )
         check_interface = check_tunnel
