@@ -1,5 +1,14 @@
 # eBPF TCP+UDP attribution controlled validation
 
+> **Status: accepted loopback run with the netns-id field (2026-11-18).** All
+> harness checks passed: TCP and UDP each matched 16,777,216 TX/RX exactly, all
+> expected-process protocol/direction rows resolved to `lo`, one verified
+> process generation, 0 unresolved/unattributed bytes. This report is from the
+> default `lo` mode, **not** the veth probe. It incidentally shows real
+> background traffic on the physical `wlp0s20f3` interface (code, opencode,
+> systemd-resolved), but those rows are not a controlled physical-interface
+> gate check; physical/multi-interface coverage remains unproven.
+
 - Date (UTC): 2026-11-18T09:42:38+00:00
 - Kernel: `7.0.0-43-generic`
 - Loader: `/home/amaechi/code/flow/prototype/bpf/flow_tcp_bytes_loader` (interval 1.0 s)

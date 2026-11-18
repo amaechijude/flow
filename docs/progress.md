@@ -673,3 +673,7 @@
 - Root TCP/UDP servers now bind to `VETH_CLIENT_IP` (192.0.2.1); the client helper in `flowvns` connects to that address over the veth pair.
 - Docstrings clarify that `host` is the root-side address.
 - No BPF/loader change; `py_compile` passed; baseline remains 36/36 passing.
+
+### Incidental report review (09:42Z loopback rerun)
+- A default-mode report `docs/measurements/ebpf-controlled-20261118T094231Z.md` existed in the worktree and was reviewed: all loopback checks true with the new netns-id field.
+- It also shows background traffic attributed to physical `wlp0s20f3` for code/opencode/systemd-resolved. This is real observed output but **not** controlled physical-interface validation; it is annotated as incidental in the report index.
