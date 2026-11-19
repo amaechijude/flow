@@ -1,5 +1,11 @@
 # eBPF TCP+UDP attribution controlled validation
 
+> **Status: accepted duplicate early WireGuard run (2026-11-19).** This was the
+> first successful real-WireGuard run; it shows the same result as
+> `ebpf-controlled-20261119T043314Z.md` (16 MiB TCP echo, client on `flowwg0`,
+> server on netns-local wg0, exact bytes, no underlay rows, `check_wireguard: True`).
+> The later report is the annotated primary reference.
+
 - Date (UTC): 2026-11-19T04:32:36+00:00
 - Kernel: `7.0.0-43-generic`
 - Loader: `/home/amaechi/code/flow/prototype/bpf/flow_tcp_bytes_loader` (interval 1.0 s)
