@@ -10,4 +10,5 @@ public interface IMonitoringMetadataStore
     Task UpsertInterfaceAsync(string interfaceName, string? interfaceType, DateTimeOffset seenAtUtc, CancellationToken cancellationToken = default);
     Task<long> StartMonitoringSessionAsync(string? providerName, string? measurementVersion, MonitoringState healthState, string? diagnostics, CancellationToken cancellationToken = default);
     Task EndMonitoringSessionAsync(long sessionId, MonitoringState healthState, string? diagnostics, CancellationToken cancellationToken = default);
+    MonitoringSessionSnapshot? GetLatestMonitoringSession();
 }

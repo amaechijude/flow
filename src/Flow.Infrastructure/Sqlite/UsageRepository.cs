@@ -3,6 +3,7 @@ using Flow.Application.Queries;
 using Flow.Contracts.Usage;
 using Flow.Domain.Identity;
 using Flow.Domain.Monitoring;
+using System.Globalization;
 using Microsoft.Data.Sqlite;
 
 namespace Flow.Infrastructure.Sqlite;
@@ -344,6 +345,38 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         cmd.Parameters.AddWithValue("$id", sessionId);
         cmd.ExecuteNonQuery();
         return Task.CompletedTask;
+    }
+
+    public MonitoringSessionSnapshot? GetLatestMonitoringSession()
+    {
+        using var conn = _factory.CreateOpenConnection();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT id, started_at_utc, ended_at_utc, provider_name, measurement_version, health_state, diagnostics
+            FROM monitoring_sessions
+            ORDER BY id DESC
+            LIMIT 1;
+            """;
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read())
+            return null;
+
+        var started = DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        DateTimeOffset? ended = reader.IsDBNull(2)
+            ? null
+            : DateTimeOffset.Parse(reader.GetString(2), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind);
+        var state = Enum.TryParse<MonitoringState>(reader.GetString(5), ignoreCase: true, out var parsed)
+            ? parsed
+            : MonitoringState.Unavailable;
+
+        return new MonitoringSessionSnapshot(
+            reader.GetInt64(0),
+            started,
+            ended,
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetString(4),
+            state,
+            reader.IsDBNull(6) ? null : reader.GetString(6));
     }
 
     public Task<IReadOnlyList<InterfaceUsageDto>> GetInterfaceUsageAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, CancellationToken cancellationToken = default)

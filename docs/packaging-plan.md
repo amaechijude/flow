@@ -23,8 +23,10 @@ Success criteria for Phase 1:
 
 - collector mode starts, writes real buckets, and registers no D-Bus service (implemented and smoke-tested 2026-11-19);
 - full mode is unchanged (implemented);
-- session mode starts IPC from persisted data without touching the monitor (Phase 1b, still pending);
+- session mode starts IPC from persisted data without touching the monitor (implemented and smoke-tested 2026-11-19);
 - build/tests pass and the mode is documented.
+
+Session mode status comes from the latest persisted monitoring session. Live pipeline counters are not available to it and are reported as zero; collector-owned counters remain authoritative.
 
 ## Phase 2 — Shared DB and permissions
 

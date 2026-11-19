@@ -8,6 +8,7 @@ public enum DaemonMode
 {
     Full,
     Collector,
+    Session,
 }
 
 public static class DaemonModeParser
@@ -16,9 +17,8 @@ public static class DaemonModeParser
     {
         null or "" or "full" or "development" => DaemonMode.Full,
         "collector" or "headless" => DaemonMode.Collector,
-        "session" => throw new InvalidOperationException(
-            "Flow:Mode=session is planned but not implemented yet; use 'full' or 'collector'."),
+        "session" or "ui" => DaemonMode.Session,
         _ => throw new InvalidOperationException(
-            $"Unknown Flow:Mode '{value}'. Expected 'full' or 'collector'."),
+            $"Unknown Flow:Mode '{value}'. Expected 'full', 'collector', or 'session'."),
     };
 }

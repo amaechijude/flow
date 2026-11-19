@@ -14,9 +14,11 @@ public class DaemonModeParserTests
     public void ParseRecognisesSupportedModes(string? value, DaemonMode expected)
         => Assert.Equal(expected, DaemonModeParser.Parse(value));
 
-    [Fact]
-    public void ParseRejectsSessionUntilImplemented()
-        => Assert.Throws<InvalidOperationException>(() => DaemonModeParser.Parse("session"));
+    [Theory]
+    [InlineData("session", DaemonMode.Session)]
+    [InlineData("UI", DaemonMode.Session)]
+    public void ParseRecognisesSessionMode(string value, DaemonMode expected)
+        => Assert.Equal(expected, DaemonModeParser.Parse(value));
 
     [Fact]
     public void ParseRejectsUnknownMode()

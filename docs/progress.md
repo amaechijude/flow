@@ -1185,3 +1185,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Verification
 - `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 48/48 passing.
 - Smoke-tested collector mode with `procfs`: pipeline started, DB file created, no D-Bus IPC log, clean shutdown.
+
+## 2026-11-19 (packaging phase 1: session mode)
+
+### Implementation
+- `Flow:Mode=session` implemented: no monitor, no ingestion pipeline, no Worker; D-Bus IPC only.
+- Added `MonitoringSessionSnapshot` and `IMonitoringMetadataStore.GetLatestMonitoringSession()`; `UsageRepository` reads the latest persisted session.
+- Added `PersistedDiagnosticsSource` for session mode: status from persisted session; live pipeline counters intentionally zero (collector owns them, not fabricated).
+- Added parser/source tests. `dotnet build` succeeded; `dotnet test` → 51/51 passing.
+
+### Verification
+- Smoke-tested session mode: `Flow__Mode=session` with a temp DB registered `org.flow.Daemon` on the user session bus and shut down cleanly. No monitor logs appeared.
+
+### Remaining in packaging plan
+- Shared DB path/permissions, systemd units, D-Bus activation, then UI/reporting/persistence/productization tracks.

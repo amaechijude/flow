@@ -31,36 +31,49 @@ builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<Usa
 builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<IUsageQueryService>(sp => sp.GetRequiredService<UsageRepository>());
 
-var monitorKind = builder.Configuration["Flow:Monitor"];
-if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
+if (mode != DaemonMode.Session)
 {
-    builder.Services.AddSingleton<INetworkMonitor, ProcNetDevMonitor>();
-}
-else if (string.Equals(monitorKind, "ebpf", StringComparison.OrdinalIgnoreCase) ||
-         // "ebpf-tcp" is a legacy alias kept for existing configuration.
-         string.Equals(monitorKind, "ebpf-tcp", StringComparison.OrdinalIgnoreCase))
-{
-    var ebpfOptions = new EbpfMonitorOptions
+    var monitorKind = builder.Configuration["Flow:Monitor"];
+    if (string.Equals(monitorKind, "procfs", StringComparison.OrdinalIgnoreCase))
     {
-        LoaderPath = builder.Configuration["Flow:Ebpf:LoaderPath"],
-    };
-    if (int.TryParse(builder.Configuration["Flow:Ebpf:IntervalSeconds"], out var interval) && interval > 0)
-        ebpfOptions.IntervalSeconds = interval;
-    if (int.TryParse(builder.Configuration["Flow:Ebpf:Rounds"], out var rounds) && rounds > 0)
-        ebpfOptions.Rounds = rounds;
-    builder.Services.AddSingleton<INetworkMonitor>(_ => new EbpfMonitor(ebpfOptions));
+        builder.Services.AddSingleton<INetworkMonitor, ProcNetDevMonitor>();
+    }
+    else if (string.Equals(monitorKind, "ebpf", StringComparison.OrdinalIgnoreCase) ||
+             // "ebpf-tcp" is a legacy alias kept for existing configuration.
+             string.Equals(monitorKind, "ebpf-tcp", StringComparison.OrdinalIgnoreCase))
+    {
+        var ebpfOptions = new EbpfMonitorOptions
+        {
+            LoaderPath = builder.Configuration["Flow:Ebpf:LoaderPath"],
+        };
+        if (int.TryParse(builder.Configuration["Flow:Ebpf:IntervalSeconds"], out var interval) && interval > 0)
+            ebpfOptions.IntervalSeconds = interval;
+        if (int.TryParse(builder.Configuration["Flow:Ebpf:Rounds"], out var rounds) && rounds > 0)
+            ebpfOptions.Rounds = rounds;
+        builder.Services.AddSingleton<INetworkMonitor>(_ => new EbpfMonitor(ebpfOptions));
+    }
+    else
+    {
+        builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
+    }
+
+    builder.Services.AddSingleton<UsageIngestionPipeline>();
+    builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
+    builder.Services.AddSingleton<IMonitoringDiagnosticsSource>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
 }
 else
 {
-    builder.Services.AddSingleton<INetworkMonitor, NullNetworkMonitor>();
+    // Session mode has no monitor and no pipeline; status comes from the
+    // collector's persisted monitoring session rows.
+    builder.Services.AddSingleton<IMonitoringDiagnosticsSource, PersistedDiagnosticsSource>();
 }
 
-builder.Services.AddSingleton<UsageIngestionPipeline>();
-builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
-builder.Services.AddSingleton<IMonitoringDiagnosticsSource>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
 builder.Services.AddSingleton<IMonitoringStatusService, MonitoringStatusService>();
-builder.Services.AddHostedService<Worker>();
-if (mode == DaemonMode.Full)
+
+if (mode != DaemonMode.Session)
+    builder.Services.AddHostedService<Worker>();
+
+if (mode != DaemonMode.Collector)
 {
     // Collector mode is privileged and headless: it writes to SQLite but does
     // not claim org.flow.Daemon on the user session bus.
