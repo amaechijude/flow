@@ -2366,12 +2366,13 @@ def main() -> int:
         "soak_rss_samples": [s["rss_kb"] for s in soak_samples if s["rss_kb"] is not None],
         "size_bytes": (
             tunnel_bytes if tunnel
-            else (wildcard_bytes if wildcard else (churn_child_bytes if map_churn else size_bytes))
+            else (wildcard_bytes if wildcard else (churn_child_bytes if map_churn else (int(args.soak_size_mib * 1024 * 1024) if prod_soak else size_bytes)))
         ),
         "size_mib": (
             (args.tunnel_size_mib if tunnel else
              (args.wildcard_size_mib if wildcard else
-              (args.churn_child_size_kib / 1024.0 if map_churn else args.size_mib)))
+              (args.churn_child_size_kib / 1024.0 if map_churn else
+               (args.soak_size_mib if prod_soak else args.size_mib))))
         ),
         "tcp_sent": tcp_sent,
         "tcp_received": tcp_received,

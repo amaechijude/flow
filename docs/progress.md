@@ -982,3 +982,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8`
 - Expectation: exact aggregate bytes, zero unattributed, all rows on `lo`, CPU/RSS/map samples recorded. This is a loopback concurrency/duration proxy, not a production SLA claim.
+
+## 2026-11-19 (accepted production-load proxy)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261119T002316Z.md`: 8 workers × 300 s, 2,850 TCP+UDP transfers; exact 2,988,441,600 bytes per protocol/direction, all expected rows on `lo`, 0 unattributed, one process generation.
+- Loader CPU 0.144% of one core, peak RSS constant 3,944 KiB, BPF map entries 4→14. Accepts short-term concurrent overhead/stability on loopback.
+
+### Caveat
+- `check_identity: False` for the expected row: kernel-captured identity retained but `/proc` enrichment did not verify it under sustained multithreaded load. Recorded as open; does not affect byte/interface checks.
+
+### Fix
+- Report now states 1 MiB per transfer for prod-soak instead of the prior generic 16 MiB line.
+
+### Next
+- Hard map-cap probe near 10,240 entries; real VPN/physical NIC and sustained-load identity verification remain environment-dependent gaps.
