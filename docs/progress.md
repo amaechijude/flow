@@ -1162,3 +1162,12 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Changes
 - Accepted/annotated report and index; ADR 0010, `docs/attribution.md`, `HANDOFF.md` updated. No product code changed.
+
+## 2026-11-19 (root README added)
+
+### Change
+- Created root `README.md` with build/test commands, current status, validation-evidence pointers, and explicit known limitations.
+- The high-churn LRU caveat is documented prominently: ±1% checks passed, but 282,624-byte (~0.41%) over-attribution and false `check_single_generation` at ~33k short-lived generations; not suitable for billing/strict quotas under such churn.
+
+### Verification
+- No product code changed; build/test baseline remains 40/40 passing.
