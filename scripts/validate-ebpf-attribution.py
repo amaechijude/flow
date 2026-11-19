@@ -1362,7 +1362,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Target map entries: {ctx['churn_target']}; reached: {ctx['check_map_target']}",
             f"- Children spawned: {ctx['churn_children']}; successful: {ctx['churn_successes']}; batches: {ctx['churn_batches']}",
             f"- Expected bytes per protocol/direction (successes × child payload): {expected_bytes}",
-            f"- Exact shortfall (expected − attributed TX): {expected_bytes - int(s['expected_tx'])}",
+            f"- Exact total shortfall (2 × expected per protocol − attributed TX): {2 * expected_bytes - int(s['expected_tx'])}",
             f"- Attributed expected TX/RX: {s['expected_tx']} / {s['expected_rx']}",
             f"- BPF map entries: first {entries[0] if entries else 'n/a'}, last {entries[-1] if entries else 'n/a'}, max {max(entries) if entries else 'n/a'}",
             f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",

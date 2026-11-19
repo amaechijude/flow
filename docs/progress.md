@@ -1023,3 +1023,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 32700 --churn-timeout 1200 --churn-child-size-kib 1`
 - Expectation: no overflow in `F`, exact shortfall 0, all byte checks true. Any overflow is now visible rather than silent.
+
+## 2026-11-19 (post-fix map run: overflow visible, capacity still limited)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261119T005948Z.md`: 16,448 short-lived children, map entries 130→32,577 of 32,768; target 32,700 not reached.
+- New F counter reported 154,624 bytes/151 events overflow per direction. Corrected exact shortfall: 156,672 TX / 154,624 RX (RX matches overflow; TX has an additional 2,048 bytes/2 events not in the F counter).
+- CPU 32.585% of one core, RSS 3,824→15,864 KiB. `check_single_generation: False` consistent with failed insertions leaving some child PIDs without rows.
+
+### Interpretation
+- The visibility fix works: map-full loss is no longer silent. Capacity is still insufficient for ~16k short-lived children; next step is 65,536 entries or eviction.
+
+### Fix
+- Harness exact-shortfall line now compares two-protocol expected total to aggregate attributed bytes instead of per-protocol expected to aggregate total.
