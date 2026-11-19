@@ -32,3 +32,5 @@ attribution.
 | `ebpf-controlled-20261119T042547Z.md` | Accepted identity diagnostic | Exact bytes on `lo`; loader raw ticks and `/proc` starttime agree at 4,444,599, but BPF start_ns converts to 4,314,025 — a 130,574-tick gap. Mismatch localized to BPF event-time start time vs userspace `/proc`. |
 | `ebpf-controlled-20261119T043228Z.md` | Accepted duplicate early WireGuard run | First real-wg0 success; same result as the annotated primary report below. |
 | `ebpf-controlled-20261119T043314Z.md` | Accepted real WireGuard evidence | 16 MiB TCP echo over real wg0: client on `flowwg0`, server on `6@4026532903`, exact bytes, no underlay rows, `check_wireguard: True`, 0 unattributed. Overlay/underlay overlap documented. TCP-only; no public VPN provider. |
+| `ebpf-controlled-20261119T045127Z.md` | Accepted identity-fix validation (1 worker) | computed−raw=0, verified=True, exe resolved; exact bytes, all on `lo`. |
+| `ebpf-controlled-20261119T045242Z.md` | Accepted identity-fix validation (8 workers) | Same result under 8-worker load; BPF comm is `python3`, verified=True. |

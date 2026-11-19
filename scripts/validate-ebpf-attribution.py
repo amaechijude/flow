@@ -2390,9 +2390,7 @@ def main() -> int:
             summary["expected_resolved_ifnames"] == ["lo"]
             and int(summary["expected_unresolved_rows"]) == 0
         )
-        check_identity = (
-            None if (identity_diag or prod_children) else bool(summary["expected_identity_verified"])
-        )
+        check_identity = None if prod_children else bool(summary["expected_identity_verified"])
     elif wildcard:
         assert veth is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino

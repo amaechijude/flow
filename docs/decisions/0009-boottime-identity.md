@@ -1,6 +1,6 @@
 # ADR 0009: Use boottime for event-time process start identity
 
-- Status: Accepted (implemented; privileged validation pending)
+- Status: Accepted (implemented and privileged-validated)
 - Date: 2026-11-19
 
 ## Context
@@ -32,5 +32,4 @@ boottime nanoseconds.
   timestamp basis changes. Historical 3-part/4-part monotonic-based keys are not
   rewritten; old and new rows remain distinct. This is a development-stage
   identity migration.
-- This must be validated with the identity diagnostic before claiming the
-  verification issue is fixed.
+- Privileged validation (2026-11-19): 1-worker and 8-worker identity diagnostics both showed `computed−raw=0`, `verified=True`, and resolved `/usr/bin/python3.14` (`docs/measurements/ebpf-controlled-20261119T045127Z.md`, `...T045242Z.md`). The verification issue is fixed for these controlled cases.

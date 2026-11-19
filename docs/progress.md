@@ -1100,3 +1100,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Pending
 - Rerun `sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 1`; expect `computed−raw≈0` and `verified=True`. Then rerun the 8-worker soak to confirm under load.
+
+## 2026-11-19 (identity fix validated)
+
+### Measured result
+- 1-worker diagnostic (`docs/measurements/ebpf-controlled-20261119T045127Z.md`): computed ticks = raw ticks = 4,598,583, `computed−raw=0`, `verified=True`, `/usr/bin/python3.14` resolved, BPF comm `python3`. Exact bytes, all on `lo`, 0 unattributed.
+- 8-worker diagnostic (`docs/measurements/ebpf-controlled-20261119T045242Z.md`): same result with 8 workers (4,606,117 ticks), `verified=True`, exe resolved. The boottime identity fix works under multithreaded load.
+
+### Changes
+- Accepted/annotated both reports and index; ADR 0009 marked validated; `docs/attribution.md`, `HANDOFF.md` updated. Harness now reports `check_identity` for identity-diag mode. Build/test baseline 40/40 passing.
+
+### Remaining
+- Raise BPF/loader map capacity to 65,536 and re-run high-churn validation; real public-VPN-over-physical-NIC testing still needs an external peer.
