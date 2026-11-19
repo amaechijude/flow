@@ -8,6 +8,8 @@ using Flow.Linux.Monitoring;
 
 var builder = Host.CreateApplicationBuilder(args);
 
+var mode = DaemonModeParser.Parse(builder.Configuration["Flow:Mode"]);
+
 var dbPath = builder.Configuration["Flow:DatabasePath"];
 if (string.IsNullOrWhiteSpace(dbPath))
 {
@@ -58,7 +60,12 @@ builder.Services.AddSingleton<IMonitoringController>(sp => sp.GetRequiredService
 builder.Services.AddSingleton<IMonitoringDiagnosticsSource>(sp => sp.GetRequiredService<UsageIngestionPipeline>());
 builder.Services.AddSingleton<IMonitoringStatusService, MonitoringStatusService>();
 builder.Services.AddHostedService<Worker>();
-builder.Services.AddHostedService<DbusIpcHostedService>();
+if (mode == DaemonMode.Full)
+{
+    // Collector mode is privileged and headless: it writes to SQLite but does
+    // not claim org.flow.Daemon on the user session bus.
+    builder.Services.AddHostedService<DbusIpcHostedService>();
+}
 
 var host = builder.Build();
 host.Run();

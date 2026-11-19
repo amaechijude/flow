@@ -1171,3 +1171,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Verification
 - No product code changed; build/test baseline remains 40/40 passing.
+
+## 2026-11-19 (packaging phase 1 started: collector mode)
+
+### Plan
+- Added `docs/packaging-plan.md`: Phase 1 privilege/IPC split, Phase 2 shared DB permissions, Phase 3 systemd/D-Bus integration, Phase 4 remaining product work.
+
+### Implementation
+- Added `Flow:Mode` with `full` (default, current behaviour) and `collector` (monitor + pipeline + SQLite, no D-Bus registration). `session` is explicitly rejected until a persisted diagnostics source exists.
+- Added parser tests (9 Daemon tests now; 48/48 total).
+- Added `Flow:Mode=full` to daemon appsettings and documented collector usage in the root README.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 48/48 passing.
+- Smoke-tested collector mode with `procfs`: pipeline started, DB file created, no D-Bus IPC log, clean shutdown.

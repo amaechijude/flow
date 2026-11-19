@@ -8,7 +8,7 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **40/40 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **48/48 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
   and Diagnostics pages; CSV/JSON export uses a real file picker and includes
   provenance/caveats.
@@ -31,6 +31,10 @@ Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
 
 # Privileged per-process attribution (prototype loader)
 sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" \
+  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
+
+# Headless collector role (no D-Bus registration; intended for systemd)
+Flow__Mode=collector Flow__Monitor=procfs Flow__DatabasePath=/var/lib/flow/flow.db \
   dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
 
 # Desktop
