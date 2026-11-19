@@ -1062,3 +1062,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode wireguard --tunnel-size-mib 16`
 - Also pending: `--mode identity-diag` output for the multithreaded identity issue.
+
+## 2026-11-19 (identity diagnostic result and WireGuard key fix)
+
+### Identity diagnostic result
+- `docs/measurements/ebpf-controlled-20261119T041447Z.md`: byte totals exact, all rows on `lo`, one process generation. Identity diagnostic showed `start_ns=42480389592063`, `cached startticks=0`, computed ticks=4,248,038, while `/proc/<pid>/stat starttime=4,378,613`. The cached field being 0 is expected when verification fails; the large computed-vs-proc gap needs a raw `/proc` tick field to diagnose.
+- Added a new 17th `E` field `raw_startticks` from the loader (fresh `/proc/<pid>/stat` read), and the report now shows `computed−raw`. Loader rebuilt.
+
+### WireGuard blocker
+- First run failed: `wg set flowwg0 private-key /tmp/.../root.key` → `fopen: Permission denied`.
+- Removed temp key files; private keys now pass via `/dev/stdin` to `wg set`, including inside `ip netns exec`. Key generation verified locally.
+
+### Pending
+- Rerun identity diagnostic and WireGuard probe with rebuilt loader/harness.

@@ -275,11 +275,11 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                 tsv_sanitize(comm2);
                 tsv_sanitize(exe2);
                 tsv_sanitize(ifname2);
-                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\t%u\t%s\t%llu\n",
+                printf("E\t%u\t%u\t%llu\t%llu\t%llu\t%llu\t%s\t%s\t%llu\t%d\t%llu\t%llu\t%u\t%s\t%llu\t%llu\n",
                        next_key.tgid, next_key.uid,
                        (unsigned long long)val.tx_bytes, (unsigned long long)val.rx_bytes,
                        dtx, drx, comm2, exe2, show_st, identity_verified ? 1 : 0,
-                       show_ns, show_cgroup, next_key.proto, ifname2, netns_id);
+                       show_ns, show_cgroup, next_key.proto, ifname2, netns_id, st);
             }
         }
         key = next_key;

@@ -90,7 +90,6 @@ import signal
 import socket
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -390,45 +389,39 @@ class WireGuardTopology:
         self.veth = VethPair()
         self.root_ifindex = 0
         self.peer_ifindex = 0
-        self.tmpdir = tempfile.TemporaryDirectory(prefix="flow-wg-")
 
-    def _run(self, cmd: list[str]) -> None:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    def _run(self, cmd: list[str], stdin_text: str | None = None) -> None:
+        result = subprocess.run(
+            cmd, input=stdin_text, capture_output=True, text=True, check=False
+        )
         if result.returncode != 0:
             raise SystemExit(
                 f"{' '.join(cmd)} failed: {(result.stderr or result.stdout).strip()}"
             )
 
     def start(self) -> None:
-        import os  # local import: tempdir paths only
-
         self.veth.start()
         root_priv, root_pub = wg_keygen()
         peer_priv, peer_pub = wg_keygen()
-        root_key = Path(self.tmpdir.name) / "root.key"
-        peer_key = Path(self.tmpdir.name) / "peer.key"
-        root_key.write_text(root_priv + "\n")
-        peer_key.write_text(peer_priv + "\n")
-        os.chmod(root_key, 0o600)
-        os.chmod(peer_key, 0o600)
 
         try:
             self._run(["ip", "link", "add", WG_NAME, "type", "wireguard"])
             self._run(["ip", "netns", "exec", VETH_NS, "ip", "link", "add", WG_NAME, "type", "wireguard"])
             self._run(["ip", "addr", "add", f"{WG_ROOT_IP}/30", "dev", WG_NAME])
             self._run(["ip", "netns", "exec", VETH_NS, "ip", "addr", "add", f"{WG_PEER_IP}/30", "dev", WG_NAME])
-            self._run(["wg", "set", WG_NAME, "private-key", str(root_key), "listen-port", str(WG_ROOT_PORT)])
+            # Pass keys via /dev/stdin to avoid file-permission/apparmor issues in /tmp.
             self._run(
-                ["wg", "set", WG_NAME, "peer", peer_pub, "endpoint", f"{VETH_SERVER_IP}:{WG_PEER_PORT}",
-                 "allowed-ips", f"{WG_PEER_IP}/32"]
+                ["wg", "set", WG_NAME, "private-key", "/dev/stdin",
+                 "listen-port", str(WG_ROOT_PORT), "peer", peer_pub,
+                 "endpoint", f"{VETH_SERVER_IP}:{WG_PEER_PORT}",
+                 "allowed-ips", f"{WG_PEER_IP}/32"],
+                stdin_text=root_priv + "\n",
             )
             self._run(
-                ["ip", "netns", "exec", VETH_NS, "wg", "set", WG_NAME, "private-key", str(peer_key),
-                 "listen-port", str(WG_PEER_PORT)]
-            )
-            self._run(
-                ["ip", "netns", "exec", VETH_NS, "wg", "set", WG_NAME, "peer", root_pub,
-                 "allowed-ips", f"{WG_ROOT_IP}/32"]
+                ["ip", "netns", "exec", VETH_NS, "wg", "set", WG_NAME,
+                 "private-key", "/dev/stdin", "listen-port", str(WG_PEER_PORT),
+                 "peer", root_pub, "allowed-ips", f"{WG_ROOT_IP}/32"],
+                stdin_text=peer_priv + "\n",
             )
             self._run(["ip", "link", "set", WG_NAME, "up"])
             self._run(["ip", "netns", "exec", VETH_NS, "ip", "link", "set", WG_NAME, "up"])
@@ -457,7 +450,6 @@ class WireGuardTopology:
             capture_output=True, text=True, check=False,
         )
         self.veth.stop()
-        self.tmpdir.cleanup()
 
 
 class NetnsKeyPair:
@@ -570,6 +562,7 @@ class LoaderRun:
                         "ifname": p[14] if len(p) > 14 else "",
                         # netns id (16th field) distinguishes namespace-scoped ifindexes.
                         "netns_id": int(p[15]) if len(p) > 15 and p[15].isdigit() else 0,
+                        "raw_startticks": int(p[16]) if len(p) > 16 and p[16].isdigit() else 0,
                     }
                 )
             elif line.startswith("U\t"):
@@ -1282,6 +1275,7 @@ def summarize(
                 "tgid": key[0],
                 "start_ns": key[1],
                 "startticks": int(e.get("startticks") or 0),
+                "raw_startticks": int(e.get("raw_startticks") or 0),
                 "uid": key[2],
                 "proto": key[3],
                 "ifname": key[4],
@@ -1624,10 +1618,11 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
                 continue
             computed = int(row["start_ns"]) * clk // 1_000_000_000
             stored = int(row.get("startticks") or 0)
+            raw = int(row.get("raw_startticks") or 0)
             lines.append(
                 f"- TGID {row['tgid']} proto {row['proto']} comm={row['comm']} exe={row['exe']}: "
-                f"start_ns={row['start_ns']} startticks={stored} computed={computed} "
-                f"diff={computed - stored} verified={row['identity_verified']}"
+                f"start_ns={row['start_ns']} cached_ticks={stored} raw_ticks={raw} "
+                f"computed={computed} computed−raw={computed - raw} verified={row['identity_verified']}"
             )
         lines.append(
             "- If computed≈stored but verified is false, investigate /proc exe enrichment; "
