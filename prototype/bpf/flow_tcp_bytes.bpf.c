@@ -40,7 +40,7 @@ struct traffic_val {
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 32768);
+    __uint(max_entries, 65536);
     __type(key, struct traffic_key);
     __type(value, struct traffic_val);
 } traffic SEC(".maps");

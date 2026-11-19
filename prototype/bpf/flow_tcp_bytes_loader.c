@@ -56,7 +56,7 @@ struct unattributed_val {
     __u64 rx_events;
 };
 
-#define MAX_PREV 32768
+#define MAX_PREV 65536
 static struct prev_entry prev[MAX_PREV];
 
 static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns,

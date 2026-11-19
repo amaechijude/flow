@@ -1112,3 +1112,13 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Remaining
 - Raise BPF/loader map capacity to 65,536 and re-run high-churn validation; real public-VPN-over-physical-NIC testing still needs an external peer.
+
+## 2026-11-19 (map capacity raised to 65,536)
+
+### Change
+- BPF `traffic` map and loader `prev` array increased from 32,768 to 65,536 entries. BPF object, skeleton, and loader rebuilt with 0 errors.
+- Overflow counter/F lines remain in place, so any remaining map-full loss is visible.
+
+### Pending
+- `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 65500 --churn-timeout 1800 --churn-child-size-kib 1`
+- Expectation: target reached with zero overflow and exact shortfall 0.
