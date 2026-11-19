@@ -1199,3 +1199,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Remaining in packaging plan
 - Shared DB path/permissions, systemd units, D-Bus activation, then UI/reporting/persistence/productization tracks.
+
+## 2026-11-19 (packaging phase 2/3 scaffolding)
+
+### Implementation
+- Added `FlowPaths`: full/development mode keeps the per-user DB; collector/session default to `/var/lib/flow/flow.db`. Program now fails clearly if the DB directory is missing.
+- Added draft packaging files under `packaging/`: `flow-collector.service` (system, root, capabilities for eBPF, no D-Bus), `flow-daemon.service` (user, session IPC only), `org.flow.Daemon.service` (D-Bus activation), `postinst.sh`/`prerm.sh` (group/DB permissions, service lifecycle), and `packaging/README.md`.
+- Corrected systemd/D-Bus command-line keys to `--Flow:Mode=...` (colon), verified by smoke test; environment variables still use `__`.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 54/54 passing.
+- Smoke-tested command-line `--Flow:Mode=session --Flow:DatabasePath=<tmp>`: only D-Bus IPC started, no Worker. The earlier `--Flow__Mode` form was ignored, which is why the unit files were corrected.
+
+### Remaining
+- Build the actual `.deb` with metadata and maintainer scripts, install/layout test, desktop launcher, upgrade/uninstall data handling, and the UI/reporting/rollup tracks.

@@ -1,0 +1,20 @@
+[Unit]
+Description=Flow privileged network usage collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+UMask=0007
+ExecStart=/usr/lib/flow/Flow.Daemon --Flow:Mode=collector --Flow:Monitor=ebpf --Flow:DatabasePath=/var/lib/flow/flow.db --Flow:Ebpf:LoaderPath=/usr/lib/flow/flow_tcp_bytes_loader
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+
+[Install]
+WantedBy=multi-user.target

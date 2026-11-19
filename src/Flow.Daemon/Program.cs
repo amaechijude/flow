@@ -12,11 +12,13 @@ var mode = DaemonModeParser.Parse(builder.Configuration["Flow:Mode"]);
 
 var dbPath = builder.Configuration["Flow:DatabasePath"];
 if (string.IsNullOrWhiteSpace(dbPath))
+    dbPath = FlowPaths.DefaultDatabasePath(mode);
+
+var dbDirectory = Path.GetDirectoryName(Path.GetFullPath(dbPath));
+if (!string.IsNullOrWhiteSpace(dbDirectory) && !Directory.Exists(dbDirectory))
 {
-    var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-    if (string.IsNullOrWhiteSpace(baseDir))
-        baseDir = AppContext.BaseDirectory;
-    dbPath = Path.Combine(baseDir, "flow", "flow.db");
+    throw new InvalidOperationException(
+        $"Database directory '{dbDirectory}' does not exist. Create it with the correct permissions before starting Flow.");
 }
 
 var connectionFactory = new SqliteConnectionFactory(dbPath);

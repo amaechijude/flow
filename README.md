@@ -8,7 +8,7 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **51/51 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **54/54 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
   and Diagnostics pages; CSV/JSON export uses a real file picker and includes
   provenance/caveats.

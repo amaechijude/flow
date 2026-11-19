@@ -1,0 +1,15 @@
+[Unit]
+Description=Flow session IPC daemon
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/lib/flow/Flow.Daemon --Flow:Mode=session --Flow:DatabasePath=/var/lib/flow/flow.db
+Restart=on-failure
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

@@ -50,7 +50,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ```bash
 cd /home/amaechi/code/flow
 dotnet build Flow.slnx -v minimal
-dotnet test Flow.slnx -v minimal   # expect 51/51
+dotnet test Flow.slnx -v minimal   # expect 54/54
 ```
 - **Daemon (no root, unattributed interface totals):** `Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj`
 - **Daemon (privileged, TCP+UDP attributed, prototype):** `sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` (IPC name registration may fail under sudo; DB persistence still works)

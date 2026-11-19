@@ -23,4 +23,14 @@ public class DaemonModeParserTests
     [Fact]
     public void ParseRejectsUnknownMode()
         => Assert.Throws<InvalidOperationException>(() => DaemonModeParser.Parse("bogus"));
+
+    [Theory]
+    [InlineData(DaemonMode.Collector)]
+    [InlineData(DaemonMode.Session)]
+    public void PackagedModesUseSystemDatabase(DaemonMode mode)
+        => Assert.Equal(FlowPaths.SystemDatabasePath, FlowPaths.DefaultDatabasePath(mode));
+
+    [Fact]
+    public void FullModeUsesPerUserDatabase()
+        => Assert.EndsWith(Path.Combine("flow", "flow.db"), FlowPaths.DefaultDatabasePath(DaemonMode.Full));
 }

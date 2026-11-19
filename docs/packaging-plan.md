@@ -28,7 +28,7 @@ Success criteria for Phase 1:
 
 Session mode status comes from the latest persisted monitoring session. Live pipeline counters are not available to it and are reported as zero; collector-owned counters remain authoritative.
 
-## Phase 2 — Shared DB and permissions
+## Phase 2 — Shared DB and permissions (scaffolding added 2026-11-19)
 
 - Choose a system DB location, e.g. `/var/lib/flow/flow.db`.
 - Create a `flow` group; collector writes as root, session/desktop reads via group.
@@ -36,7 +36,7 @@ Session mode status comes from the latest persisted monitoring session. Live pip
 - Multi-user isolation would require per-user DBs or a broker and is out of scope
   for the first package.
 
-## Phase 3 — systemd and D-Bus integration
+## Phase 3 — systemd and D-Bus integration (draft units added 2026-11-19)
 
 - `flow-collector.service` (system): root, `Flow:Mode=collector`, restart on failure.
 - `flow-daemon.service` or `flow-daemon@.service` (user): `Flow:Mode=session`,
