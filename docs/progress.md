@@ -1036,3 +1036,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Fix
 - Harness exact-shortfall line now compares two-protocol expected total to aggregate attributed bytes instead of per-protocol expected to aggregate total.
+
+## 2026-11-19 (identity diagnostic mode added, not yet run)
+
+### Implementation
+- Added `--mode identity-diag`: short concurrent-worker workload (reuses `--prod-workers`/`--duration`/`--soak-size-mib`) that writes an "Identity diagnostic" report section.
+- Section compares BPF `start_ns` (converted with loader `clk_tck`) against loader `startticks`, shows the diff, the verification flag, and `/proc/<pid>/stat` starttime plus `/proc/<pid>/exe` for the expected TGID.
+- Added `startticks` to harness process rows; identity check is n/a in this mode so the report is the measurement, not a gate.
+- Syntax and synthetic report checks passed. No BPF/loader change; baseline 40/40 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 8`
+- Interpret: if computed ticks ≈ stored ticks but verified is false, investigate `/proc` exe enrichment; if they differ, investigate event-time start-time/leader handling; if start_ns differs across rows for one TGID, investigate thread-level identity split.

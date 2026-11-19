@@ -26,6 +26,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
     sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8
+    sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 8
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -67,6 +68,10 @@ Overlay and underlay counter deltas are both reported to document overlap.
 Production-soak mode runs several concurrent transfer workers for a configurable
 duration, sampling CPU, RSS, and map growth. It is a loopback concurrency/duration
 proxy for overhead, not a real Internet workload or production SLA claim.
+
+Identity-diagnostic mode runs the same short concurrent workload but reports
+BPF `start_ns`, loader `startticks`, computed ticks, `/proc` starttime/exe, and
+the verification flag for each expected row. It is a measurement aid, not a fix.
 """
 
 from __future__ import annotations
@@ -136,6 +141,20 @@ def read_proc_cpu_ns(pid: int) -> int | None:
         return None
 
 
+def read_proc_startticks(pid: int) -> int | None:
+    """Return /proc/<pid>/stat field 22 (starttime in clock ticks)."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        rparen = stat.rfind(")")
+        if rparen < 0:
+            return None
+        fields = stat[rparen + 2 :].split()
+        # fields[0] is state (field 3); field 22 is at index 19.
+        return int(fields[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
 def read_proc_cpu_seconds(pid: int) -> float | None:
     """Return utime+stime in seconds for a process, as reported by /proc/<pid>/stat."""
     try:
@@ -148,6 +167,13 @@ def read_proc_cpu_seconds(pid: int) -> float | None:
         ticks = int(fields[11]) + int(fields[12])
         return ticks / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError):
+        return None
+
+
+def read_proc_exe(pid: int) -> str | None:
+    try:
+        return os.readlink(f"/proc/{pid}/exe")
+    except OSError:
         return None
 
 
@@ -1112,6 +1138,7 @@ def summarize(
             {
                 "tgid": key[0],
                 "start_ns": key[1],
+                "startticks": int(e.get("startticks") or 0),
                 "uid": key[2],
                 "proto": key[3],
                 "ifname": key[4],
@@ -1417,6 +1444,32 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
             "- This is a loopback concurrency/duration proxy, not a real Internet workload or production SLA evidence.",
         ]
+    if ctx.get("identity_diag"):
+        clk = int(ctx["clk_tck"])
+        proc_ticks = ctx.get("proc_startticks")
+        proc_exe = read_proc_exe(s["expected_tgid"])
+        lines += [
+            "",
+            "## Identity diagnostic",
+            "",
+            f"- clk_tck from loader M line: {clk}",
+            f"- /proc/{s['expected_tgid']}/stat starttime: {proc_ticks}",
+            f"- /proc/{s['expected_tgid']}/exe: {proc_exe or 'unavailable'}",
+        ]
+        for row in s["processes"]:
+            if int(row["tgid"]) != int(s["expected_tgid"]):
+                continue
+            computed = int(row["start_ns"]) * clk // 1_000_000_000
+            stored = int(row.get("startticks") or 0)
+            lines.append(
+                f"- TGID {row['tgid']} proto {row['proto']} comm={row['comm']} exe={row['exe']}: "
+                f"start_ns={row['start_ns']} startticks={stored} computed={computed} "
+                f"diff={computed - stored} verified={row['identity_verified']}"
+            )
+        lines.append(
+            "- If computed≈stored but verified is false, investigate /proc exe enrichment; "
+            "if they differ, investigate event-time start-time/leader handling."
+        )
     if ctx.get("overflow") and (
         ctx["overflow"]["tx_total"] or ctx["overflow"]["rx_total"]
     ):
@@ -1526,7 +1579,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel", "prod-soak"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel", "prod-soak", "identity-diag"),
         default="lo",
         help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
@@ -1588,6 +1641,7 @@ def main() -> int:
     wildcard = args.mode == "wildcard"
     tunnel = args.mode == "tunnel"
     prod_soak = args.mode == "prod-soak"
+    identity_diag = args.mode == "identity-diag"
     tunnel_bytes = int(args.tunnel_size_mib * 1024 * 1024)
     if tunnel and tunnel_bytes <= 0:
         print("error: --tunnel-size-mib must be positive", file=sys.stderr)
@@ -1731,7 +1785,7 @@ def main() -> int:
                     "unattributed_rx": last_map.get("urx"),
                 }
             )
-        elif prod_soak:
+        elif prod_soak or identity_diag:
             expected_tgids.add(os.getpid())
             size = int(args.soak_size_mib * 1024 * 1024)
             deadline = time.monotonic() + args.duration
@@ -2076,7 +2130,7 @@ def main() -> int:
         )
         check_interface = check_tunnel
         check_identity = None
-    elif prod_soak:
+    elif prod_soak or identity_diag:
         expected_interface_description = "all expected rows on `lo`"
         transfer_scope = (
             f"{args.prod_workers} concurrent workers, {args.duration:.0f}s, "
@@ -2095,7 +2149,9 @@ def main() -> int:
             summary["expected_resolved_ifnames"] == ["lo"]
             and int(summary["expected_unresolved_rows"]) == 0
         )
-        check_identity = None if prod_children else bool(summary["expected_identity_verified"])
+        check_identity = (
+            None if (identity_diag or prod_children) else bool(summary["expected_identity_verified"])
+        )
     elif wildcard:
         assert veth is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino
@@ -2300,45 +2356,34 @@ def main() -> int:
         summary["process_count"] = len(summary["processes"])
         summary["processes"] = summary["processes"][:20]
 
+    if identity_diag:
+        mode_description = f"identity diagnostic, {args.prod_workers} workers × {args.duration:.0f}s"
+    elif prod_soak:
+        mode_description = f"production-load soak, {args.prod_workers} workers × {args.duration:.0f}s"
+    elif tunnel:
+        mode_description = f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
+    elif wildcard:
+        mode_description = "wildcard UDP listener on two interfaces"
+    elif map_churn:
+        mode_description = "high-rate child churn toward BPF map capacity"
+    elif netns_key:
+        mode_description = "same-PID two-netns identity collision"
+    elif veth:
+        mode_description = "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+    elif nic:
+        mode_description = f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+    elif soak:
+        mode_description = f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+    else:
+        mode_description = "loopback `lo`"
+
     ctx = {
         "date": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "kernel": os.uname().release,
         "loader": str(args.loader),
         "interval": args.interval,
         "mode": args.mode,
-        "mode_description": (
-            f"production-load soak, {args.prod_workers} workers × {args.duration:.0f}s"
-            if prod_soak
-            else (
-                f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
-                if tunnel
-                else (
-                    "wildcard UDP listener on two interfaces"
-                    if wildcard
-                    else (
-                        "high-rate child churn toward BPF map capacity"
-                        if map_churn
-                        else (
-                            "same-PID two-netns identity collision"
-                            if netns_key
-                            else (
-                                "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-                                if veth
-                                else (
-                                    f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                                    if nic
-                                    else (
-                                        f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                                        if soak
-                                        else "loopback `lo`"
-                                    )
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        ),
+        "mode_description": mode_description,
         "expected_interface_description": expected_interface_description,
         "interface_caveat": interface_caveat,
         "transfer_scope": transfer_scope,
@@ -2352,6 +2397,9 @@ def main() -> int:
         "wildcard": wildcard,
         "tunnel": tunnel,
         "prod_soak": prod_soak,
+        "identity_diag": identity_diag,
+        "clk_tck": loader.meta.get("clk_tck", 100) if loader else 100,
+        "proc_startticks": read_proc_startticks(os.getpid()),
         "prod_workers": args.prod_workers if prod_soak else None,
         "prod_transfers": prod_transfers,
         "prod_children": len(prod_children),
