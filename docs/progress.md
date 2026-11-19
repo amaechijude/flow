@@ -1213,3 +1213,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Remaining
 - Build the actual `.deb` with metadata and maintainer scripts, install/layout test, desktop launcher, upgrade/uninstall data handling, and the UI/reporting/rollup tracks.
+
+## 2026-11-19 (prototype .deb scaffolding built)
+
+### Implementation
+- Added `.deb` control metadata under `packaging/deb/DEBIAN/control`.
+- Added `packaging/build-deb.sh`: publishes daemon/desktop Release outputs, requires the built eBPF loader, copies systemd/D-Bus/desktop/doc files, sets permissions, validates the desktop file, and builds `packaging/build/flow_0.1.0_amd64.deb` with `dpkg-deb`.
+- Added `packaging/flow.desktop` launcher and documented the build command in `packaging/README.md`; build output is gitignored.
+- Fixed systemd/D-Bus unit paths to the published subdirectories and command-line keys to `--Flow:...`.
+
+### Verification
+- `./packaging/build-deb.sh` succeeded; `dpkg-deb --info` showed the expected control, postinst, and prerm files. Package size ~182 MB (prototype; framework-dependent publish with desktop dependencies).
+- `desktop-file-validate packaging/flow.desktop` passed after adding `GTK` to Categories.
+
+### Remaining
+- Installed-layout smoke test, maintainer-script integration test, Polkit decision, upgrade/uninstall data handling, and the UI/reporting/rollup tracks before release quality.

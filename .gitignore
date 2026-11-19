@@ -3,6 +3,7 @@ bin/
 obj/
 **/bin/
 **/obj/
+packaging/build/
 *.user
 *.suo
 *.userosscache

@@ -47,6 +47,8 @@ Session mode status comes from the latest persisted monitoring session. Live pip
 
 ## Phase 4 — Remaining product work before a release-quality `.deb`
 
+A prototype `.deb` can now be built with `./packaging/build-deb.sh`; the remaining items below are for release quality.
+
 - IPC hardening: signal continuity, reconnect/error mapping, `LastError` clearing.
 - Persistence: 1m→5m→h→d→mo rollups preserving totals, retention/cleanup, durable
   flush retry/backoff.

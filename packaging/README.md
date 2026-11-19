@@ -16,8 +16,9 @@ need to be added.
 ## Intended layout
 
 ```text
-/usr/lib/flow/Flow.Daemon
-/usr/lib/flow/flow_tcp_bytes_loader
+/usr/lib/flow/daemon/Flow.Daemon
+/usr/lib/flow/desktop/Flow.Desktop
+/usr/lib/flow/loader/flow_tcp_bytes_loader
 /usr/lib/systemd/system/flow-collector.service
 /usr/lib/systemd/user/flow-daemon.service
 /usr/share/dbus-1/services/org.flow.Daemon.service
@@ -30,6 +31,16 @@ writes the shared DB as root. The desktop user reads it through
 the system `flow` group. Any member of that group can read all usage history;
 per-user isolation would require per-user DBs or a broker and is out of scope
 for the first package.
+
+## Building the prototype binary package
+
+```bash
+./packaging/build-deb.sh
+```
+
+The script publishes the daemon and desktop projects, requires the already-built
+`prototype/bpf/flow_tcp_bytes_loader`, validates the desktop file if available,
+and writes `packaging/build/flow_0.1.0_amd64.deb`. Build output is gitignored.
 
 ## Manual validation before building a .deb
 

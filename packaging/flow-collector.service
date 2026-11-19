@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User=root
 UMask=0007
-ExecStart=/usr/lib/flow/Flow.Daemon --Flow:Mode=collector --Flow:Monitor=ebpf --Flow:DatabasePath=/var/lib/flow/flow.db --Flow:Ebpf:LoaderPath=/usr/lib/flow/flow_tcp_bytes_loader
+ExecStart=/usr/lib/flow/daemon/Flow.Daemon --Flow:Mode=collector --Flow:Monitor=ebpf --Flow:DatabasePath=/var/lib/flow/flow.db --Flow:Ebpf:LoaderPath=/usr/lib/flow/loader/flow_tcp_bytes_loader
 Restart=on-failure
 RestartSec=2
 StandardOutput=journal

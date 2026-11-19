@@ -1,0 +1,11 @@
+Package: flow
+Version: 0.1.0
+Section: net
+Priority: optional
+Architecture: amd64
+Depends: dotnet-runtime-10.0, libbpf1, libelf1, zlib1g
+Maintainer: Flow Project <flow@example.invalid>
+Description: Network usage monitor with per-process attribution
+ Flow records real interface-level and per-process network usage in SQLite and
+ presents it through a desktop application with honest attribution caveats.
+ This is a prototype package; see /usr/share/doc/flow/README.md.

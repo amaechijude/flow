@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Flow
+Comment=Network usage monitor with per-process attribution
+Exec=/usr/lib/flow/desktop/Flow.Desktop
+Icon=utilities-system-monitor
+Terminal=false
+Categories=GNOME;GTK;System;Monitor;
+StartupNotify=true

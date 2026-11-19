@@ -1,4 +1,4 @@
 [D-BUS Service]
 Name=org.flow.Daemon
-Exec=/usr/lib/flow/Flow.Daemon --Flow:Mode=session --Flow:DatabasePath=/var/lib/flow/flow.db
+Exec=/usr/lib/flow/daemon/Flow.Daemon --Flow:Mode=session --Flow:DatabasePath=/var/lib/flow/flow.db
 SystemdService=flow-daemon.service

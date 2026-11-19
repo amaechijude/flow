@@ -45,7 +45,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 2. **IPC/topology hardening:** decide privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence; add signal continuity across daemon restarts, reconnect/error-mapping tests, and `LastError` clearing on recovery.
 3. **UI/product readiness:** Wayland/keyboard/screen-reader accessibility pass (charts and tables), chart interaction/textual summaries, Reports/History/Settings pages and comparisons built on persisted data.
 4. **Persistence/reporting:** rollups (1m→5m→h→d→mo) preserving totals, async retention/cleanup, durable flush retry/backoff, and exports with full caveats.
-5. **Productization:** systemd units, D-Bus service/policy files, Polkit policy, `.deb` packaging, desktop launcher, upgrade/uninstall data handling, and recovery/security/privacy tests.
+5. **Productization:** systemd units, D-Bus service file, desktop launcher, and a prototype `.deb` build are drafted/scaffolded (`packaging/`). Remaining: installed-layout smoke test, actual maintainer-script integration, Polkit policy if needed, upgrade/uninstall data handling, and recovery/security/privacy tests.
 ## How to build, test, and run
 ```bash
 cd /home/amaechi/code/flow
