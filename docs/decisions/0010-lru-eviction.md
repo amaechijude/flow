@@ -1,6 +1,6 @@
 # ADR 0010: LRU eviction with epoch-based delta reset
 
-- Status: Accepted (implemented; privileged validation pending)
+- Status: Accepted (implemented and privileged-validated with caveats)
 - Date: 2026-11-19
 
 ## Context
@@ -23,6 +23,8 @@ expiry.
    count after eviction/recreation.
 4. Keep the explicit overflow counter: LRU handles pressure, but any bytes that
    still cannot get a row remain visible rather than silent.
+
+Privileged validation (`docs/measurements/ebpf-controlled-20261119T061332Z.md`): LRU eliminated map-full overflow (no F lines) and byte checks passed within ±1%, but exact totals were 282,624 bytes over (~0.41%) and `check_single_generation: False` remained. CPU/RSS were similar to the pre-LRU run. The fix removes silent under-attribution but is not exact at 33k-child churn.
 
 ## Consequences
 

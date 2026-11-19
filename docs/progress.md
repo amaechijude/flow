@@ -1149,3 +1149,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Re-run: `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 65500 --churn-timeout 1800 --churn-child-size-kib 1`.
 - Expectation: overflow=0, exact shortfall=0, byte checks true, `check_single_generation` true. Document residual quiet-process eviction risk if observed.
+
+## 2026-11-19 (LRU run: overflow eliminated, residual inaccuracy)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261119T061332Z.md`: 33,472 short-lived children, map entries 129→65,009; target 65,500 not reached before timeout.
+- No F overflow section emitted; overflow counter remained 0. `check_churn_bytes: True`; all per-protocol byte checks within ±1%.
+- Exact total was 282,624 bytes over expected (~0.41%): TCP +151,552, UDP +131,072. `check_single_generation: False` remained. CPU 44.675%, RSS 28,936 KiB.
+
+### Interpretation
+- LRU removes silent map-full under-attribution and keeps aggregate accounting within the declared ±1% tolerance. It is not exact under this extreme churn; residual epoch/generation edge cases need investigation or explicit acceptance as a documented limit.
+
+### Changes
+- Accepted/annotated report and index; ADR 0010, `docs/attribution.md`, `HANDOFF.md` updated. No product code changed.

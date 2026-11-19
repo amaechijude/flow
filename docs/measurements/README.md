@@ -35,4 +35,5 @@ attribution.
 | `ebpf-controlled-20261119T045127Z.md` | Accepted identity-fix validation (1 worker) | computed−raw=0, verified=True, exe resolved; exact bytes, all on `lo`. |
 | `ebpf-controlled-20261119T045242Z.md` | Accepted identity-fix validation (8 workers) | Same result under 8-worker load; BPF comm is `python3`, verified=True. |
 | `ebpf-controlled-20261119T050902Z.md` | Accepted 65,536-capacity run (overflow exact) | 33,536 children reached 65,462 entries; 1,593,344-byte shortfall per direction matched F overflow exactly. Capacity scaling insufficient; CPU 45%, RSS 28 MB. |
+| `ebpf-controlled-20261119T061332Z.md` | Accepted LRU evidence with caveats | No F overflow, byte checks within ±1%, but 282,624-byte (~0.41%) over-attribution and `check_single_generation: False`; CPU 44.7%, RSS 28.9 MB. |
 
