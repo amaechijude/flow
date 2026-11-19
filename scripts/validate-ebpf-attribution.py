@@ -1619,7 +1619,7 @@ def main() -> int:
     churn_successes = 0
     prod_samples: list[dict[str, object]] = []
     prod_transfers = 0
-    prod_children = 0
+    prod_children: list[subprocess.Popen[str]] = []
     wildcard_counts: dict[str, int] = {}
     wildcard_port = 17001
     tunnel_port = 17002
