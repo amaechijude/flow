@@ -42,8 +42,7 @@ Session mode status comes from the latest persisted monitoring session. Live pip
 - `flow-daemon.service` or `flow-daemon@.service` (user): `Flow:Mode=session`,
   registers `org.flow.Daemon` on the session bus.
 - D-Bus session activation file for the user daemon.
-- No Polkit needed for read-only session-bus queries; add only if privileged
-  control operations are introduced.
+- Polkit decision accepted (ADR 0011): no policy for read-only session-bus queries; add only if privileged control operations or system-bus access are introduced.
 
 ## Phase 4 — Remaining product work before a release-quality `.deb`
 

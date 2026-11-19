@@ -1250,3 +1250,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Remaining
 - Real host install in a disposable VM (Systemd-enabled) for unit activation; Polkit decision; upgrade/uninstall data handling; UI/reporting/rollup tracks.
+
+## 2026-11-19 (Polkit decision documented)
+
+### Decision
+- Added ADR 0011: no Polkit policy or system-bus activation for the first package. Session-bus IPC is read-only and scoped to the logged-in user; the privileged collector has no D-Bus interface.
+- Updated `packaging/README.md`, `docs/packaging-plan.md`, and `HANDOFF.md` with the decision and ADR reference.
+
+### Security note
+- Any process in the user's session can call read-only IPC methods, the same trust boundary as the desktop's direct SQLite fallback. Multi-user isolation remains out of scope.
+
+### Verification
+- Documentation-only change; build/test baseline unchanged (54/54).

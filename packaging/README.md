@@ -32,6 +32,14 @@ the system `flow` group. Any member of that group can read all usage history;
 per-user isolation would require per-user DBs or a broker and is out of scope
 for the first package.
 
+## Polkit decision
+
+No Polkit policy is shipped for the first package. The session daemon exposes
+only read-only queries on the user's session bus; data is already readable from
+`/var/lib/flow/flow.db` via the `flow` group, and the root collector has no
+D-Bus interface. See ADR 0011. Add Polkit only if privileged control operations
+or system-bus access are introduced later.
+
 ## Building the prototype binary package
 
 ```bash
