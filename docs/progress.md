@@ -1228,3 +1228,14 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Remaining
 - Installed-layout smoke test, maintainer-script integration test, Polkit decision, upgrade/uninstall data handling, and the UI/reporting/rollup tracks before release quality.
+
+## 2026-11-19 (package layout and maintainer-script validation)
+
+### Implementation
+- Added `packaging/test-deb.sh`: extracts the built `.deb`, verifies expected files and executable bits, checks control metadata, validates the desktop entry, syntax-checks maintainer scripts (and runs shellcheck if available), and simulates `postinst`/`prerm` with stubbed `getent`/`groupadd`/`install`/`usermod`/`systemctl`/`runuser`/`id`.
+- Fixed test harness issues: `getent` stub must fail to trigger group creation; `SUDO_USER` must be captured before stubbing `id`; assertions match actual `groupadd --system` and `runuser ... systemctl --user` calls.
+- Rebuilt `.deb` after the desktop file Categories fix; no desktop hint remains in validation.
+
+### Verification
+- `./packaging/build-deb.sh` and `./packaging/test-deb.sh` both pass.
+- No product code changed in this step; .NET baseline remains 54/54 passing.

@@ -42,6 +42,17 @@ The script publishes the daemon and desktop projects, requires the already-built
 `prototype/bpf/flow_tcp_bytes_loader`, validates the desktop file if available,
 and writes `packaging/build/flow_0.1.0_amd64.deb`. Build output is gitignored.
 
+## Validating the package
+
+```bash
+./packaging/build-deb.sh
+./packaging/test-deb.sh
+```
+
+`test-deb.sh` extracts the `.deb`, verifies layout/control, validates the desktop
+entry, syntax-checks maintainer scripts, and simulates `postinst`/`prerm` with
+stubbed system commands so no host services or groups are modified.
+
 ## Manual validation before building a .deb
 
 ```bash
