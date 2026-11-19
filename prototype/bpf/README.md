@@ -109,6 +109,7 @@ S  <snapshot_index>
 E  <tgid> <uid> <tx_total> <rx_total> <tx_delta> <rx_delta> <comm> <exe> <startticks> <identity_verified> <start_ns> <cgroup_id> <proto> <ifname> <netns_id>
 U  <tx_total> <rx_total> <tx_delta> <rx_delta> <tx_events> <rx_events>
 X  <snapshot_index> <map_entries> <unattributed_tx_total> <unattributed_rx_total>
+F  <snapshot_index> <overflow_tx_total> <overflow_rx_total> <overflow_tx_delta> <overflow_rx_delta> <tx_events> <rx_events>
 ```
 
 - `identity_verified=1` means `/proc` enrichment matched the event-time start

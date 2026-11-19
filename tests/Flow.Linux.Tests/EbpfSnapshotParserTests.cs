@@ -199,6 +199,26 @@ public class EbpfSnapshotParserTests
     }
 
     [Fact]
+    public void ParseOverflowReturnsUnattributedEventWithNote()
+    {
+        var ev = EbpfSnapshotParser.ParseOverflow("F\t12\t7168\t7168\t1024\t1024\t1\t1", Point);
+
+        Assert.NotNull(ev);
+        Assert.False(ev!.IsAttributed);
+        Assert.Null(ev.Process);
+        Assert.Equal(1024, ev.TxBytesDelta);
+        Assert.Equal(1024, ev.RxBytesDelta);
+        Assert.NotNull(ev.AttributionNote);
+        Assert.Contains("map was full", ev.AttributionNote);
+    }
+
+    [Fact]
+    public void ParseOverflowZeroDeltaReturnsNull()
+    {
+        Assert.Null(EbpfSnapshotParser.ParseOverflow("F\t12\t0\t0\t0\t0\t0\t0", Point));
+    }
+
+    [Fact]
     public void ParseUnattributedReturnsExplicitUnattributedEvent()
     {
         var ev = EbpfSnapshotParser.ParseUnattributed("U\t100\t200\t10\t20\t1\t2", Point);

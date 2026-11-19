@@ -56,7 +56,7 @@ struct unattributed_val {
     __u64 rx_events;
 };
 
-#define MAX_PREV 10240
+#define MAX_PREV 32768
 static struct prev_entry prev[MAX_PREV];
 
 static struct prev_entry *find_prev(__u32 tgid, __u32 uid, __u64 start_ns,
@@ -188,6 +188,7 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
     struct traffic_val val;
     int fd = bpf_map__fd(skel->maps.traffic);
     int ufd = bpf_map__fd(skel->maps.unattributed);
+    int ofd = bpf_map__fd(skel->maps.overflow);
     long clk_tck = read_clk_tck();
     int map_entries = 0;
 
@@ -286,7 +287,16 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
 
     __u32 uk = 0;
     struct unattributed_val uv = {0};
+    struct unattributed_val ov = {0};
+    __u32 ok = 0;
+    if (bpf_map_lookup_elem(ofd, &ok, &ov) != 0)
+        memset(&ov, 0, sizeof(ov));
     static __u64 prev_utx = 0, prev_urx = 0;
+    static __u64 prev_of_tx = 0, prev_of_rx = 0;
+    unsigned long long dof_tx = (ov.tx_bytes >= prev_of_tx) ? (ov.tx_bytes - prev_of_tx) : ov.tx_bytes;
+    unsigned long long dof_rx = (ov.rx_bytes >= prev_of_rx) ? (ov.rx_bytes - prev_of_rx) : ov.rx_bytes;
+    prev_of_tx = ov.tx_bytes;
+    prev_of_rx = ov.rx_bytes;
     if (bpf_map_lookup_elem(ufd, &uk, &uv) == 0) {
         unsigned long long dutx = (uv.tx_bytes >= prev_utx) ? (uv.tx_bytes - prev_utx) : uv.tx_bytes;
         unsigned long long durx = (uv.rx_bytes >= prev_urx) ? (uv.rx_bytes - prev_urx) : uv.rx_bytes;
@@ -305,11 +315,19 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
                    (unsigned long long)uv.tx_events, (unsigned long long)uv.rx_events);
         }
     }
-    if (!g_tsv)
+    if (!g_tsv) {
         printf("MAP entries=%d\n", map_entries);
-    else
+        printf("OVERFLOW tx=%llu rx=%llu events tx=%llu rx=%llu\n",
+               (unsigned long long)ov.tx_bytes, (unsigned long long)ov.rx_bytes,
+               (unsigned long long)ov.tx_events, (unsigned long long)ov.rx_events);
+    } else {
         printf("X\t%d\t%d\t%llu\t%llu\n", snapshot_idx, map_entries,
                (unsigned long long)uv.tx_bytes, (unsigned long long)uv.rx_bytes);
+        printf("F\t%d\t%llu\t%llu\t%llu\t%llu\t%llu\t%llu\n", snapshot_idx,
+               (unsigned long long)ov.tx_bytes, (unsigned long long)ov.rx_bytes,
+               dof_tx, dof_rx,
+               (unsigned long long)ov.tx_events, (unsigned long long)ov.rx_events);
+    }
     fflush(stdout);
 }
 

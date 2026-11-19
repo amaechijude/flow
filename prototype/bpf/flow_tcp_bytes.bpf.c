@@ -40,7 +40,7 @@ struct traffic_val {
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
-    __uint(max_entries, 10240);
+    __uint(max_entries, 32768);
     __type(key, struct traffic_key);
     __type(value, struct traffic_val);
 } traffic SEC(".maps");
@@ -80,6 +80,30 @@ struct {
     __type(key, __u32);
     __type(value, struct unattributed_val);
 } unattributed SEC(".maps");
+
+/* Bytes whose process-generation row could not be inserted because the
+ * traffic map was full. Keeping this explicit prevents silent under-counting. */
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(max_entries, 1);
+    __type(key, __u32);
+    __type(value, struct unattributed_val);
+} overflow SEC(".maps");
+
+static __always_inline void add_overflow(__u64 bytes, int is_tx)
+{
+    __u32 k = 0;
+    struct unattributed_val *o = bpf_map_lookup_elem(&overflow, &k);
+    if (o) {
+        if (is_tx) {
+            __sync_fetch_and_add(&o->tx_bytes, bytes);
+            __sync_fetch_and_add(&o->tx_events, 1);
+        } else {
+            __sync_fetch_and_add(&o->rx_bytes, bytes);
+            __sync_fetch_and_add(&o->rx_events, 1);
+        }
+    }
+}
 
 static __always_inline void add_unattributed_tx(__u64 bytes)
 {
@@ -193,8 +217,12 @@ static __always_inline void add_bytes(__u64 bytes, int is_tx, __u32 proto, struc
         .proto = proto,
     };
     struct traffic_val *v = get_or_create(&k);
-    if (!v)
+    if (!v) {
+        /* Most commonly: traffic map is full and a new generation could not
+         * be inserted. Count it explicitly instead of dropping it silently. */
+        add_overflow(bytes, is_tx);
         return;
+    }
 
     if (is_tx)
         __sync_fetch_and_add(&v->tx_bytes, bytes);

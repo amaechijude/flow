@@ -1,6 +1,6 @@
 # ADR 0008: BPF map saturation causes silent under-attribution
 
-- Status: Accepted (measured limitation; fix design pending)
+- Status: Accepted (measured limitation); fix implemented, post-fix privileged validation pending
 - Date: 2026-11-19
 
 ## Context
@@ -25,6 +25,8 @@ at the hard cap was unmeasured. A dedicated churn run
   rows at all after failed insertions.
 
 ## Decision
+
+Implemented fix: raise `traffic` and loader `prev` capacity from 10,240 to 32,768, and add an explicit BPF `overflow` counter (emitted as `F` TSV lines and Flow unattributed events) so any remaining map-full loss is visible rather than silent.
 
 1. Treat hard-cap saturation as a **known correctness limitation**, not a clean
    validation pass.

@@ -384,6 +384,7 @@ class LoaderRun:
         self.entries: list[dict[str, object]] = []
         self.unattributed: list[dict[str, int]] = []
         self.map_samples: list[dict[str, int]] = []
+        self.overflow_samples: list[dict[str, int]] = []
         self.meta: dict[str, int] = {}
         self.stderr: list[str] = []
         self._threads: list[threading.Thread] = []
@@ -453,6 +454,21 @@ class LoaderRun:
                 self.unattributed.append(
                     {"tx_delta": int(p[3]), "rx_delta": int(p[4])}
                 )
+            elif line.startswith("F\t"):
+                # F <snapshot> <tx_total> <rx_total> <tx_delta> <rx_delta> <events...>
+                p = line.split("\t")
+                if len(p) >= 8:
+                    self.overflow_samples.append(
+                        {
+                            "snapshot": int(p[1]),
+                            "tx_total": int(p[2]),
+                            "rx_total": int(p[3]),
+                            "tx_delta": int(p[4]),
+                            "rx_delta": int(p[5]),
+                            "tx_events": int(p[6]),
+                            "rx_events": int(p[7]),
+                        }
+                    )
             elif line.startswith("X\t"):
                 # X <snapshot> <map_entries> <unattributed_tx> <unattributed_rx>
                 p = line.split("\t")
@@ -1346,6 +1362,7 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Target map entries: {ctx['churn_target']}; reached: {ctx['check_map_target']}",
             f"- Children spawned: {ctx['churn_children']}; successful: {ctx['churn_successes']}; batches: {ctx['churn_batches']}",
             f"- Expected bytes per protocol/direction (successes × child payload): {expected_bytes}",
+            f"- Exact shortfall (expected − attributed TX): {expected_bytes - int(s['expected_tx'])}",
             f"- Attributed expected TX/RX: {s['expected_tx']} / {s['expected_rx']}",
             f"- BPF map entries: first {entries[0] if entries else 'n/a'}, last {entries[-1] if entries else 'n/a'}, max {max(entries) if entries else 'n/a'}",
             f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",
@@ -1399,6 +1416,18 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",
             f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
             "- This is a loopback concurrency/duration proxy, not a real Internet workload or production SLA evidence.",
+        ]
+    if ctx.get("overflow") and (
+        ctx["overflow"]["tx_total"] or ctx["overflow"]["rx_total"]
+    ):
+        of = ctx["overflow"]
+        lines += [
+            "",
+            "## BPF map overflow",
+            "",
+            f"- Cumulative overflow TX: {of['tx_total']} bytes ({of['tx_events']} events)",
+            f"- Cumulative overflow RX: {of['rx_total']} bytes ({of['rx_events']} events)",
+            "- These bytes could not get a process-generation row and are counted as unattributed overflow, not silently dropped.",
         ]
     lines += [
         "",
@@ -2345,6 +2374,7 @@ def main() -> int:
         "churn_samples": churn_samples,
         "check_map_target": check_map_target if map_churn else None,
         "check_churn_bytes": check_churn_bytes if map_churn else None,
+        "overflow": loader.overflow_samples[-1] if loader and loader.overflow_samples else None,
         "netns_key_bytes": netns_key_bytes if netns_key else None,
         "netns_key_rows": netns_rows if netns_key else [],
         "check_netns_collision": check_netns_collision if netns_key else None,

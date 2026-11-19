@@ -161,6 +161,33 @@ internal static class EbpfSnapshotParser
     }
 
     /// <summary>
+    /// Parses an <c>F</c> line: <c>F &lt;snapshot&gt; &lt;tx_total&gt; &lt;rx_total&gt; &lt;tx_delta&gt; &lt;rx_delta&gt; &lt;tx_events&gt; &lt;rx_events&gt;</c>.
+    /// These are bytes dropped because the BPF process-generation map was full.
+    /// </summary>
+    internal static NetworkUsageEvent? ParseOverflow(string line, MeasurementPoint point)
+    {
+        var p = line.Split('\t');
+        if (p.Length < 6)
+            return null;
+
+        _ = long.TryParse(p[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out var txDelta);
+        _ = long.TryParse(p[5], NumberStyles.Integer, CultureInfo.InvariantCulture, out var rxDelta);
+        if (txDelta <= 0 && rxDelta <= 0)
+            return null;
+
+        return new NetworkUsageEvent(
+            DateTimeOffset.UtcNow,
+            Process: null,
+            ApplicationHint: null,
+            InterfaceName: null,
+            RxBytesDelta: rxDelta > 0 ? rxDelta : 0,
+            TxBytesDelta: txDelta > 0 ? txDelta : 0,
+            MeasurementPoint: point,
+            IsAttributed: false,
+            AttributionNote: "BPF process-generation map was full; these bytes could not be attributed and are counted as overflow.");
+    }
+
+    /// <summary>
     /// Converts event-time identity to a UTC timestamp. Preference order:
     /// <c>start_ns</c> (ns since boot), then <c>startticks</c>/<c>clk_tck</c>, then the current time.
     /// The last fallback is intentionally documented as degraded identity.

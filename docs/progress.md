@@ -1011,3 +1011,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Changes
 - Accepted/annotated report and index; added ADR 0008; updated `docs/attribution.md`, `HANDOFF.md`. No product code changed.
+
+## 2026-11-19 (map-saturation fix implemented, not yet validated)
+
+### Implementation
+- Raised BPF `traffic` map and loader `prev` array from 10,240 to 32,768 entries.
+- Added an explicit BPF `overflow` counter: when a process-generation row cannot be inserted, bytes/events are counted there instead of being silently dropped.
+- Loader emits new `F` TSV lines with cumulative and delta overflow bytes; parser converts overflow deltas into unattributed events with an explicit note; harness parses `F` lines, reports cumulative overflow, and prints exact expected-minus-attributed shortfall in map-churn reports.
+- Added parser tests for overflow lines. BPF object/skeleton/loader rebuilt; `dotnet build` succeeded; `dotnet test` → 40/40 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 32700 --churn-timeout 1200 --churn-child-size-kib 1`
+- Expectation: no overflow in `F`, exact shortfall 0, all byte checks true. Any overflow is now visible rather than silent.

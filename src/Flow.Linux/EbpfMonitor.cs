@@ -157,6 +157,13 @@ public sealed class EbpfMonitor : INetworkMonitor, IDisposable
                 continue;
             }
 
+            if (line.StartsWith("F\t", StringComparison.Ordinal))
+            {
+                var ev = EbpfSnapshotParser.ParseOverflow(line, Point);
+                if (ev is not null) yield return ev;
+                continue;
+            }
+
             if (line.StartsWith("U\t", StringComparison.Ordinal))
             {
                 var ev = EbpfSnapshotParser.ParseUnattributed(line, Point);
