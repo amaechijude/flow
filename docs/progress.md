@@ -970,3 +970,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Verification
 - `py_compile` passed; no BPF/loader change; baseline 38/38 passing.
+
+## 2026-11-19 (production-load soak mode added, not yet run)
+
+### Implementation
+- Added `--mode prod-soak`: runs N concurrent transfer workers (default 8) for `--duration` seconds, each looping TCP+UDP transfers of `--soak-size-mib`; optional `--prod-child-every` spawns short-lived children for churn.
+- Samples loader CPU, RSS, and BPF map entries at intervals; verifies aggregate byte totals per protocol, interface attribution, and unattributed traffic.
+- Report gains a "Production-load soak observation" section with workers/transfers/children, CPU/RSS samples, and map-entry progression.
+- Syntax and synthetic report checks passed. No BPF/loader change; baseline 38/38 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8`
+- Expectation: exact aggregate bytes, zero unattributed, all rows on `lo`, CPU/RSS/map samples recorded. This is a loopback concurrency/duration proxy, not a production SLA claim.

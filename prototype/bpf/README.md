@@ -152,6 +152,7 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode netns-key --netns-size-
 sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
 sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
 sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
+sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8
 ```
 
 `--size-mib` is the payload per protocol (so the default run sends 16 MiB over

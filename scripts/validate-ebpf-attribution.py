@@ -25,6 +25,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 9000
     sudo python3 scripts/validate-ebpf-attribution.py --mode wildcard --wildcard-size-mib 1
     sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
+    sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -62,6 +63,10 @@ Tunnel mode builds a GRE (or IPIP fallback) tunnel over a veth underlay between
 two netns, runs a TCP echo server in the peer netns on the tunnel address, and
 asserts that process rows resolve to the tunnel device rather than the underlay.
 Overlay and underlay counter deltas are both reported to document overlap.
+
+Production-soak mode runs several concurrent transfer workers for a configurable
+duration, sampling CPU, RSS, and map growth. It is a loopback concurrency/duration
+proxy for overhead, not a real Internet workload or production SLA claim.
 """
 
 from __future__ import annotations
@@ -820,6 +825,31 @@ def run_udp_transfer_remote(
     return sent, received[0], time.monotonic() - started
 
 
+def prod_worker(
+    idx: int,
+    size: int,
+    deadline: float,
+    results: list[dict[str, int] | None],
+    children: list[subprocess.Popen[str]],
+    lock: threading.Lock,
+    child_every: int,
+) -> None:
+    totals = {"tcp_sent": 0, "tcp_recv": 0, "udp_sent": 0, "udp_recv": 0, "transfers": 0}
+    while time.monotonic() < deadline:
+        s, r, _ = run_tcp_transfer(size)
+        totals["tcp_sent"] += s
+        totals["tcp_recv"] += r
+        s, r, _ = run_udp_transfer(size)
+        totals["udp_sent"] += s
+        totals["udp_recv"] += r
+        totals["transfers"] += 1
+        if child_every and totals["transfers"] % child_every == 0:
+            child = spawn_soak_child(size)
+            with lock:
+                children.append(child)
+    results[idx] = totals
+
+
 def run_soak_child(size_bytes: int) -> int:
     """Short-lived process that does one loopback TCP+UDP transfer, then exits."""
     run_tcp_transfer(size_bytes)
@@ -1354,6 +1384,22 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Peer-netns tunnel counter delta: {delta('peer_tunnel')}",
             "- Overlay and underlay both carried the packets; only the tunnel device is attributed to the process. The underlay delta documents the overlap.",
         ]
+    if ctx.get("prod_soak"):
+        entries = [s["map_entries"] for s in ctx["prod_samples"] if s["map_entries"] is not None]
+        cpu_samples = [s["cpu_s"] for s in ctx["prod_samples"] if s["cpu_s"] is not None]
+        rss_samples = [s["rss_kb"] for s in ctx["prod_samples"] if s["rss_kb"] is not None]
+        lines += [
+            "",
+            "## Production-load soak observation",
+            "",
+            f"- Duration requested: {ctx['soak_duration_s']:.0f} s; wall time: {ctx['elapsed_s']:.2f} s",
+            f"- Workers: {ctx['prod_workers']}; transfers: {ctx['prod_transfers']}; children: {ctx['prod_children']}",
+            f"- Attributed expected TX/RX: {s['expected_tx']} / {s['expected_rx']}",
+            f"- BPF map entries: first {entries[0] if entries else 'n/a'}, last {entries[-1] if entries else 'n/a'}, max {max(entries) if entries else 'n/a'}",
+            f"- CPU samples (s): {', '.join(str(v) for v in cpu_samples) or 'n/a'}",
+            f"- Peak RSS samples (KiB): {', '.join(str(v) for v in rss_samples) or 'n/a'}",
+            "- This is a loopback concurrency/duration proxy, not a real Internet workload or production SLA evidence.",
+        ]
     lines += [
         "",
         "## Loader overhead (first datapoint)",
@@ -1451,7 +1497,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel", "prod-soak"),
         default="lo",
         help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
@@ -1475,6 +1521,10 @@ def main() -> int:
                         help="wildcard mode: UDP payload per source (default: 1)")
     parser.add_argument("--tunnel-size-mib", type=float, default=16.0,
                         help="tunnel mode: TCP echo payload (default: 16)")
+    parser.add_argument("--prod-workers", type=int, default=8,
+                        help="prod-soak mode: concurrent transfer workers (default: 8)")
+    parser.add_argument("--prod-child-every", type=int, default=0,
+                        help="prod-soak mode: spawn a short-lived child every N transfers (0 = none)")
     parser.add_argument("--loader", type=Path, default=DEFAULT_LOADER)
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--json", action="store_true", help="only print the JSON summary")
@@ -1508,9 +1558,14 @@ def main() -> int:
     map_churn = args.mode == "map-churn"
     wildcard = args.mode == "wildcard"
     tunnel = args.mode == "tunnel"
+    prod_soak = args.mode == "prod-soak"
     tunnel_bytes = int(args.tunnel_size_mib * 1024 * 1024)
     if tunnel and tunnel_bytes <= 0:
         print("error: --tunnel-size-mib must be positive", file=sys.stderr)
+        return 2
+    if prod_soak and (args.duration <= 0 or args.prod_workers <= 0 or args.prod_child_every < 0):
+        print("error: prod-soak needs positive --duration/--prod-workers and non-negative --prod-child-every",
+              file=sys.stderr)
         return 2
     wildcard_bytes = int(args.wildcard_size_mib * 1024 * 1024)
     if wildcard and wildcard_bytes <= 0:
@@ -1562,6 +1617,9 @@ def main() -> int:
     churn_samples: list[dict[str, object]] = []
     churn_batches = 0
     churn_successes = 0
+    prod_samples: list[dict[str, object]] = []
+    prod_transfers = 0
+    prod_children = 0
     wildcard_counts: dict[str, int] = {}
     wildcard_port = 17001
     tunnel_port = 17002
@@ -1644,6 +1702,53 @@ def main() -> int:
                     "unattributed_rx": last_map.get("urx"),
                 }
             )
+        elif prod_soak:
+            expected_tgids.add(os.getpid())
+            size = int(args.soak_size_mib * 1024 * 1024)
+            deadline = time.monotonic() + args.duration
+            results: list[dict[str, int] | None] = [None] * args.prod_workers
+            prod_children_list = prod_children  # alias for worker closure
+            lock = threading.Lock()
+            threads = [
+                threading.Thread(
+                    target=prod_worker,
+                    args=(i, size, deadline, results, prod_children_list, lock, args.prod_child_every),
+                    daemon=True,
+                )
+                for i in range(args.prod_workers)
+            ]
+            for t in threads:
+                t.start()
+            next_sample = time.monotonic() + max(5.0, args.interval)
+            while any(t.is_alive() for t in threads):
+                now = time.monotonic()
+                if now >= next_sample:
+                    last_map = loader.map_samples[-1] if loader.map_samples else {}
+                    prod_samples.append(
+                        {
+                            "elapsed_s": round(now - started, 1),
+                            "cpu_s": loader.cpu_seconds(),
+                            "rss_kb": loader.peak_rss_kb(),
+                            "map_entries": last_map.get("entries"),
+                        }
+                    )
+                    next_sample = now + max(5.0, args.interval)
+                time.sleep(0.25)
+            for t in threads:
+                t.join(timeout=5)
+            for child in prod_children_list:
+                try:
+                    child.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    child.kill()
+                    child.wait(timeout=5)
+                expected_tgids.add(child.pid)
+            totals = [r for r in results if r is not None]
+            tcp_sent = sum(int(r["tcp_sent"]) for r in totals)
+            tcp_received = sum(int(r["tcp_recv"]) for r in totals)
+            udp_sent = sum(int(r["udp_sent"]) for r in totals)
+            udp_received = sum(int(r["udp_recv"]) for r in totals)
+            prod_transfers = sum(int(r["transfers"]) for r in totals)
         elif map_churn:
             deadline = time.monotonic() + args.churn_timeout
             while time.monotonic() < deadline:
@@ -1809,6 +1914,10 @@ def main() -> int:
             if child.poll() is None:
                 child.kill()
                 child.wait(timeout=5)
+        for child in prod_children:
+            if child.poll() is None:
+                child.kill()
+                child.wait(timeout=5)
         if veth:
             veth.stop()
         if netns_pair:
@@ -1938,6 +2047,26 @@ def main() -> int:
         )
         check_interface = check_tunnel
         check_identity = None
+    elif prod_soak:
+        expected_interface_description = "all expected rows on `lo`"
+        transfer_scope = (
+            f"{args.prod_workers} concurrent workers, {args.duration:.0f}s, "
+            f"{args.soak_size_mib:.3f} MiB per protocol per transfer"
+        )
+        counter_caveat = "`lo` counters include IP/link bytes above socket payload."
+        process_scope_caveat = (
+            "Expected rows cover the parent workers and any short-lived children "
+            "spawned during the soak; per-process byte totals are aggregated."
+        )
+        interface_caveat = (
+            "Loopback-only production-load proxy: high concurrency and longer duration, "
+            "not a real Internet workload, physical NIC, or VPN."
+        )
+        check_interface = (
+            summary["expected_resolved_ifnames"] == ["lo"]
+            and int(summary["expected_unresolved_rows"]) == 0
+        )
+        check_identity = None if prod_children else bool(summary["expected_identity_verified"])
     elif wildcard:
         assert veth is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino
@@ -2149,27 +2278,31 @@ def main() -> int:
         "interval": args.interval,
         "mode": args.mode,
         "mode_description": (
-            f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
-            if tunnel
+            f"production-load soak, {args.prod_workers} workers × {args.duration:.0f}s"
+            if prod_soak
             else (
-                "wildcard UDP listener on two interfaces"
-                if wildcard
+                f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
+                if tunnel
                 else (
-                    "high-rate child churn toward BPF map capacity"
-                    if map_churn
+                    "wildcard UDP listener on two interfaces"
+                    if wildcard
                     else (
-                        "same-PID two-netns identity collision"
-                        if netns_key
+                        "high-rate child churn toward BPF map capacity"
+                        if map_churn
                         else (
-                            "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
-                            if veth
+                            "same-PID two-netns identity collision"
+                            if netns_key
                             else (
-                                f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
-                                if nic
+                                "temporary veth pair across two network namespaces (192.0.2.1/24 <-> 192.0.2.2/24)"
+                                if veth
                                 else (
-                                    f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
-                                    if soak
-                                    else "loopback `lo`"
+                                    f"TCP+UDP echo via physical `{peer_interface}` to {peer_host}:{args.peer_port} (UDP {args.peer_udp_port})"
+                                    if nic
+                                    else (
+                                        f"loopback soak, {args.duration:.0f}s, {args.soak_size_mib:.3f} MiB per protocol per iteration"
+                                        if soak
+                                        else "loopback `lo`"
+                                    )
                                 )
                             )
                         )
@@ -2189,6 +2322,11 @@ def main() -> int:
         "map_churn": map_churn,
         "wildcard": wildcard,
         "tunnel": tunnel,
+        "prod_soak": prod_soak,
+        "prod_workers": args.prod_workers if prod_soak else None,
+        "prod_transfers": prod_transfers,
+        "prod_children": len(prod_children),
+        "prod_samples": prod_samples,
         "tunnel_mode": tunnel_topology.mode if tunnel else None,
         "tunnel_name": TUNNEL_NAME if tunnel else None,
         "tunnel_counters": tunnel_counters if tunnel else {},

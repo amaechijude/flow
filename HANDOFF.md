@@ -41,7 +41,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
 
 ## Suggested next steps (prioritized)
-1. **Build production-load soak:** GRE tunnel, wildcard multi-interface, and near-cap map evidence are accepted (`docs/measurements/ebpf-controlled-20261118T234935Z.md`, `...T225010Z.md`, `...T225153Z.md`). Remaining: a long/high-connection-count production-load soak, the hard 10,240-entry cap itself, and real VPN/physical NIC behavior.
+1. **Run production-load soak:** `sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8` (concurrent workers, CPU/RSS/map sampling; not yet privileged-run). Accepted prior evidence: GRE tunnel, wildcard multi-interface, and near-cap map evidence are accepted (`docs/measurements/ebpf-controlled-20261118T234935Z.md`, `...T225010Z.md`, `...T225153Z.md`). Remaining: a long/high-connection-count production-load soak, the hard 10,240-entry cap itself, and real VPN/physical NIC behavior.
 2. **IPC hardening/topology:** signal continuity across daemon restarts, reconnect/error-mapping tests, and a documented decision for privileged capture + user-desktop IPC (system-bus activation/policy/Polkit or split capture/IPC) with evidence.
 3. **UI accessibility & reporting:** Wayland/keyboard/screen-reader pass (especially charts and tables), chart interaction/textual summaries, Reports/History/Settings pages, and comparisons built on real data.
 4. **Persistence/reporting:** rollups preserving totals, async retention/cleanup, and exports with full caveats.
