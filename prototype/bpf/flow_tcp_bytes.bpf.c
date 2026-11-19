@@ -131,11 +131,14 @@ static __always_inline __u64 current_process_start_ns(void)
     if (!task)
         return 0;
 
-    /* start_time is per-thread; attribution is per process (TGID). */
+    /* start_time is per-thread and, on kernels with suspend, monotonic;
+     * /proc/<pid>/stat starttime is boottime-based. Use start_boottime so
+     * event-time identity matches userspace verification. */
     struct task_struct *leader = BPF_CORE_READ(task, group_leader);
     if (!leader)
         leader = task;
-    return BPF_CORE_READ(leader, start_time);
+    __u64 boot_ns = BPF_CORE_READ(leader, start_boottime);
+    return boot_ns ? boot_ns : BPF_CORE_READ(leader, start_time);
 }
 
 static __always_inline __u64 current_netns_id(void)

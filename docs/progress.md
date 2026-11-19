@@ -1088,3 +1088,15 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Changes
 - Accepted/annotated both reports and index; updated `docs/attribution.md`, `HANDOFF.md`. No BPF change; loader/harness rebuilt; baseline 40/40 passing.
+
+## 2026-11-19 (identity clock-domain fix implemented, not yet validated)
+
+### Evidence
+- 1-worker identity diagnostic (`docs/measurements/ebpf-controlled-20261119T043954Z.md`) showed the same ~130,575-tick gap as 8 workers, so the mismatch is systemic, not thread-related.
+
+### Implementation
+- BPF event-time identity now reads `task_struct.start_boottime` (fallback `start_time`) so it matches boottime-based `/proc/<pid>/stat` starttime. TSV field name `start_ns` retained; semantics changed to boottime ns.
+- Rebuilt BPF object, skeleton, and loader. ADR 0009 documents the decision and the stable-key migration consequence.
+
+### Pending
+- Rerun `sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 1`; expect `computed−raw≈0` and `verified=True`. Then rerun the 8-worker soak to confirm under load.
