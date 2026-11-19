@@ -997,3 +997,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Next
 - Hard map-cap probe near 10,240 entries; real VPN/physical NIC and sustained-load identity verification remain environment-dependent gaps.
+
+## 2026-11-19 (accepted hard-cap limitation evidence)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261119T003701Z.md`: 5,120 short-lived children drove BPF map entries to 10,231/10,240.
+- Expected 5,242,880 bytes per protocol/direction; attributed 5,235,712 — a 7,168-byte shortfall (7 children × 1,024) in each of TCP TX/RX and UDP TX/RX.
+- Unattributed stayed 0: missing bytes were neither attributed nor bucketed as unattributed; map insertion failures dropped them silently. `check_churn_bytes` passed only because the loss (0.137%) is inside ±1%.
+
+### Interpretation
+- Accepted as evidence of a correctness limitation at saturation, not a clean pass. `check_single_generation: False` is consistent with failed insertions leaving some expected PIDs without rows.
+- ADR 0008 records the finding; the next task is a design decision/fix (expiry, larger map, or explicit overflow bucket), not another measurement.
+
+### Changes
+- Accepted/annotated report and index; added ADR 0008; updated `docs/attribution.md`, `HANDOFF.md`. No product code changed.
