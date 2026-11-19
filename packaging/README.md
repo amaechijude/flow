@@ -53,6 +53,12 @@ and writes `packaging/build/flow_0.1.0_amd64.deb`. Build output is gitignored.
 entry, syntax-checks maintainer scripts, and simulates `postinst`/`prerm` with
 stubbed system commands so no host services or groups are modified.
 
+`test-install.sh` performs a disposable Docker-based install/remove/purge smoke
+test in `ubuntu:24.04`. It uses `dpkg --force-depends` because the container does
+not include the .NET runtime, removes the image's doc-exclusion dpkg config so
+`/usr/share/doc/flow/README.md` is installed, verifies file layout and group/DB
+permissions, and confirms `/var/lib/flow/flow.db` survives remove and purge.
+
 ## Manual validation before building a .deb
 
 ```bash

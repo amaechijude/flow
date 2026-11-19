@@ -1239,3 +1239,14 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Verification
 - `./packaging/build-deb.sh` and `./packaging/test-deb.sh` both pass.
 - No product code changed in this step; .NET baseline remains 54/54 passing.
+
+## 2026-11-19 (disposable install/uninstall smoke test)
+
+### Implementation
+- Added `packaging/test-install.sh`: Docker-based `ubuntu:24.04` disposable container, installs the built `.deb` with `dpkg --force-depends` (runtime deps absent in image), removes the image's doc-exclusion config, creates `flowtest`, verifies installed layout/group/DB permissions, writes a sentinel DB, removes and purges the package, and verifies the DB survives.
+
+### Verification
+- `./packaging/test-install.sh` passed: package installed, files/permissions correct, `flowtest` joined `flow`, `/var/lib/flow` is `root:flow 2770`, remove/purge left the DB intact.
+
+### Remaining
+- Real host install in a disposable VM (Systemd-enabled) for unit activation; Polkit decision; upgrade/uninstall data handling; UI/reporting/rollup tracks.
