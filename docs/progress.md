@@ -1075,3 +1075,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Pending
 - Rerun identity diagnostic and WireGuard probe with rebuilt loader/harness.
+
+## 2026-11-19 (identity mismatch localized; real WireGuard accepted)
+
+### Identity diagnostic
+- `docs/measurements/ebpf-controlled-20261119T042547Z.md`: loader raw `/proc` ticks = harness `/proc` starttime = 4,444,599; BPF `start_ns` converts to 4,314,025, a 130,574-tick (~1,305 s) gap. Cached `startticks=0` is a consequence of failed verification, not a read failure.
+- Next isolation: rerun identity diagnostic with `--prod-workers 1` to determine if the gap is multithreading-specific or systemic.
+
+### Real WireGuard
+- `docs/measurements/ebpf-controlled-20261119T043314Z.md`: real `wg0` kernel devices over veth; 16 MiB TCP echo, client on `flowwg0`, server on `6@4026532903`, exact bytes, no underlay rows, `check_wireguard: True`, 0 unattributed. Overlay/underlay counters both ~17.9 MB.
+- Harness now treats UDP as n/a for WireGuard mode (TCP-only probe).
+
+### Changes
+- Accepted/annotated both reports and index; updated `docs/attribution.md`, `HANDOFF.md`. No BPF change; loader/harness rebuilt; baseline 40/40 passing.

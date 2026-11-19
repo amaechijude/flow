@@ -2221,7 +2221,7 @@ def main() -> int:
 
     check_tcp_tx = abs(tcp_attributed_tx - tcp_sent) <= tcp_sent * 0.01
     check_tcp_rx = abs(tcp_attributed_rx - tcp_received) <= tcp_received * 0.01
-    if nic or netns_key or tunnel:
+    if nic or netns_key or tunnel or wireguard:
         check_udp_tx = None
         check_udp_rx = None
     else:
