@@ -29,6 +29,7 @@ struct traffic_val {
     __u64 tx_bytes;
     __u64 rx_bytes;
     __u64 cgroup_id;
+    __u64 epoch;
     char comm[16];
 };
 
@@ -47,6 +48,7 @@ struct prev_entry {
     unsigned long long startticks;
     unsigned long long cgroup_id;
     unsigned long long netns_id;
+    unsigned long long epoch;
 };
 
 struct unattributed_val {
@@ -210,6 +212,9 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             struct prev_entry *pe = find_prev(next_key.tgid, next_key.uid,
                                               next_key.start_ns ? next_key.start_ns : st,
                                               next_key.ifindex, next_key.proto, next_key.netns_id);
+            unsigned long long old_epoch = pe ? pe->epoch : 0;
+            if (pe)
+                pe->epoch = val.epoch;
             unsigned long long netns_id = next_key.netns_id
                 ? next_key.netns_id
                 : ((pe && pe->netns_id) ? pe->netns_id : read_netns_id(next_key.tgid));
@@ -237,8 +242,14 @@ static void print_stats(struct flow_tcp_bytes_bpf *skel, int snapshot_idx)
             }
 
             if (pe) {
-                dtx = (val.tx_bytes >= pe->tx) ? (val.tx_bytes - pe->tx) : val.tx_bytes;
-                drx = (val.rx_bytes >= pe->rx) ? (val.rx_bytes - pe->rx) : val.rx_bytes;
+                if (val.epoch != old_epoch) {
+                    /* LRU evicted and recreated this generation: counters reset. */
+                    dtx = val.tx_bytes;
+                    drx = val.rx_bytes;
+                } else {
+                    dtx = (val.tx_bytes >= pe->tx) ? (val.tx_bytes - pe->tx) : val.tx_bytes;
+                    drx = (val.rx_bytes >= pe->rx) ? (val.rx_bytes - pe->rx) : val.rx_bytes;
+                }
                 pe->tx = val.tx_bytes;
                 pe->rx = val.rx_bytes;
                 if (identity_verified) {

@@ -1135,3 +1135,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Changes
 - Accepted/annotated report and index; ADR 0008, `docs/attribution.md`, `HANDOFF.md` updated. No product code changed in this step.
+
+## 2026-11-19 (LRU eviction fix implemented, not yet validated)
+
+### Implementation
+- BPF `traffic` map changed from HASH to LRU_HASH so least-recently-used rows are evicted under pressure; active generations are refreshed on each byte event.
+- Added `epoch` to `traffic_val` and loader `prev` entries. When a row is evicted and recreated, the loader treats its counters as fresh (full value is the delta) rather than subtracting stale previous counters.
+- Explicit overflow counter retained as a backstop.
+
+### Verification
+- BPF object/skeleton/loader rebuilt with 0 errors. Build/test baseline 40/40 unchanged. No privileged validation yet.
+
+### Pending
+- Re-run: `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 65500 --churn-timeout 1800 --churn-child-size-kib 1`.
+- Expectation: overflow=0, exact shortfall=0, byte checks true, `check_single_generation` true. Document residual quiet-process eviction risk if observed.

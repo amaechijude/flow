@@ -1,6 +1,6 @@
 # ADR 0008: BPF map saturation causes silent under-attribution
 
-- Status: Accepted (measured limitation); overflow visibility implemented and validated; capacity raised to 65,536 and re-tested — scaling alone insufficient, eviction/retention design required
+- Status: Accepted (measured limitation); overflow visibility implemented and validated; LRU eviction with epoch-based delta reset implemented in ADR 0010, pending privileged validation
 - Date: 2026-11-19
 
 ## Context

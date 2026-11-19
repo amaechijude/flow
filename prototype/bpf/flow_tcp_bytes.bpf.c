@@ -35,11 +35,12 @@ struct traffic_val {
     __u64 tx_bytes;
     __u64 rx_bytes;
     __u64 cgroup_id;
+    __u64 epoch;
     char comm[16];
 };
 
 struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
+    __uint(type, BPF_MAP_TYPE_LRU_HASH);
     __uint(max_entries, 65536);
     __type(key, struct traffic_key);
     __type(value, struct traffic_val);
@@ -187,6 +188,7 @@ static __always_inline struct traffic_val *get_or_create(struct traffic_key *key
         return v;
 
     struct traffic_val init = {};
+    init.epoch = bpf_ktime_get_ns();
     init.cgroup_id = bpf_get_current_cgroup_id();
     bpf_get_current_comm(init.comm, sizeof(init.comm));
 
