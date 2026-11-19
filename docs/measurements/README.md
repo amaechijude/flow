@@ -34,3 +34,5 @@ attribution.
 | `ebpf-controlled-20261119T043314Z.md` | Accepted real WireGuard evidence | 16 MiB TCP echo over real wg0: client on `flowwg0`, server on `6@4026532903`, exact bytes, no underlay rows, `check_wireguard: True`, 0 unattributed. Overlay/underlay overlap documented. TCP-only; no public VPN provider. |
 | `ebpf-controlled-20261119T045127Z.md` | Accepted identity-fix validation (1 worker) | computed−raw=0, verified=True, exe resolved; exact bytes, all on `lo`. |
 | `ebpf-controlled-20261119T045242Z.md` | Accepted identity-fix validation (8 workers) | Same result under 8-worker load; BPF comm is `python3`, verified=True. |
+| `ebpf-controlled-20261119T050902Z.md` | Accepted 65,536-capacity run (overflow exact) | 33,536 children reached 65,462 entries; 1,593,344-byte shortfall per direction matched F overflow exactly. Capacity scaling insufficient; CPU 45%, RSS 28 MB. |
+

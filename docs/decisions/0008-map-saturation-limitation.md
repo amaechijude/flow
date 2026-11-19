@@ -1,6 +1,6 @@
 # ADR 0008: BPF map saturation causes silent under-attribution
 
-- Status: Accepted (measured limitation); overflow visibility implemented and validated; capacity raised to 65,536 pending re-validation
+- Status: Accepted (measured limitation); overflow visibility implemented and validated; capacity raised to 65,536 and re-tested — scaling alone insufficient, eviction/retention design required
 - Date: 2026-11-19
 
 ## Context
@@ -26,7 +26,7 @@ at the hard cap was unmeasured. A dedicated churn run
 
 ## Decision
 
-Implemented fix: raise `traffic` and loader `prev` capacity from 10,240 to 65,536, and add an explicit BPF `overflow` counter (emitted as `F` TSV lines and Flow unattributed events) so any remaining map-full loss is visible rather than silent. Post-fix run (`docs/measurements/ebpf-controlled-20261119T005948Z.md`) confirmed the overflow counter works, but 16,448 children still caused a 156,672 TX / 154,624 RX shortfall at 32,577 entries, so capacity remains insufficient for that churn level.
+Implemented fix: raise `traffic` and loader `prev` capacity from 10,240 to 65,536, and add an explicit BPF `overflow` counter (emitted as `F` TSV lines and Flow unattributed events) so any remaining map-full loss is visible rather than silent. Post-fix runs confirmed the overflow counter works exactly: 16,448 children caused a 156,672 TX / 154,624 RX shortfall at 32,577 entries, and 33,536 children at 65,462 entries caused a 1,593,344-byte shortfall in each direction that matched the F overflow counter byte-for-byte. Capacity scaling only postpones saturation. CPU/RSS under this churn reached 45% of one core and 28 MB.
 
 1. Treat hard-cap saturation as a **known correctness limitation**, not a clean
    validation pass.

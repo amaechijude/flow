@@ -1122,3 +1122,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - `sudo python3 scripts/validate-ebpf-attribution.py --mode map-churn --churn-target 65500 --churn-timeout 1800 --churn-child-size-kib 1`
 - Expectation: target reached with zero overflow and exact shortfall 0.
+
+## 2026-11-19 (65,536-entry churn run: overflow exact, scaling insufficient)
+
+### Measured result
+- `docs/measurements/ebpf-controlled-20261119T050902Z.md`: 33,536 short-lived children, map entries 131→65,462 of 65,536, target 65,500 not reached before the 1,800 s timeout.
+- Attributed shortfall 1,593,344 bytes in each direction; F overflow reported exactly 1,593,344 bytes (1,556 events) in each direction. Overflow accounting is exact — no silent loss.
+- Byte accuracy ~97.7%, `check_churn_bytes: False`, `check_single_generation: False`; CPU 45.155% of one core, peak RSS 28,388 KiB.
+
+### Interpretation
+- Raising capacity from 32,768 to 65,536 only postpones saturation under this churn. The next step is an eviction/retention design or accepting overflow as a documented provider limitation, not another capacity bump.
+
+### Changes
+- Accepted/annotated report and index; ADR 0008, `docs/attribution.md`, `HANDOFF.md` updated. No product code changed in this step.
