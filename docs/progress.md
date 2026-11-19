@@ -1048,3 +1048,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Pending
 - Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 8`
 - Interpret: if computed ticks ≈ stored ticks but verified is false, investigate `/proc` exe enrichment; if they differ, investigate event-time start-time/leader handling; if start_ns differs across rows for one TGID, investigate thread-level identity split.
+
+## 2026-11-19 (WireGuard probe implemented, not yet run)
+
+### Environment check
+- `wg` is installed (`wireguard-tools v1.0.20250521`), `modprobe wireguard` succeeds, and `ip link add testwg0 type wireguard` succeeds. Real WireGuard kernel devices are available.
+
+### Implementation
+- Added `--mode wireguard`: creates a veth underlay plus real `wg0` devices in root and `flowvns`, generates temporary keys with `wg genkey`/`wg pubkey`, configures peers/endpoints/allowed-ips, and runs a TCP echo server on the WireGuard address.
+- Asserts client TX on root `wg0` and server RX on peer-netns `wg0` (`ifindex@netns`), with no expected rows on the veth underlay. Reports overlay/underlay counter overlap.
+- Temporary keys/devices/netns are cleaned up in `finally`. Key generation verified locally; syntax and CLI checks passed. No BPF/loader change; baseline 40/40 passing.
+
+### Pending
+- Privileged run: `sudo python3 scripts/validate-ebpf-attribution.py --mode wireguard --tunnel-size-mib 16`
+- Also pending: `--mode identity-diag` output for the multithreaded identity issue.

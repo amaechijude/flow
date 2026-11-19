@@ -27,6 +27,7 @@ Usage:
     sudo python3 scripts/validate-ebpf-attribution.py --mode tunnel --tunnel-size-mib 16
     sudo python3 scripts/validate-ebpf-attribution.py --mode prod-soak --duration 300 --prod-workers 8
     sudo python3 scripts/validate-ebpf-attribution.py --mode identity-diag --duration 30 --prod-workers 8
+    sudo python3 scripts/validate-ebpf-attribution.py --mode wireguard --tunnel-size-mib 16
 
 Output: a Markdown report (default under docs/measurements/) plus a JSON summary on stdout.
 
@@ -72,6 +73,11 @@ proxy for overhead, not a real Internet workload or production SLA claim.
 Identity-diagnostic mode runs the same short concurrent workload but reports
 BPF `start_ns`, loader `startticks`, computed ticks, `/proc` starttime/exe, and
 the verification flag for each expected row. It is a measurement aid, not a fix.
+
+WireGuard mode creates real WireGuard kernel devices in the root and peer netns
+over a veth underlay, generates temporary keys, and runs a TCP echo server on the
+WireGuard address. It asserts process rows resolve to `wg0` rather than the
+underlay, and reports overlay/underlay counter overlap.
 """
 
 from __future__ import annotations
@@ -84,6 +90,7 @@ import signal
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -359,6 +366,98 @@ class TunnelTopology:
     def stop(self) -> None:
         self.stop_tunnels()
         self.veth.stop()
+
+
+WG_NAME = "flowwg0"
+WG_ROOT_IP = "10.7.0.1"
+WG_PEER_IP = "10.7.0.2"
+WG_ROOT_PORT = 51821
+WG_PEER_PORT = 51820
+
+
+def wg_keygen() -> tuple[str, str]:
+    priv = subprocess.run(["wg", "genkey"], capture_output=True, text=True, check=True).stdout.strip()
+    pub = subprocess.run(
+        ["wg", "pubkey"], input=priv + "\n", capture_output=True, text=True, check=True
+    ).stdout.strip()
+    return priv, pub
+
+
+class WireGuardTopology:
+    """Real WireGuard kernel devices over a veth underlay between two netns."""
+
+    def __init__(self) -> None:
+        self.veth = VethPair()
+        self.root_ifindex = 0
+        self.peer_ifindex = 0
+        self.tmpdir = tempfile.TemporaryDirectory(prefix="flow-wg-")
+
+    def _run(self, cmd: list[str]) -> None:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise SystemExit(
+                f"{' '.join(cmd)} failed: {(result.stderr or result.stdout).strip()}"
+            )
+
+    def start(self) -> None:
+        import os  # local import: tempdir paths only
+
+        self.veth.start()
+        root_priv, root_pub = wg_keygen()
+        peer_priv, peer_pub = wg_keygen()
+        root_key = Path(self.tmpdir.name) / "root.key"
+        peer_key = Path(self.tmpdir.name) / "peer.key"
+        root_key.write_text(root_priv + "\n")
+        peer_key.write_text(peer_priv + "\n")
+        os.chmod(root_key, 0o600)
+        os.chmod(peer_key, 0o600)
+
+        try:
+            self._run(["ip", "link", "add", WG_NAME, "type", "wireguard"])
+            self._run(["ip", "netns", "exec", VETH_NS, "ip", "link", "add", WG_NAME, "type", "wireguard"])
+            self._run(["ip", "addr", "add", f"{WG_ROOT_IP}/30", "dev", WG_NAME])
+            self._run(["ip", "netns", "exec", VETH_NS, "ip", "addr", "add", f"{WG_PEER_IP}/30", "dev", WG_NAME])
+            self._run(["wg", "set", WG_NAME, "private-key", str(root_key), "listen-port", str(WG_ROOT_PORT)])
+            self._run(
+                ["wg", "set", WG_NAME, "peer", peer_pub, "endpoint", f"{VETH_SERVER_IP}:{WG_PEER_PORT}",
+                 "allowed-ips", f"{WG_PEER_IP}/32"]
+            )
+            self._run(
+                ["ip", "netns", "exec", VETH_NS, "wg", "set", WG_NAME, "private-key", str(peer_key),
+                 "listen-port", str(WG_PEER_PORT)]
+            )
+            self._run(
+                ["ip", "netns", "exec", VETH_NS, "wg", "set", WG_NAME, "peer", root_pub,
+                 "allowed-ips", f"{WG_ROOT_IP}/32"]
+            )
+            self._run(["ip", "link", "set", WG_NAME, "up"])
+            self._run(["ip", "netns", "exec", VETH_NS, "ip", "link", "set", WG_NAME, "up"])
+        except SystemExit:
+            self.stop()
+            raise
+
+        self.root_ifindex = self._ifindex(False)
+        self.peer_ifindex = self._ifindex(True)
+        time.sleep(0.5)
+
+    @staticmethod
+    def _ifindex(netns: bool) -> int:
+        cmd = ["ip", "-o", "link", "show", WG_NAME]
+        if netns:
+            cmd = ["ip", "netns", "exec", VETH_NS, *cmd]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode == 0 and result.stdout.strip():
+            return int(result.stdout.split(":", 1)[0].strip())
+        return 0
+
+    def stop(self) -> None:
+        subprocess.run(["ip", "link", "del", WG_NAME], capture_output=True, text=True, check=False)
+        subprocess.run(
+            ["ip", "netns", "exec", VETH_NS, "ip", "link", "del", WG_NAME],
+            capture_output=True, text=True, check=False,
+        )
+        self.veth.stop()
+        self.tmpdir.cleanup()
 
 
 class NetnsKeyPair:
@@ -646,6 +745,50 @@ def run_tunnel_server(port: int, size: int) -> int:
         server.close()
     sys.stdin.readline()
     return 0
+
+
+def run_wg_server(host: str, port: int) -> int:
+    print(f"SERVER_PID {os.getpid()}", flush=True)
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind((host, port))
+    server.listen(1)
+    server.settimeout(30)
+    conn, _ = server.accept()
+    received = bytearray()
+    try:
+        while True:
+            data = conn.recv(1 << 20)
+            if not data:
+                break
+            received.extend(data)
+        conn.sendall(received)
+        print(f"SERVER_BYTES {len(received)}", flush=True)
+    finally:
+        conn.close()
+        server.close()
+    sys.stdin.readline()
+    return 0
+
+
+def spawn_wg_server(host: str, port: int) -> tuple[subprocess.Popen[str], int]:
+    proc = subprocess.Popen(
+        [
+            "ip", "netns", "exec", VETH_NS,
+            sys.executable, str(Path(__file__).resolve()),
+            "--wg-server", host, str(port),
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
+    )
+    line = proc.stdout.readline().strip() if proc.stdout else ""
+    if not line.startswith("SERVER_PID "):
+        proc.kill()
+        raise SystemExit(f"WireGuard server failed to start: {(line or 'no output')!r}")
+    return proc, int(line.split()[1])
 
 
 def spawn_tunnel_server(port: int, size: int) -> tuple[subprocess.Popen[str], int]:
@@ -1428,6 +1571,26 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
             f"- Peer-netns tunnel counter delta: {delta('peer_tunnel')}",
             "- Overlay and underlay both carried the packets; only the tunnel device is attributed to the process. The underlay delta documents the overlap.",
         ]
+    if ctx.get("wireguard"):
+        counters = ctx["wg_counters"]
+
+        def wg_delta(key: str) -> str:
+            before = counters.get(f"{key}_before")
+            after = counters.get(f"{key}_after")
+            if not before or not after:
+                return "n/a"
+            return f"TX {after['tx_bytes'] - before['tx_bytes']}, RX {after['rx_bytes'] - before['rx_bytes']}"
+
+        lines += [
+            "",
+            "## WireGuard observation",
+            "",
+            f"- WireGuard check (wg0 only, no underlay rows): {ctx['check_wireguard']}",
+            f"- Root wg0 counter delta: {wg_delta('wg')}",
+            f"- Root underlay counter delta: {wg_delta('underlay')}",
+            f"- Peer-netns wg0 counter delta: {wg_delta('peer_wg')}",
+            "- WireGuard and underlay both carried the packets; only wg0 is attributed to the process.",
+        ]
     if ctx.get("prod_soak"):
         entries = [s["map_entries"] for s in ctx["prod_samples"] if s["map_entries"] is not None]
         cpu_samples = [s["cpu_s"] for s in ctx["prod_samples"] if s["cpu_s"] is not None]
@@ -1518,6 +1681,10 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
         lines.append(
             f"- TCP echo attributed to tunnel devices with no underlay rows: {ctx['check_tunnel']}"
         )
+    if ctx.get("wireguard"):
+        lines.append(
+            f"- TCP echo attributed to WireGuard devices with no underlay rows: {ctx['check_wireguard']}"
+        )
     if ctx.get("nic"):
         tcp_note = (
             f"{ctx['nic_peer_bytes']} bytes supplied via --peer-bytes"
@@ -1557,6 +1724,8 @@ def write_report(path: Path, ctx: dict[str, object]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--client-helper", nargs=4, metavar=("PROTO", "HOST", "PORT", "SIZE"))
+    parser.add_argument("--wg-server", nargs=2, metavar=("HOST", "PORT"),
+                        help=argparse.SUPPRESS)  # internal: WireGuard peer echo server
     parser.add_argument("--tunnel-server", nargs=2, metavar=("PORT", "SIZE"),
                         help=argparse.SUPPRESS)  # internal: tunnel peer echo server
     parser.add_argument("--wildcard-helper", nargs=3, metavar=("HOST", "PORT", "SIZE"),
@@ -1579,7 +1748,7 @@ def main() -> int:
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument(
         "--mode",
-        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel", "prod-soak", "identity-diag"),
+        choices=("lo", "veth", "soak", "nic", "netns-key", "map-churn", "wildcard", "tunnel", "prod-soak", "identity-diag", "wireguard"),
         default="lo",
         help="lo: one loopback interface for TX/RX (default). veth: two-interface veth across two netns. soak: repeated transfers plus short-lived child churn for overhead/map-growth evidence. nic: TCP/UDP echo through a physical interface to a peer. netns-key: same process in two netns to validate netns in the identity key. map-churn: high-rate short-lived children to drive the BPF map toward capacity.",
     )
@@ -1616,6 +1785,8 @@ def main() -> int:
         return run_client_helper(args.client_helper)
     if args.soak_child is not None:
         return run_soak_child(args.soak_child)
+    if args.wg_server:
+        return run_wg_server(args.wg_server[0], int(args.wg_server[1]))
     if args.tunnel_server:
         return run_tunnel_server(int(args.tunnel_server[0]), int(args.tunnel_server[1]))
     if args.wildcard_helper:
@@ -1642,8 +1813,9 @@ def main() -> int:
     tunnel = args.mode == "tunnel"
     prod_soak = args.mode == "prod-soak"
     identity_diag = args.mode == "identity-diag"
+    wireguard = args.mode == "wireguard"
     tunnel_bytes = int(args.tunnel_size_mib * 1024 * 1024)
-    if tunnel and tunnel_bytes <= 0:
+    if (tunnel or wireguard) and tunnel_bytes <= 0:
         print("error: --tunnel-size-mib must be positive", file=sys.stderr)
         return 2
     if prod_soak and (args.duration <= 0 or args.prod_workers <= 0 or args.prod_child_every < 0):
@@ -1690,6 +1862,7 @@ def main() -> int:
 
     veth = VethPair() if args.mode in ("veth", "wildcard") else None
     tunnel_topology = TunnelTopology() if tunnel else None
+    wg_topology = WireGuardTopology() if wireguard else None
     netns_pair = NetnsKeyPair() if netns_key else None
     loader: LoaderRun | None = None
     helpers: list[subprocess.Popen[str]] = []
@@ -1708,6 +1881,8 @@ def main() -> int:
     tunnel_port = 17002
     tunnel_helper_netns = 0
     tunnel_payload = 0
+    wg_helper_netns = 0
+    wg_counters: dict[str, dict[str, int] | None] = {}
     tunnel_counters: dict[str, dict[str, int] | None] = {}
     started = time.monotonic()
     cpu_before = None
@@ -1728,13 +1903,15 @@ def main() -> int:
             netns_pair.start()
         if tunnel_topology:
             tunnel_topology.start()
+        if wg_topology:
+            wg_topology.start()
         loader = LoaderRun(args.loader, args.interval)
         loader.start()
         cpu_before = loader.cpu_seconds()
         # Let the first snapshot establish a baseline (and prove the loader attached).
         time.sleep(max(1.0, args.interval * 1.5))
 
-        if not nic and not netns_key and not map_churn and not tunnel:
+        if not nic and not netns_key and not map_churn and not tunnel and not wireguard:
             lo_before = read_net_dev("lo")
         if veth and args.mode == "veth":
             veth_before = {"client": read_net_dev(VETH_CLIENT)}
@@ -1866,6 +2043,29 @@ def main() -> int:
                 time.sleep(args.interval)
             tcp_sent = tcp_received = churn_successes * churn_child_bytes
             udp_sent = udp_received = churn_successes * churn_child_bytes
+        elif wireguard:
+            assert wg_topology is not None
+            expected_tgids.add(os.getpid())
+            wg_counters["wg_before"] = read_net_dev(WG_NAME)
+            wg_counters["underlay_before"] = read_net_dev(VETH_CLIENT)
+            wg_counters["peer_wg_before"] = read_net_dev_netns(WG_NAME, VETH_NS)
+            server, server_pid = spawn_wg_server(WG_PEER_IP, tunnel_port)
+            helpers.append(server)
+            expected_tgids.add(server_pid)
+            try:
+                wg_helper_netns = os.stat(f"/proc/{server_pid}/ns/net").st_ino
+            except FileNotFoundError:
+                detail = server.stdout.read() if server.stdout else ""
+                raise SystemExit(f"WireGuard server exited before netns inspection: {detail.strip()}")
+            tcp_sent, tcp_received, tcp_s = run_tcp_transfer_remote(
+                tunnel_bytes, WG_PEER_IP, tunnel_port
+            )
+            time.sleep(max(2.0, args.interval * 2.5))
+            wg_counters["wg_after"] = read_net_dev(WG_NAME)
+            wg_counters["underlay_after"] = read_net_dev(VETH_CLIENT)
+            wg_counters["peer_wg_after"] = read_net_dev_netns(WG_NAME, VETH_NS)
+            tcp_sent = tcp_received = 2 * tunnel_bytes
+            udp_sent = udp_received = 0
         elif tunnel:
             assert tunnel_topology is not None
             expected_tgids.add(os.getpid())
@@ -1969,7 +2169,7 @@ def main() -> int:
             expected_tgids.add(os.getpid())
         # Allow at least two more snapshots so all deltas are emitted.
         time.sleep(max(1.0, args.interval * 2.5))
-        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn and not tunnel else None
+        lo_after = read_net_dev("lo") if not veth and not nic and not netns_key and not map_churn and not tunnel and not wireguard else None
         if veth and args.mode == "veth":
             veth_after = {"client": read_net_dev(VETH_CLIENT)}
     finally:
@@ -2007,6 +2207,8 @@ def main() -> int:
             netns_pair.stop()
         if tunnel_topology:
             tunnel_topology.stop()
+        if wg_topology:
+            wg_topology.stop()
 
     elapsed = time.monotonic() - started
     for role, counters in veth_before.items():
@@ -2050,6 +2252,7 @@ def main() -> int:
     check_map_target: bool | None = None
     check_wildcard: bool | None = None
     check_tunnel: bool | None = None
+    check_wireguard: bool | None = None
     if nic:
         root_netns = os.stat("/proc/self/ns/net").st_ino
         expected_interface_description = (
@@ -2086,6 +2289,49 @@ def main() -> int:
             )
 
         check_interface = nic_proto_ok(1) and nic_proto_ok(2)
+    elif wireguard:
+        assert wg_topology is not None
+        root_netns = os.stat("/proc/self/ns/net").st_ino
+        expected_peer_ifname = f"{wg_topology.peer_ifindex}@{wg_helper_netns}"
+        expected_interface_description = (
+            f"client TX on `{WG_NAME}` (root) and server RX on {expected_peer_ifname}"
+        )
+        transfer_scope = f"TCP echo over WireGuard above veth underlay"
+        counter_caveat = "WireGuard and underlay counters are sampled separately."
+        process_scope_caveat = (
+            "The parent client and the peer-netns WireGuard server are expected processes. "
+            "Server identity is n/a after exit; kernel-captured identity is retained."
+        )
+        interface_caveat = (
+            "A real WireGuard kernel device above a veth underlay exercises tunnel-device "
+            "attribution. Overlay and underlay both carry packets; double-counting is "
+            "reported, not treated as additional process traffic. No public VPN provider."
+        )
+        parent_tx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == os.getpid() and int(p["proto"]) == 1 and int(p["tx"]) > 0
+        ]
+        peer_rx = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) == server_pid and int(p["proto"]) == 1 and int(p["rx"]) > 0
+        ]
+        underlay_rows = [
+            p for p in summary["processes"]
+            if int(p["tgid"]) in expected_tgids and p["ifname"] == VETH_CLIENT
+        ]
+        check_wireguard = (
+            len(parent_tx) == 1
+            and parent_tx[0]["ifname"] == WG_NAME
+            and int(parent_tx[0]["netns_id"]) == root_netns
+            and int(parent_tx[0]["tx"]) == tunnel_bytes
+            and len(peer_rx) == 1
+            and peer_rx[0]["ifname"] == expected_peer_ifname
+            and int(peer_rx[0]["netns_id"]) == wg_helper_netns
+            and int(peer_rx[0]["rx"]) == tunnel_bytes
+            and not underlay_rows
+        )
+        check_interface = check_wireguard
+        check_identity = None
     elif tunnel:
         assert tunnel_topology is not None
         root_netns = os.stat("/proc/self/ns/net").st_ino
@@ -2362,6 +2608,8 @@ def main() -> int:
         mode_description = f"production-load soak, {args.prod_workers} workers × {args.duration:.0f}s"
     elif tunnel:
         mode_description = f"TCP echo over {tunnel_topology.mode} tunnel above veth underlay"
+    elif wireguard:
+        mode_description = "TCP echo over WireGuard above veth underlay"
     elif wildcard:
         mode_description = "wildcard UDP listener on two interfaces"
     elif map_churn:
@@ -2396,6 +2644,9 @@ def main() -> int:
         "map_churn": map_churn,
         "wildcard": wildcard,
         "tunnel": tunnel,
+        "wireguard": wireguard,
+        "wg_counters": wg_counters if wireguard else {},
+        "check_wireguard": check_wireguard,
         "prod_soak": prod_soak,
         "identity_diag": identity_diag,
         "clk_tck": loader.meta.get("clk_tck", 100) if loader else 100,
@@ -2500,6 +2751,7 @@ def main() -> int:
         and (check_churn_bytes if check_churn_bytes is not None else True)
         and (check_wildcard if check_wildcard is not None else True)
         and (check_tunnel if check_tunnel is not None else True)
+        and (check_wireguard if check_wireguard is not None else True)
     )
     return 0 if passed else 1
 
