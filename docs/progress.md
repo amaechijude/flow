@@ -1359,3 +1359,20 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - Pre-upgrade copy is best-effort and overwritten each upgrade; not a backup solution. The `flow` group is intentionally left behind on purge.
 - Release-quality security/privacy/recovery tests, real systemd user-session validation and full screen-reader conformance remain open.
+
+## 2026-11-20 (real-VM systemd user-session validation kit)
+
+### Implementation
+- Added `packaging/validate-user-session.sh`: run as the logged-in user on a real systemd VM, it checks preconditions, package install (or `FLOW_SKIP_INSTALL=1`), collector role/activity, absence of a leaked session-bus name, session-daemon role/activity, D-Bus introspection and contract-v3 calls, real status/usage JSON, best-effort `StatusChanged` observation, on-demand D-Bus activation, restart resilience, data path permissions, and saves journal/raw output to a report directory. `FLOW_PREFLIGHT_ONLY=1` runs the non-invasive subset.
+- Added `docs/validation/user-session.md` with prerequisites, commands, a manual checklist with expected outputs, failure interpretation, cleanup, and honest scope limits (no byte-accuracy or GUI-a11y proof).
+- Refreshed packaging README, packaging plan, root README and HANDOFF; corrected the stale HANDOFF date/revision line.
+
+### Verification
+- `bash -n packaging/validate-user-session.sh` passed.
+- `FLOW_PREFLIGHT_ONLY=1 ./packaging/validate-user-session.sh` passed here (real PID 1 systemd + user bus + busctl), except the expected finding that this dev user is not in the `flow` group because the package is not installed on the host.
+- The full end-to-end run was not executed: no passwordless sudo and no installed package on this host. It is an operator step on a disposable VM.
+
+### Limitations / next
+- Full installed user-session/D-Bus activation remains unvalidated until run on the VM.
+- `--force-depends` skips dependency resolution; status-signal observation is timing-dependent and advisory.
+- Remaining: exact-window comparisons, full screen-reader conformance, recovery/security/privacy tests.

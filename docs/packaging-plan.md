@@ -43,6 +43,7 @@ Session mode status comes from the latest persisted monitoring session. Live pip
   registers `org.flow.Daemon` on the session bus.
 - D-Bus session activation file for the user daemon.
 - Polkit decision accepted (ADR 0011): no policy for read-only session-bus queries; add only if privileged control operations or system-bus access are introduced.
+- Real-VM validation kit prepared (`packaging/validate-user-session.sh`, `docs/validation/user-session.md`) for role separation, bus ownership, contract v3, D-Bus activation and restart resilience. Preflight passes where prepared; the full sudo-driven run on a disposable VM remains an operator step.
 
 ## Phase 4 — Remaining product work before a release-quality `.deb`
 

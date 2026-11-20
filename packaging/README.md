@@ -85,6 +85,21 @@ and writes `packaging/build/flow_0.1.0_amd64.deb`. Build output is gitignored.
   packaged docs install, verifies group/DB permissions, the upgrade backup and
   that history survives every non-opt-in step.
 
+## Validating the user session on a real VM
+
+`validate-user-session.sh` and `docs/validation/user-session.md` cover what the
+container tests cannot: a real systemd user session, collector/session role
+separation, session-bus ownership, D-Bus activation and restart resilience.
+
+```bash
+FLOW_PREFLIGHT_ONLY=1 ./packaging/validate-user-session.sh   # no system changes
+./packaging/validate-user-session.sh                          # needs sudo on a VM
+```
+
+Run as the logged-in user (never root). Preflight was executed where this kit
+was prepared; the full run requires a disposable VM with sudo and is an
+operator step. It does not purge data or prove eBPF byte accuracy.
+
 ## Manual validation before building a .deb
 
 ```bash
