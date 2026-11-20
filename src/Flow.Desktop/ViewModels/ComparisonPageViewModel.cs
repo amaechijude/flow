@@ -105,7 +105,7 @@ public partial class ComparisonPageViewModel : ViewModelBase
         => (value >= 0 ? "+" : "-") + ByteFormat.Bytes(Math.Abs(value));
 
     private static string FormatRange(WindowPrecision precision)
-        => $"{precision.RequestedStartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {precision.RequestedEndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
+        => DisplayTime.Range(precision.RequestedStartUtc, precision.RequestedEndUtc);
 
     private static string Precision(WindowPrecision precision)
         => precision.IsBucketAligned

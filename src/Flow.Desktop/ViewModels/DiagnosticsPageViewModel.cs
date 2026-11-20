@@ -106,11 +106,11 @@ public partial class DiagnosticsPageViewModel : ViewModelBase
         SignalText = snapshot.IpcLive
             ? (snapshot.SignalSubscribed ? "Subscribed to D-Bus StatusChanged signals." : "IPC reachable, but status signal subscription is unavailable.")
             : "Not subscribed: daemon IPC unreachable.";
-        LastSignalText = snapshot.LastSignalAtUtc is null ? "no signal received" : $"{snapshot.LastSignalAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss}";
+        LastSignalText = snapshot.LastSignalAtUtc is null ? "no signal received" : DisplayTime.FullWithSeconds(snapshot.LastSignalAtUtc.Value);
         ContractText = $"org.flow.Daemon1 · contract v{Flow.Contracts.Ipc.FlowIpc.ContractVersion}";
         ServicePathText = $"{Flow.Contracts.Ipc.FlowIpc.ServiceName} · {Flow.Contracts.Ipc.FlowIpc.ObjectPath}";
 
-        WindowText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
+        WindowText = DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc);
         _allBuckets = snapshot.Series.Select(TimeSeriesRow.From).ToList();
         ApplyBuckets();
     }
@@ -125,5 +125,5 @@ public partial class DiagnosticsPageViewModel : ViewModelBase
     }
 
     private static string Format(DateTimeOffset? value)
-        => value is null ? "—" : $"{value.Value.ToLocalTime():yyyy-MM-dd HH:mm:ss} local";
+        => value is null ? "—" : DisplayTime.FullWithSeconds(value.Value) + " local";
 }

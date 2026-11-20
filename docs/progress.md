@@ -1408,3 +1408,16 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - No runtime screen-reader session and no disposable VM with sudo were available here, so AT announcements and the full user-session validation remain operator steps on a real desktop/VM.
 - Pointer chart interaction (zoom/tooltip) is still open.
+
+## 2026-11-20 (weekday in displayed timestamps)
+
+### Implementation
+- Added `DisplayTime` in the desktop presentation layer: a single local-time formatter that includes the abbreviated weekday (`yyyy-MM-dd ddd HH:mm`, buckets `MM-dd ddd HH:mm`, chart axis `ddd HH:mm`).
+- Applied it to bucket/time-series rows, History daily totals and window labels, chart axis/peak/focused-point labels, Range/Overview/Diagnostics/Reports/Comparison windows and recent status lines. Storage and export remain UTC-labelled; only UI strings changed.
+- Updated the two "LOCAL TIME" table headers to "LOCAL BUCKET (WEEKDAY)".
+
+### Verification
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 86/86 passing; `./scripts/a11y-audit.sh` still passes 66/66.
+
+### Note
+- No remaining product work was taken in this increment, per operator direction. Open items are unchanged (attribution high-churn, runtime screen-reader pass, real-VM validation, pointer chart interaction).

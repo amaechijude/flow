@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Globalization;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Flow.Application.Queries;
@@ -31,7 +30,7 @@ public partial class HistoryPageViewModel : ViewModelBase
         foreach (var day in days)
         {
             Days.Add(new HistoryDailyRow(
-                day.LocalDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                DisplayTime.Day(day.LocalDay),
                 ByteFormat.Bytes(day.RxBytes),
                 ByteFormat.Bytes(day.TxBytes),
                 ByteFormat.Bytes(day.RxBytes + day.TxBytes),
@@ -50,6 +49,6 @@ public partial class HistoryPageViewModel : ViewModelBase
             ? "No persisted buckets in this range."
             : $"{snapshot.Series.Count} real buckets · {ByteFormat.Bytes(totalRx)} RX / {ByteFormat.Bytes(totalTx)} TX across {days.Count} local day(s).";
         ResolutionText = $"query resolution: {granularity}";
-        WindowText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
+        WindowText = DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc);
     }
 }

@@ -7,6 +7,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
+using Flow.Desktop.ViewModels;
 
 namespace Flow.Desktop.Controls;
 
@@ -72,7 +73,7 @@ public sealed class TimeSeriesChart : Control
             var points = Points;
             if (points is null || _focusedIndex < 0 || _focusedIndex >= points.Count) return "";
             var point = points[_focusedIndex];
-            return $"point {_focusedIndex + 1} of {points.Count}, {point.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm} local, " +
+            return $"point {_focusedIndex + 1} of {points.Count}, {DisplayTime.Full(point.Timestamp)} local, " +
                    $"RX {FormatBytes(point.RxBytes)}, TX {FormatBytes(point.TxBytes)}, total {FormatBytes(point.Total)}";
         }
     }
@@ -189,13 +190,13 @@ public sealed class TimeSeriesChart : Control
         }
 
         // X labels: first / middle / last real bucket timestamps.
-        DrawText(context, points[0].Timestamp.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture), new Point(plot.Left, plot.Bottom + 6), 10, labelBrush);
+        DrawText(context, DisplayTime.Axis(points[0].Timestamp), new Point(plot.Left, plot.Bottom + 6), 10, labelBrush);
         if (points.Count > 2)
         {
-            var mid = points[points.Count / 2].Timestamp.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+            var mid = DisplayTime.Axis(points[points.Count / 2].Timestamp);
             DrawText(context, mid, new Point(plot.Left + plot.Width / 2 - 12, plot.Bottom + 6), 10, labelBrush);
         }
-        var lastLabel = points[^1].Timestamp.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
+        var lastLabel = DisplayTime.Axis(points[^1].Timestamp);
         DrawText(context, lastLabel, new Point(plot.Right - 26, plot.Bottom + 6), 10, labelBrush);
 
         // Series geometry.
@@ -223,7 +224,7 @@ public sealed class TimeSeriesChart : Control
             var y = plot.Bottom - Math.Max(peak.RxBytes, peak.TxBytes) / (double)maxValue * plot.Height;
             context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#884CD7F6")), 1, new DashStyle([3, 3], 0)), new Point(x, plot.Top), new Point(x, plot.Bottom));
             context.DrawEllipse(new SolidColorBrush(Color.Parse("#4CD7F6")), null, new Point(x, y), 3.5, 3.5);
-            var label = $"peak {FormatBytes(peak.Total)} @ {peak.Timestamp.ToLocalTime():HH:mm}";
+            var label = $"peak {FormatBytes(peak.Total)} @ {DisplayTime.Axis(peak.Timestamp)}";
             DrawText(context, label, new Point(Math.Max(plot.Left, Math.Min(plot.Right - 130, x + 6)), plot.Top + 2), 10, txBrush);
         }
     }

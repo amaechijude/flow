@@ -235,7 +235,7 @@
                             <TextBlock Grid.Column="1" Text="SQLITE VIEW" Classes="caps" />
                         </Grid>
                         <Grid ColumnDefinitions="*,70,70" Margin="0,1">
-                            <TextBlock Text="LOCAL TIME" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                            <TextBlock Text="LOCAL BUCKET (WEEKDAY)" Classes="caps" AutomationProperties.IsColumnHeader="True" />
                             <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                             <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                         </Grid>

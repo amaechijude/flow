@@ -55,8 +55,8 @@ public partial class ReportsPageViewModel(
         var unattributed = s.UnattributedRxBytes + s.UnattributedTxBytes;
 
         ReportTitle = $"Usage report · {snapshot.RangeLabel}";
-        GeneratedText = $"Generated {snapshot.GeneratedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss} local ({snapshot.GeneratedAtUtc:u})";
-        RangeText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local" +
+        GeneratedText = $"Generated {DisplayTime.FullWithSeconds(snapshot.GeneratedAtUtc)} local ({snapshot.GeneratedAtUtc:u})";
+        RangeText = DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc) +
                     (snapshot.InterfaceId is null ? "" : $" · interface {snapshot.InterfaceId}");
         ScopeText = $"{snapshot.Applications.Count} application key(s) · {snapshot.Processes.Count} process key(s) · {snapshot.Series.Count} persisted bucket(s)";
         SourceText = snapshot.IpcLive

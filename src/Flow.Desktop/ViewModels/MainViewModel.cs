@@ -210,7 +210,7 @@ public partial class MainViewModel : ViewModelBase
             var (start, end, rangeLabel) = GetCurrentRange();
             var ifaceId = SelectedInterfaceFilter?.InterfaceId;
 
-            RangeText = $"{rangeLabel} (local): {start.ToLocalTime():yyyy-MM-dd HH:mm} – {end.ToLocalTime():yyyy-MM-dd HH:mm}" +
+            RangeText = $"{rangeLabel} (local): {DisplayTime.Full(start)} – {DisplayTime.Full(end)}" +
                         (ifaceId is null ? "" : $" · interface {ifaceId}");
 
             // Interface breakdown is intentionally unfiltered so users can see every mapped interface in range.
@@ -271,7 +271,7 @@ public partial class MainViewModel : ViewModelBase
         finally
         {
             IsBusy = false;
-            LastRefreshText = $"Refreshed {DateTimeOffset.Now:HH:mm:ss} · status RTT {_lastStatusRttMs:0} ms";
+            LastRefreshText = $"Refreshed {DateTimeOffset.Now:ddd HH:mm:ss} · status RTT {_lastStatusRttMs:0} ms";
             if (_refreshQueued && !IsBusy)
             {
                 _refreshQueued = false;
@@ -368,14 +368,14 @@ public partial class MainViewModel : ViewModelBase
     }
 
     private string LastSignalAtText()
-        => _lastSignalAtUtc is null ? "Signal subscribed · none received yet" : $"Signal {_lastSignalAtUtc.Value.ToLocalTime():HH:mm:ss}";
+        => _lastSignalAtUtc is null ? "Signal subscribed · none received yet" : $"Signal {_lastSignalAtUtc.Value.ToLocalTime():ddd HH:mm:ss}";
 
     private void OnDaemonStatusChanged(object? sender, DaemonStatusChangedEventArgs e)
     {
         Dispatcher.UIThread.Post(() =>
         {
             _lastSignalAtUtc = e.ReceivedUtc;
-            SignalStatusText = $"Status signal {e.ReceivedUtc.ToLocalTime():HH:mm:ss} ({e.Signal?.Reason ?? "changed"})";
+            SignalStatusText = $"Status signal {e.ReceivedUtc.ToLocalTime():ddd HH:mm:ss} ({e.Signal?.Reason ?? "changed"})";
 
             // Coalesce bursts: the daemon already batches status changes, and we
             // additionally avoid refreshing more than once per second.

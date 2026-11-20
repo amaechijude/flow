@@ -130,7 +130,7 @@ public partial class OverviewPageViewModel : ViewModelBase
             var (pv, pu) = ByteFormat.Split(peak.RxBytes + peak.TxBytes);
             PeakValue = pv;
             PeakUnit = pu;
-            PeakDetail = $"{peak.BucketStartUtc.ToLocalTime():MM-dd HH:mm} · bucket total";
+            PeakDetail = $"{DisplayTime.Bucket(peak.BucketStartUtc)} · bucket total";
         }
         BucketCountText = $"{series.Count} bucket{(series.Count == 1 ? "" : "s")}";
 
@@ -140,7 +140,7 @@ public partial class OverviewPageViewModel : ViewModelBase
         HasChartData = ChartPoints.Count > 0;
         ChartCaption = series.Count == 0
             ? "No persisted 1-minute buckets for this range."
-            : $"{series.Count} real 1-minute buckets · {series[0].BucketStartUtc:u} – {series[^1].BucketStartUtc:u}";
+            : $"{series.Count} persisted buckets · {DisplayTime.Bucket(series[0].BucketStartUtc)} – {DisplayTime.Bucket(series[^1].BucketStartUtc)} local";
 
         var grandTotal = Math.Max(1, total);
         TopApplications.Clear();
@@ -158,9 +158,9 @@ public partial class OverviewPageViewModel : ViewModelBase
             RecentBuckets.Add(TimeSeriesRow.From(p));
         HasNoBuckets = RecentBuckets.Count == 0;
 
-        WindowText = $"{snapshot.StartUtc.ToLocalTime():yyyy-MM-dd HH:mm} → {snapshot.EndUtc.ToLocalTime():yyyy-MM-dd HH:mm} local";
+        WindowText = DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc);
         SyncText = snapshot.IpcLive
-            ? (snapshot.LastSignalAtUtc is null ? "IPC LIVE (no signal yet)" : $"SIGNAL {snapshot.LastSignalAtUtc.Value.ToLocalTime():HH:mm:ss}")
+            ? (snapshot.LastSignalAtUtc is null ? "IPC LIVE (no signal yet)" : $"SIGNAL {snapshot.LastSignalAtUtc.Value.ToLocalTime():ddd HH:mm:ss}")
             : "SQLITE SNAPSHOT";
         IsFallback = !snapshot.IpcLive;
         SourceBadge = snapshot.IpcLive ? "IPC LIVE MODE" : "SQLITE FALLBACK MODE";

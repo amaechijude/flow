@@ -11,10 +11,35 @@ public sealed record RangeOption(string Label, TimeSpan Duration, bool IsCustom 
 
 public sealed record InterfaceFilterOption(string Label, string? InterfaceId);
 
+/// <summary>
+/// Local-time display formatting with an explicit weekday. Storage and export
+/// remain UTC-labelled; only UI strings use this helper.
+/// </summary>
+public static class DisplayTime
+{
+    public static string Range(DateTimeOffset startUtc, DateTimeOffset endUtc)
+        => $"{Full(startUtc)} → {Full(endUtc)} local";
+
+    public static string Full(DateTimeOffset utc)
+        => utc.ToLocalTime().ToString("yyyy-MM-dd ddd HH:mm", CultureInfo.InvariantCulture);
+
+    public static string FullWithSeconds(DateTimeOffset utc)
+        => utc.ToLocalTime().ToString("yyyy-MM-dd ddd HH:mm:ss", CultureInfo.InvariantCulture);
+
+    public static string Day(DateTimeOffset local)
+        => local.ToString("yyyy-MM-dd ddd", CultureInfo.InvariantCulture);
+
+    public static string Bucket(DateTimeOffset utc)
+        => utc.ToLocalTime().ToString("MM-dd ddd HH:mm", CultureInfo.InvariantCulture);
+
+    public static string Axis(DateTimeOffset utc)
+        => utc.ToLocalTime().ToString("ddd HH:mm", CultureInfo.InvariantCulture);
+}
+
 public sealed record TimeSeriesRow(string Bucket, string Rx, string Tx, string Total, long TotalBytes)
 {
     public static TimeSeriesRow From(UsageTimePointDto dto) => new(
-        dto.BucketStartUtc.ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture),
+        DisplayTime.Bucket(dto.BucketStartUtc),
         ByteFormat.Bytes(dto.RxBytes),
         ByteFormat.Bytes(dto.TxBytes),
         ByteFormat.Bytes(dto.RxBytes + dto.TxBytes),
