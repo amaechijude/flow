@@ -128,6 +128,13 @@
                                 <TextBlock Text="Settings" />
                             </StackPanel>
                         </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsComparisonActive}" Command="{Binding NavigateCommand}" CommandParameter="comparison"
+                                AutomationProperties.Name="Comparison page">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="⇄" FontSize="13" />
+                                <TextBlock Text="Comparison" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <StackPanel Grid.Row="2" Spacing="6">
@@ -188,6 +195,17 @@
                             <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}"
                                     AutomationProperties.Name="Apply custom range" />
                             <TextBlock Text="Local days → UTC buckets; display is local time." Classes="dim" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border IsVisible="{Binding IsComparisonActive}" Background="{DynamicResource FlowCardBrush}"
+                            BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="12,8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Compare with" Classes="caps" VerticalAlignment="Center" />
+                            <ComboBox ItemsSource="{Binding ComparisonModes}" SelectedItem="{Binding SelectedComparisonMode}" MinWidth="160"
+                                      AutomationProperties.Name="Comparison window mode"
+                                      ToolTip.Tip="Choose the preceding window to compare against the current range" />
+                            <TextBlock Text="The previous window uses the same granularity and interface filter." Classes="dim" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>
 

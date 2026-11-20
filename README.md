@@ -8,9 +8,9 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **81/81 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **86/86 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
-  Diagnostics, Reports, History, and Settings pages; CSV/JSON export uses a real
+  Diagnostics, Reports, History, Settings, and Comparison pages; CSV/JSON export uses a real
   file picker and includes provenance/caveats. Interactive and custom-drawn
   controls have accessibility names; a full screen-reader conformance pass is
   still outstanding.
@@ -88,7 +88,7 @@ Do not treat the attribution gate as closed. Important caveats:
 - Historical rows keep older stable-key shapes after identity migrations.
 - IPC is session-bus v1 only; signals are best-effort/coalesced, and a root-run
   daemon may not claim the user-session D-Bus name.
-- Rollups (5m/1h/1d/1mo) are rebuilt idempotently from 1m buckets and consumed by queries for long ranges (one granularity per query; boundary buckets are included whole, so long-range totals may include bytes slightly outside the exact window). Retention prunes 1m after 7 days, 5m after 35 days, and 1h after 400 days; 1d/1mo are kept indefinitely. Minute deltas are written to a durable SQLite queue before leaving the in-memory buffer and applied with exponential retry/backoff (1s→30s); apply-and-delete share one transaction so retries cannot double-count, and the rollup watermark stays behind pending rows. Reports/History/Settings pages exist.
+- Rollups (5m/1h/1d/1mo) are rebuilt idempotently from 1m buckets and consumed by queries for long ranges (one granularity per query; boundary buckets are included whole, so long-range totals may include bytes slightly outside the exact window). Retention prunes 1m after 7 days, 5m after 35 days, and 1h after 400 days; 1d/1mo are kept indefinitely. Minute deltas are written to a durable SQLite queue before leaving the in-memory buffer and applied with exponential retry/backoff (1s→30s); apply-and-delete share one transaction so retries cannot double-count, and the rollup watermark stays behind pending rows. Reports/History/Settings pages exist. Queries are half-open (`>= start`, `< end`); the Comparison page reports the exact bucket coverage of each window and refuses to call a padded coarse-window comparison exact or billing-grade.
 - The durable queue covers byte deltas only; application/process/interface metadata upserts remain best-effort and are re-upserted from later events.
 - Charts and tables have accessibility names and a textual chart summary, but have not had a full keyboard/screen-reader conformance pass.
 

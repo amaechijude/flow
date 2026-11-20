@@ -45,6 +45,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] public partial bool IsReportsActive { get; set; }
     [ObservableProperty] public partial bool IsHistoryActive { get; set; }
     [ObservableProperty] public partial bool IsSettingsActive { get; set; }
+    [ObservableProperty] public partial bool IsComparisonActive { get; set; }
 
     [ObservableProperty] public partial string DaemonStateText { get; set; } = "DAEMON STATUS UNKNOWN";
     [ObservableProperty] public partial IBrush DaemonStateBrush { get; set; } = WarningBrush;
@@ -68,6 +69,7 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] public partial DateTimeOffset? CustomEndDate { get; set; }
     [ObservableProperty] public partial string ExportStatus { get; set; } = "";
     [ObservableProperty] public partial string SignalStatusText { get; set; } = "No D-Bus signal yet";
+    [ObservableProperty] public partial string? SelectedComparisonMode { get; set; }
 
     public ObservableCollection<RangeOption> Ranges { get; } = new(
     [
@@ -84,6 +86,8 @@ public partial class MainViewModel : ViewModelBase
 
     public ObservableCollection<InterfaceFilterOption> InterfaceFilters { get; } = new([new InterfaceFilterOption("All interfaces", null)]);
 
+    public IReadOnlyList<string> ComparisonModes { get; } = ["Previous period", "Previous day", "Previous week"];
+
     public OverviewPageViewModel Overview { get; } = new();
     public ApplicationsPageViewModel Applications { get; } = new();
     public InterfacesPageViewModel Interfaces { get; } = new();
@@ -91,6 +95,7 @@ public partial class MainViewModel : ViewModelBase
     public ReportsPageViewModel Reports { get; }
     public HistoryPageViewModel History { get; } = new();
     public SettingsPageViewModel Settings { get; } = new();
+    public ComparisonPageViewModel Comparison { get; } = new();
 
     public MainViewModel(
         IDaemonStatusClient statusClient,
@@ -114,6 +119,7 @@ public partial class MainViewModel : ViewModelBase
         _suppressRefresh = true;
         SelectedRange = Ranges.First(r => r.Label == "Last 24 hours");
         SelectedInterfaceFilter = InterfaceFilters[0];
+        SelectedComparisonMode = ComparisonModes[0];
         _suppressRefresh = false;
 
         CurrentPage = Overview;
@@ -131,6 +137,11 @@ public partial class MainViewModel : ViewModelBase
     }
 
     partial void OnSelectedInterfaceFilterChanged(InterfaceFilterOption? value)
+    {
+        if (!_suppressRefresh && value is not null) _ = RefreshAsync();
+    }
+
+    partial void OnSelectedComparisonModeChanged(string? value)
     {
         if (!_suppressRefresh && value is not null) _ = RefreshAsync();
     }
@@ -158,6 +169,9 @@ public partial class MainViewModel : ViewModelBase
             case "settings":
                 CurrentPage = Settings;
                 break;
+            case "comparison":
+                CurrentPage = Comparison;
+                break;
             default:
                 CurrentPage = Overview;
                 break;
@@ -170,6 +184,7 @@ public partial class MainViewModel : ViewModelBase
         IsReportsActive = ReferenceEquals(CurrentPage, Reports);
         IsHistoryActive = ReferenceEquals(CurrentPage, History);
         IsSettingsActive = ReferenceEquals(CurrentPage, Settings);
+        IsComparisonActive = ReferenceEquals(CurrentPage, Comparison);
     }
 
     [RelayCommand]
@@ -238,6 +253,7 @@ public partial class MainViewModel : ViewModelBase
             Reports.Apply(snapshot);
             History.Apply(snapshot, resolutionLabel);
             Settings.Apply(snapshot);
+            await ApplyComparisonAsync(snapshot, start, end, resolution, ifaceId);
 
             ApplyShellStatus(status, ipcLive);
         }
@@ -261,6 +277,44 @@ public partial class MainViewModel : ViewModelBase
                 _refreshQueued = false;
                 _ = RefreshAsync();
             }
+        }
+    }
+
+    private async Task ApplyComparisonAsync(
+        UsageSnapshot snapshot,
+        DateTimeOffset start,
+        DateTimeOffset end,
+        string granularity,
+        string? ifaceId)
+    {
+        try
+        {
+            var mode = SelectedComparisonMode ?? ComparisonModes[0];
+            var (previousStart, previousEnd) = mode switch
+            {
+                "Previous day" => (start - TimeSpan.FromDays(1), start),
+                "Previous week" => (start - TimeSpan.FromDays(7), start),
+                _ => (start - (end - start), start),
+            };
+
+            var summary = await _usageClient.GetSummaryAsync(previousStart, previousEnd, ifaceId);
+            var applications = await _usageClient.GetTopApplicationsAsync(previousStart, previousEnd, ifaceId, limit: 1000);
+            var processes = await _usageClient.GetTopProcessesAsync(previousStart, previousEnd, ifaceId, limit: 1000);
+            var interfaces = await _usageClient.GetInterfaceUsageAsync(previousStart, previousEnd);
+
+            var currentWindow = new UsageComparisonWindow(
+                snapshot.StartUtc, snapshot.EndUtc, granularity,
+                snapshot.Summary, snapshot.Applications, snapshot.Processes, snapshot.Interfaces);
+            var previousWindow = new UsageComparisonWindow(
+                previousStart, previousEnd, granularity,
+                summary, applications, processes, interfaces);
+
+            Comparison.Apply(UsageComparison.Compare(currentWindow, previousWindow), mode);
+        }
+        catch (Exception ex)
+        {
+            // A failed comparison must not discard the already-loaded main view.
+            Comparison.SetUnavailable(ex.Message);
         }
     }
 

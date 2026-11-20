@@ -1,0 +1,143 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.ComparisonPageView"
+             x:DataType="vm:ComparisonPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Window comparison" Classes="headline" FontSize="20" />
+                <Border Classes="pill primary" VerticalAlignment="Center">
+                    <TextBlock Text="REAL PERSISTED DATA" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                </Border>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Text="{Binding StatusText}" Classes="dim" FontSize="11" VerticalAlignment="Center" />
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Window precision" Classes="section" />
+                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Current" Classes="caps" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRangeText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Previous" Classes="caps" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding PreviousRangeText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                </Grid>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+                    <Border Background="{DynamicResource FlowSurfaceLowBrush}" CornerRadius="4" Padding="10,8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="CURRENT WINDOW" Classes="caps" />
+                            <TextBlock Text="{Binding CurrentPrecisionText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
+                                       AutomationProperties.Name="Current window bucket coverage" />
+                        </StackPanel>
+                    </Border>
+                    <Border Background="{DynamicResource FlowSurfaceLowBrush}" CornerRadius="4" Padding="10,8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="PREVIOUS WINDOW" Classes="caps" />
+                            <TextBlock Text="{Binding PreviousPrecisionText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
+                                       AutomationProperties.Name="Previous window bucket coverage" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+                <Border Classes="divider" />
+                <TextBlock Text="{Binding VerdictText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                           AutomationProperties.Name="Comparison precision verdict" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Metric deltas (current − previous)" Classes="section" />
+                <Grid ColumnDefinitions="*,120,120,120,110" Margin="0,2,0,2">
+                    <TextBlock Grid.Column="0" Text="METRIC" Classes="caps" />
+                    <TextBlock Grid.Column="1" Text="CURRENT" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="PREVIOUS" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="DELTA" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="CHANGE" Classes="caps" TextAlignment="Right" />
+                </Grid>
+                <Border Classes="divider" />
+                <ItemsControl ItemsSource="{Binding Metrics}" AutomationProperties.Name="Comparison metric deltas">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ComparisonMetricRow">
+                            <Grid ColumnDefinitions="*,120,120,120,110" Margin="0,5">
+                                <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="11" />
+                                <TextBlock Grid.Column="1" Text="{Binding Current}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="2" Text="{Binding Previous}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="3" Text="{Binding Delta}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="{Binding Change}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="No comparison data available." IsVisible="{Binding !HasComparison}" Classes="dim" />
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Applications" Classes="section" />
+                    <ScrollViewer MaxHeight="300">
+                        <ItemsControl ItemsSource="{Binding Applications}" AutomationProperties.Name="Application comparison rows">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ComparisonRowView">
+                                    <Grid ColumnDefinitions="*,80,80,80" Margin="0,4">
+                                        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Current}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Previous}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Delta}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Processes" Classes="section" />
+                    <ScrollViewer MaxHeight="300">
+                        <ItemsControl ItemsSource="{Binding Processes}" AutomationProperties.Name="Process comparison rows">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ComparisonRowView">
+                                    <Grid ColumnDefinitions="*,80,80,80" Margin="0,4">
+                                        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Current}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Previous}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                        <TextBlock Grid.Column="3" Text="{Binding Delta}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Interfaces" Classes="section" />
+                <ItemsControl ItemsSource="{Binding Interfaces}" AutomationProperties.Name="Interface comparison rows">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:ComparisonRowView">
+                            <Grid ColumnDefinitions="*,100,100,100,110" Margin="0,4">
+                                <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Grid.Column="1" Text="{Binding Current}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                <TextBlock Grid.Column="2" Text="{Binding Previous}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                <TextBlock Grid.Column="3" Text="{Binding Delta}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="{Binding Presence}" Classes="dim" FontSize="10" TextAlignment="Right" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <TextBlock Classes="dim" FontSize="10" TextWrapping="Wrap"
+                   Text="Comparison uses the same persisted data and granularity for both windows. Rows present in only one window are labelled rather than counted as zero. 'Exact bucket coverage' refers only to the window/bucket alignment; measurement, attribution and high-churn caveats still apply, and this is not billing-grade." />
+    </StackPanel>
+</UserControl>

@@ -51,9 +51,8 @@ A prototype `.deb` can now be built with `./packaging/build-deb.sh`; the remaini
 
 - IPC hardening: signal continuity, reconnect/error mapping, `LastError` clearing.
 - Persistence: 1m→5m→h→d→mo rollups preserving totals are implemented (idempotent rebuild worker) and consumed by long-range queries via a single-granularity policy; retention prunes 1m/5m/1h after 7/35/400 days (1d/1mo kept indefinitely). Durable flush/retry with exponential backoff is implemented with atomic apply-and-delete and restart recovery; durable diagnostics are exposed over IPC.
-- UI: Reports/History/Settings pages and basic accessibility names/textual chart
-  summary are implemented; full screen-reader conformance pass, chart
-  interaction/per-point inspection and comparisons remain.
+- UI: Reports/History/Settings/Comparison pages and basic accessibility names/textual chart
+  summary are implemented; precision-aware comparisons report bucket coverage and never claim billing-grade exactness. Full screen-reader conformance pass and chart interaction/per-point inspection remain.
 - Package: binaries, units, D-Bus service file, desktop launcher and dependencies
   (`libbpf`, `libelf`, `zlib`) are in the prototype `.deb`. `postinst`/`prerm`/
   `postrm` and upgrade/uninstall data handling are implemented and validated by

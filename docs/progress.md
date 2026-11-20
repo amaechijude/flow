@@ -1376,3 +1376,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - Full installed user-session/D-Bus activation remains unvalidated until run on the VM.
 - `--force-depends` skips dependency resolution; status-signal observation is timing-dependent and advisory.
 - Remaining: exact-window comparisons, full screen-reader conformance, recovery/security/privacy tests.
+
+## 2026-11-20 (precision-aware window comparisons)
+
+### Implementation
+- Usage queries are now half-open (`bucket_start_utc >= start AND < end`), so a window aligned to bucket boundaries includes exactly the intended whole buckets. Added a repository regression test locking this semantics.
+- Added `UsagePrecision` (Application): computes the included bucket range, padding before/after, and whether coverage is exact for a requested window and granularity. `UsageComparison` compares two real windows using their DTOs, reports metric/row deltas, flags rows missing from one side rather than treating them as zero, and always states whether the comparison is exact or approximate (never billing-grade). Added unit tests for aligned/unaligned precision, deltas and missing rows.
+- Added the **Comparison** desktop page: mode selector (previous period/day/week), per-window precision badges, verdict, metric deltas and per-application/process/interface deltas. `MainViewModel` fetches the previous window with the same granularity/filter and degrades to an explicit "comparison unavailable" note on failure without discarding the main view. Long-range UI notes the 1m fallback caveat.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded (0 errors); `dotnet test Flow.slnx` → 86/86 passing.
+- The GUI was not launched on the user's display; compiled bindings validate the new view against its `x:DataType`.
+
+### Limitations / next
+- Exactness refers only to window/bucket alignment; provider attribution, high-churn and measurement caveats still apply. Coarse rollup windows are labelled approximate, not billed as exact.
+- Remaining: full screen-reader conformance, chart per-point interaction, and real-VM user-session validation execution.

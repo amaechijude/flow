@@ -44,6 +44,34 @@ public sealed class SqliteUsageRepositoryTests
     }
 
     [Fact]
+    public async Task SummaryUsesHalfOpenWindowSoAlignedBucketsAreExact()
+    {
+        var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");
+        try
+        {
+            var factory = new SqliteConnectionFactory(dbPath);
+            using (var conn = factory.CreateOpenConnection())
+                DbMigrator.Migrate(conn);
+
+            var repo = new UsageRepository(factory);
+            var bucket = new DateTimeOffset(2026, 11, 20, 10, 0, 0, TimeSpan.Zero);
+            await repo.WriteMinuteDeltasAsync([
+                new UsageBucketDelta(bucket, "app.test", "p1", "eth0", 100, 10, true, null, "test", "hook")]);
+
+            // [10:00, 10:00) is empty: a bucket starting exactly at end is excluded.
+            Assert.Equal(0, (await repo.GetSummaryAsync(bucket, bucket)).RxBytes);
+            // [10:00, 10:01) includes exactly the one aligned minute bucket.
+            var exact = await repo.GetSummaryAsync(bucket, bucket.AddMinutes(1));
+            Assert.Equal(100, exact.RxBytes);
+            Assert.Equal(10, exact.TxBytes);
+        }
+        finally
+        {
+            TryDeleteDb(dbPath);
+        }
+    }
+
+    [Fact]
     public async Task MetadataUpsertsAndSessionsWork()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), "flow-tests", $"{Guid.NewGuid():N}.db");

@@ -28,7 +28,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             SELECT 1 FROM usage_buckets
-            WHERE granularity = $g AND bucket_start_utc >= $start AND bucket_start_utc <= $end
+            WHERE granularity = $g AND bucket_start_utc >= $start AND bucket_start_utc < $end
             LIMIT 1;
             """;
         cmd.Parameters.AddWithValue("$g", chosen);
@@ -52,7 +52,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
               COALESCE(SUM(CASE WHEN is_attributed = 0 THEN tx_bytes ELSE 0 END), 0) AS tx_unattr
             FROM usage_buckets
             WHERE granularity = $granularity
-              AND bucket_start_utc >= $start AND bucket_start_utc <= $end
+              AND bucket_start_utc >= $start AND bucket_start_utc < $end
               AND ($iface IS NULL OR interface_id = $iface);
             """;
         cmd.Parameters.AddWithValue("$granularity", granularity);
@@ -93,7 +93,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             FROM usage_buckets b
             LEFT JOIN applications a ON a.application_key = b.application_key
             WHERE b.granularity = $granularity
-              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
               AND ($iface IS NULL OR b.interface_id = $iface)
             GROUP BY COALESCE(b.application_key, '(unattributed)'), a.display_name
             ORDER BY total DESC
@@ -133,7 +133,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
                    COALESCE(SUM(tx_bytes), 0) AS tx
             FROM usage_buckets
             WHERE granularity = $granularity
-              AND bucket_start_utc >= $start AND bucket_start_utc <= $end
+              AND bucket_start_utc >= $start AND bucket_start_utc < $end
               AND ($iface IS NULL OR interface_id = $iface)
               AND ($app IS NULL OR application_key = $app)
             GROUP BY bucket_start_utc
@@ -431,7 +431,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             FROM usage_buckets b
             LEFT JOIN network_interfaces ni ON ni.interface_id = b.interface_id
             WHERE b.granularity = $granularity
-              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
             GROUP BY COALESCE(b.interface_id, '(unknown)'), ni.interface_name, ni.interface_type
             ORDER BY total DESC;
             """;
@@ -476,7 +476,7 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             LEFT JOIN processes p ON p.process_stable_key = b.process_stable_key
             LEFT JOIN applications a ON a.application_key = COALESCE(b.application_key, p.application_key)
             WHERE b.granularity = $granularity
-              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
               AND ($iface IS NULL OR b.interface_id = $iface)
             GROUP BY COALESCE(b.process_stable_key, '(unattributed)'), b.application_key, a.display_name, a.application_key, p.executable_path
             ORDER BY total DESC
