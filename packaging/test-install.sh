@@ -36,10 +36,14 @@ docker run --rm \
     test -f /usr/share/doc/flow/README.md
     test -f /usr/share/doc/flow/data-policy.md
 
-    echo "[3/7] Verifying group/DB permissions from postinst"
+    echo "[3/7] Verifying group/DB permissions and packaged paths"
     getent group flow >/dev/null
     stat -c "%U:%G %a" /var/lib/flow | grep -q "root:flow 2770"
+    stat -c "%U:%G %a" /var/lib/flow/flow.db | grep -q "root:flow 660"
     id -nG flowtest | tr " " "\n" | grep -qx flow
+    grep -q "CAP_DAC_OVERRIDE" /usr/lib/systemd/system/flow-collector.service
+    grep -q "UMask=0007" /usr/lib/systemd/user/flow-daemon.service
+    grep -q "Flow__DatabasePath=/var/lib/flow/flow.db" /usr/share/applications/flow.desktop
 
     echo "[4/7] Simulating an upgrade: backup created, history preserved"
     echo "history-and-settings" > /var/lib/flow/flow.db

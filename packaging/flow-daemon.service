@@ -5,6 +5,8 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
+# Keep runtime-created DB/WAL files writable by the flow group.
+UMask=0007
 ExecStart=/usr/lib/flow/daemon/Flow.Daemon --Flow:Mode=session --Flow:DatabasePath=/var/lib/flow/flow.db
 Restart=on-failure
 RestartSec=2

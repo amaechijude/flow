@@ -13,8 +13,11 @@ RestartSec=2
 StandardOutput=journal
 StandardError=journal
 NoNewPrivileges=yes
-CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
-AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN
+# CAP_DAC_OVERRIDE is required: the unit restricts the bounding set, so root
+# loses its normal ability to write files it does not own (e.g. a DB created
+# by the user session daemon).
+CapabilityBoundingSet=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_DAC_OVERRIDE
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_DAC_OVERRIDE
 
 [Install]
 WantedBy=multi-user.target

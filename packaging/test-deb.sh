@@ -41,6 +41,9 @@ echo "[2/5] Checking package control"
 grep -q "Flow:Mode=collector" "$root/usr/lib/systemd/system/flow-collector.service"
 grep -q "Flow:Mode=session" "$root/usr/lib/systemd/user/flow-daemon.service"
 grep -q "SystemdService=flow-daemon.service" "$root/usr/share/dbus-1/services/org.flow.Daemon.service"
+grep -q "CAP_DAC_OVERRIDE" "$root/usr/lib/systemd/system/flow-collector.service"
+grep -q "UMask=0007" "$root/usr/lib/systemd/user/flow-daemon.service"
+grep -q "Flow__DatabasePath=/var/lib/flow/flow.db" "$root/usr/share/applications/flow.desktop"
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$root/usr/share/applications/flow.desktop"
 fi
@@ -65,7 +68,7 @@ echo "getent \$*" >> "$log"
 exit 1
 EOF
 chmod +x "$stubbin/getent"
-for cmd in groupadd install usermod systemctl runuser id cp chgrp chmod rm; do
+for cmd in groupadd install usermod systemctl runuser id cp chgrp chown chmod rm; do
   cat > "$stubbin/$cmd" <<EOF
 #!/bin/sh
 echo "$cmd \$*" >> "$log"
@@ -79,6 +82,8 @@ PATH="$stubbin:$PATH" SUDO_USER="$real_user" sh "$repo_root/packaging/prerm.sh" 
 
 grep -q "groupadd --system flow" "$log" || { echo "postinst did not create flow group" >&2; exit 1; }
 grep -q "systemctl enable flow-collector.service" "$log" || { echo "postinst did not enable collector" >&2; exit 1; }
+grep -q "chown root:flow .*flow.db" "$log" || { echo "postinst did not fix database ownership" >&2; exit 1; }
+grep -q "chmod 0660 .*flow.db" "$log" || { echo "postinst did not fix database permissions" >&2; exit 1; }
 grep -q "systemctl stop flow-collector.service" "$log" || { echo "prerm did not stop collector" >&2; exit 1; }
 grep -Eq "runuser -u .* systemctl --user stop flow-daemon.service" "$log" || { cat "$log" >&2; echo "prerm did not stop user daemon" >&2; exit 1; }
 

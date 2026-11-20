@@ -9,10 +9,14 @@ case "$1" in
     getent group flow >/dev/null 2>&1 || groupadd --system flow
     install -d -o root -g flow -m 2770 "$data_dir"
 
-    if [ -f "$data_dir/flow.db" ]; then
-      chgrp flow "$data_dir/flow.db"
-      chmod 0660 "$data_dir/flow.db"
+    # The collector runs as root with a restricted capability set, so the
+    # database must be owned by root and group-writable by 'flow'. The session
+    # daemon may have created it earlier with user ownership; fix it here too.
+    if [ ! -f "$data_dir/flow.db" ]; then
+      : > "$data_dir/flow.db"
     fi
+    chown root:flow "$data_dir/flow.db"
+    chmod 0660 "$data_dir/flow.db"
 
     if [ -n "${SUDO_USER:-}" ] && id "$SUDO_USER" >/dev/null 2>&1; then
       usermod -aG flow "$SUDO_USER" >/dev/null 2>&1 || true

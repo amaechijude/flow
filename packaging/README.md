@@ -36,6 +36,37 @@ writes the shared DB as root. The desktop user reads it through the system
 per-user isolation would require per-user DBs or a broker and is out of scope
 for the first package.
 
+## Troubleshooting: app shows DAEMON OFFLINE / 0 B and no buckets
+
+Two independent causes were found and fixed in the package:
+
+1. **Collector cannot write the database.** The collector unit restricts its
+   capability set to `CAP_BPF CAP_PERFMON CAP_SYS_ADMIN`; without
+   `CAP_DAC_OVERRIDE`, running as root does not override file ownership. If the
+   session daemon created `/var/lib/flow/flow.db` first, the file is owned by
+   the user and the collector logs `SQLite Error 8: attempt to write a readonly
+   database`. Fixed by adding `CAP_DAC_OVERRIDE` to the collector unit and by
+   `postinst` creating/chowning the DB to `root:flow 0660`. The session unit
+   now uses `UMask=0007` so group-shared WAL files stay writable.
+2. **Desktop reads the wrong database.** The packaged launcher had no
+   `Flow__DatabasePath`, so it used `~/.local/share/flow/flow.db` (the
+   development DB) instead of `/var/lib/flow/flow.db`. The launcher now sets
+   `env Flow__DatabasePath=/var/lib/flow/flow.db`.
+
+If you see this on an older install, reinstall the rebuilt `.deb`:
+
+```bash
+sudo systemctl stop flow-collector.service
+systemctl --user stop flow-daemon.service
+sudo dpkg -i packaging/build/flow_0.1.0_amd64.deb
+sudo systemctl restart flow-collector.service
+systemctl --user restart flow-daemon.service
+```
+
+Then close and reopen Flow. Check with
+`journalctl -u flow-collector.service -n 30` (no "readonly database" errors)
+and `busctl --user call org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetContractVersion`.
+
 ## Polkit decision
 
 No Polkit policy is shipped for the first package. The session daemon exposes

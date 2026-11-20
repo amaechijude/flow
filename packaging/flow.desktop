@@ -2,7 +2,7 @@
 Type=Application
 Name=Flow
 Comment=Network usage monitor with per-process attribution
-Exec=/usr/lib/flow/desktop/Flow.Desktop
+Exec=env Flow__DatabasePath=/var/lib/flow/flow.db /usr/lib/flow/desktop/Flow.Desktop
 Icon=utilities-system-monitor
 Terminal=false
 Categories=GNOME;GTK;System;Monitor;

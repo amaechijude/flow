@@ -1466,3 +1466,21 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Note
 - Reinstalling the rebuilt `.deb` on the live host is still needed to pick up the D-Bus activation-order fix.
+
+## 2026-11-20 (fix installed app showing offline / empty)
+
+### Diagnosis (from the live host screenshot and logs)
+- `flow-collector.service` was active but every flush failed with `SQLite Error 8: attempt to write a readonly database`. Its `CapabilityBoundingSet` omitted `CAP_DAC_OVERRIDE`, so root could not write `/var/lib/flow/flow.db` once that file was created by the user session daemon (`amaechi:flow 0644`).
+- The packaged desktop launcher had no `Flow__DatabasePath`, so it read the development DB at `~/.local/share/flow/flow.db` instead of `/var/lib/flow/flow.db`.
+- Result: DAEMON OFFLINE / IPC UNAVAILABLE banner, 0 B totals and no buckets, even though both units were active and the bus name was owned.
+
+### Fixes
+- Added `CAP_DAC_OVERRIDE` to the collector unit's bounding/ambient capabilities.
+- Added `UMask=0007` to the user daemon unit so DB/WAL files stay group-writable.
+- Postinst now creates `flow.db` if absent and always sets `root:flow 0660`.
+- Desktop launcher now sets `Flow__DatabasePath=/var/lib/flow/flow.db`.
+- Added static assertions in `test-deb.sh` and `test-install.sh`; documented the failure mode in `packaging/README.md`.
+
+### Verification
+- `build-deb.sh`, `test-deb.sh` and `test-install.sh` passed with the new assertions (including DB ownership and launcher path).
+- The fix requires reinstalling the rebuilt `.deb` on the live host; that was not done here because sudo is unavailable in-session.
