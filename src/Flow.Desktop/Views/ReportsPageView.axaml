@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.ReportsPageView"
+             x:DataType="vm:ReportsPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="{Binding ReportTitle}" Classes="headline" FontSize="20" />
+                <Border Classes="pill primary" VerticalAlignment="Center">
+                    <TextBlock Text="REAL PERSISTED DATA" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                </Border>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Export CSV" Command="{Binding ExportCsvCommand}"
+                        AutomationProperties.Name="Export this report range as CSV" />
+                <Button Content="Export JSON" Command="{Binding ExportJsonCommand}"
+                        AutomationProperties.Name="Export this report range as JSON" />
+            </StackPanel>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="Report metadata" Classes="section" />
+                    <TextBlock Grid.Column="1" Text="{Binding StateText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                </Grid>
+                <TextBlock Text="{Binding RangeText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
+                           AutomationProperties.Name="Report window" />
+                <TextBlock Text="{Binding GeneratedText}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding ScopeText}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding SourceText}" Classes="mono" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource FlowPrimaryBrush}" />
+                <TextBlock Text="{Binding ExportStatusText}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Total (attributed + unattributed)" Classes="section" />
+                    <TextBlock Text="{Binding TotalText}" Classes="metric" AutomationProperties.Name="Total bytes" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="RX" Classes="caps rx" />
+                        <TextBlock Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="TX" Classes="caps tx" />
+                        <TextBlock Grid.Column="1" Text="{Binding TxText}" Classes="mono tx" FontSize="12" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Attribution split" Classes="section" />
+                    <TextBlock Text="{Binding AttributedPercentText}" Classes="metric" Foreground="{DynamicResource FlowTertiaryBrush}"
+                               AutomationProperties.Name="Percentage of bytes attributed to a process" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Attributed" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding AttributedText}" Classes="mono" FontSize="12" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Unattributed" Classes="caps warn" />
+                        <TextBlock Grid.Column="1" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="12" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="2" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Interfaces" Classes="section" />
+                    <TextBlock Text="{Binding InterfaceCountText}" Classes="metric" Foreground="{DynamicResource FlowSecondaryBrush}"
+                               AutomationProperties.Name="Number of observed interface keys" />
+                    <TextBlock Text="interface key(s) observed in range" Classes="dim" FontSize="11" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Caveats (part of the report)" Classes="section" />
+                <TextBlock Text="{Binding CaveatsText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                           AutomationProperties.Name="Attribution and coverage caveats" />
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Top applications" Classes="section" />
+                    <Grid ColumnDefinitions="*,80,80" Margin="0,2,0,2">
+                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <ItemsControl ItemsSource="{Binding Applications}" AutomationProperties.Name="Top applications in report">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ApplicationRow">
+                                <Grid ColumnDefinitions="*,80,80" Margin="0,5">
+                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" />
+                                    <TextBlock Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="No attributed application rows in this range." IsVisible="{Binding !HasApplications}" Classes="dim" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Top processes" Classes="section" />
+                    <Grid ColumnDefinitions="*,80,80" Margin="0,2,0,2">
+                        <TextBlock Grid.Column="0" Text="PROCESS" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                    </Grid>
+                    <Border Classes="divider" />
+                    <ItemsControl ItemsSource="{Binding Processes}" AutomationProperties.Name="Top processes in report">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ProcessRow">
+                                <Grid ColumnDefinitions="*,80,80" Margin="0,5">
+                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" />
+                                    <TextBlock Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="No attributed process rows in this range." IsVisible="{Binding !HasProcesses}" Classes="dim" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </StackPanel>
+</UserControl>

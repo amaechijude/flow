@@ -124,7 +124,8 @@
                     <TextBlock Grid.Column="1" Text="{Binding WindowText}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
                 <Grid ColumnDefinitions="*,Auto">
-                    <TextBox Text="{Binding BucketSearchText}" PlaceholderText="Filter persisted buckets…" MaxWidth="360" HorizontalAlignment="Left" />
+                    <TextBox Text="{Binding BucketSearchText}" PlaceholderText="Filter persisted buckets…" MaxWidth="360" HorizontalAlignment="Left"
+                             AutomationProperties.Name="Filter persisted buckets" />
                     <TextBlock Grid.Column="1" Text="{Binding BucketSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
                 <Grid ColumnDefinitions="*,100,100,110">
@@ -134,7 +135,7 @@
                     <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
                 </Grid>
                 <Border Classes="divider" />
-                <ListBox ItemsSource="{Binding Buckets}" MaxHeight="380">
+                <ListBox ItemsSource="{Binding Buckets}" MaxHeight="380" AutomationProperties.Name="Persisted buckets list">
                     <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:TimeSeriesRow">
                             <Grid ColumnDefinitions="*,100,100,110" Margin="0,3" ColumnSpacing="4">

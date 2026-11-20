@@ -33,7 +33,8 @@
                 </Grid>
 
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <TextBox Grid.Column="0" Text="{Binding AppSearchText}" PlaceholderText="Filter by application name or key…" MaxWidth="420" HorizontalAlignment="Left" />
+                    <TextBox Grid.Column="0" Text="{Binding AppSearchText}" PlaceholderText="Filter by application name or key…" MaxWidth="420" HorizontalAlignment="Left"
+                             AutomationProperties.Name="Filter applications" />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                         <Button Classes="tab" Classes.active="{Binding IsAllFilter}" Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all" />
                         <Button Classes="tab" Classes.active="{Binding IsAttributedFilter}" Content="Attributed" Command="{Binding SetFilterCommand}" CommandParameter="attributed" />
@@ -52,7 +53,8 @@
 
                 <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
                     <StackPanel Grid.Column="0" Spacing="4">
-                        <ListBox ItemsSource="{Binding Applications}" SelectedItem="{Binding SelectedApplication}" MaxHeight="330">
+                        <ListBox ItemsSource="{Binding Applications}" SelectedItem="{Binding SelectedApplication}" MaxHeight="330"
+                                 AutomationProperties.Name="Applications list">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ApplicationRow">
                                     <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
@@ -126,7 +128,8 @@
                     <TextBlock Grid.Column="1" Text="{Binding ProcessSortSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
 
-                <TextBox Text="{Binding ProcessSearchText}" PlaceholderText="Filter by process name, application, stable key or executable path…" MaxWidth="520" HorizontalAlignment="Left" />
+                <TextBox Text="{Binding ProcessSearchText}" PlaceholderText="Filter by process name, application, stable key or executable path…" MaxWidth="520" HorizontalAlignment="Left"
+                         AutomationProperties.Name="Filter processes" />
 
                 <Grid ColumnDefinitions="*,96,70,70,86,92" ColumnSpacing="4">
                     <Button Grid.Column="0" Classes="sort left" Content="PROCESS / EXECUTABLE" Command="{Binding SortProcessesCommand}" CommandParameter="name" />
@@ -139,7 +142,8 @@
                 <Border Classes="divider" />
 
                 <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
-                    <ListBox Grid.Column="0" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess}" MaxHeight="360">
+                    <ListBox Grid.Column="0" ItemsSource="{Binding Processes}" SelectedItem="{Binding SelectedProcess}" MaxHeight="360"
+                             AutomationProperties.Name="Processes list">
                         <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProcessRow">
                                 <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">

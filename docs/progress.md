@@ -1307,3 +1307,23 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - Boundary buckets are included whole; exact-window billing is not claimed.
 - Durable flush retry/backoff, Reports/History/Settings pages, comparisons, full UI a11y, and real systemd user-session validation remain open.
+
+## 2026-11-20 (UI a11y + Reports/History/Settings pages)
+
+### Implementation
+- Added `UsageHistory.GroupByLocalDay` (Application) to group single-granularity persisted buckets into local calendar days with a caller-supplied offset; added Application unit tests for offset handling and empty input.
+- Added three desktop pages wired into `MainViewModel` navigation and refresh:
+  - **Reports**: formatted real-data report (range, provenance, total/RX/TX, attributed vs unattributed split, interface count, top 15 applications/processes, all caveats) with CSV/JSON export delegates to the existing export path.
+  - **History**: local-day totals + persisted bucket table, labelled with the query granularity (including the 1m fallback caveat) and the boundary-bucket limitation.
+  - **Settings**: read-only real environment paths, IPC contract identity, current provider/state, retention/granularity policy, display offset and measurement caveats; no placeholder toggles.
+- Extracted `AppPaths.DatabasePath()` so the UI and Settings page use one real database path source.
+- Accessibility: `AutomationProperties.Name` on all sidebar navigation, toolbar/range/interface controls, search boxes, list/items tables and custom-drawn bars; the `TimeSeriesChart` is focusable and exposes its real caption as `AutomationProperties.HelpText`/tooltip.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded (0 errors); Avalonia compiled bindings validate all new views against their `x:DataType` view models.
+- `dotnet test Flow.slnx` → 72/72 passing (Application 22; others unchanged).
+- The GUI was not launched on the user's display; runtime screen-reader conformance remains unverified.
+
+### Limitations / next
+- Charts still lack zoom/tooltip/per-point inspection; a full keyboard/screen-reader conformance pass and runtime smoke test of the new pages remain open.
+- Comparisons, durable flush retry/backoff, upgrade/uninstall data handling and real systemd user-session validation remain open.

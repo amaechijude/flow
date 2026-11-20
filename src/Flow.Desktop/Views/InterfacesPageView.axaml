@@ -58,7 +58,8 @@
                     <TextBlock Grid.Column="1" Text="{Binding SortSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                    <TextBox Grid.Column="0" Text="{Binding SearchText}" PlaceholderText="Filter by interface name, key or type…" MaxWidth="420" HorizontalAlignment="Left" />
+                    <TextBox Grid.Column="0" Text="{Binding SearchText}" PlaceholderText="Filter by interface name, key or type…" MaxWidth="420" HorizontalAlignment="Left"
+                             AutomationProperties.Name="Filter interfaces" />
                     <TextBlock Grid.Column="1" Text="Sort by clicking a column header" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
 
@@ -73,7 +74,8 @@
 
                 <Grid ColumnDefinitions="2*,*" ColumnSpacing="14">
                     <StackPanel Grid.Column="0" Spacing="4">
-                        <ListBox ItemsSource="{Binding Interfaces}" SelectedItem="{Binding SelectedInterface}" MaxHeight="420">
+                        <ListBox ItemsSource="{Binding Interfaces}" SelectedItem="{Binding SelectedInterface}" MaxHeight="420"
+                                 AutomationProperties.Name="Interfaces list">
                             <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:InterfaceRow">
                                     <Border Padding="0,8" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">

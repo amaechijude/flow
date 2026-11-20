@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.SettingsPageView"
+             x:DataType="vm:SettingsPageViewModel">
+
+    <StackPanel Spacing="16">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <TextBlock Text="Settings &amp; provenance" Classes="headline" FontSize="20" />
+            <Border Classes="pill" VerticalAlignment="Center">
+                <TextBlock Text="READ-ONLY" Classes="caps" />
+            </Border>
+        </StackPanel>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="About this value-exposure notice" Classes="section" />
+                <TextBlock Classes="muted" FontSize="11" TextWrapping="Wrap"
+                           Text="Every value below is either a real environment setting, a shipped retention/query policy, or the current snapshot's own provenance. There are no editable toggles because none of these are wired to a persisted preference yet; showing one would be misleading." />
+            </StackPanel>
+        </Border>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
+            <Border Grid.Column="0" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Data paths" Classes="section" />
+                    <TextBlock Text="Database" Classes="caps" />
+                    <TextBlock Text="{Binding DatabasePathText}" Classes="mono" FontSize="11" TextWrapping="Wrap"
+                               AutomationProperties.Name="SQLite database path" />
+                    <Border Classes="divider" />
+                    <TextBlock Text="Export directory" Classes="caps" />
+                    <TextBlock Text="{Binding ExportDirectoryText}" Classes="mono" FontSize="11" TextWrapping="Wrap"
+                               AutomationProperties.Name="Export directory setting" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Connection" Classes="section" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Data source" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding DataSourceText}" Classes="mono" FontSize="10"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="220" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Provider" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding ProviderText}" Classes="mono" FontSize="10" />
+                    </Grid>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="State" Classes="caps" />
+                        <TextBlock Grid.Column="1" Text="{Binding StateText}" Classes="mono" FontSize="10" />
+                    </Grid>
+                    <TextBlock Text="{Binding MeasurementText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                    <Border Classes="divider" />
+                    <TextBlock Text="IPC" Classes="caps" />
+                    <TextBlock Text="{Binding ContractText}" Classes="mono" FontSize="10" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Time, retention and query policy" Classes="section" />
+                <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                    <TextBlock Grid.Row="0" Text="Display time" Classes="caps" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding DisplayTimeZoneText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="1" Text="Granularity" Classes="caps" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding GranularityText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Text="Retention" Classes="caps" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RetentionText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Measurement caveats" Classes="section" />
+                <TextBlock Text="{Binding CaveatsText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                           AutomationProperties.Name="Measurement and attribution caveats" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

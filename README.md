@@ -8,10 +8,12 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **70/70 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **72/72 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
-  and Diagnostics pages; CSV/JSON export uses a real file picker and includes
-  provenance/caveats.
+  Diagnostics, Reports, History, and Settings pages; CSV/JSON export uses a real
+  file picker and includes provenance/caveats. Interactive and custom-drawn
+  controls have accessibility names; a full screen-reader conformance pass is
+  still outstanding.
 - Daemon: SQLite persistence, D-Bus session-bus IPC (contract v3), real
   monitoring diagnostics, and a truthful SQLite fallback when IPC is unavailable.
 - Attribution provider: privileged eBPF loader with TCP+UDP byte accounting and
@@ -87,7 +89,7 @@ Do not treat the attribution gate as closed. Important caveats:
 - IPC is session-bus v1 only; signals are best-effort/coalesced, and a root-run
   daemon may not claim the user-session D-Bus name.
 - Rollups (5m/1h/1d/1mo) are rebuilt idempotently from 1m buckets and consumed by queries for long ranges (one granularity per query; boundary buckets are included whole, so long-range totals may include bytes slightly outside the exact window). Retention prunes 1m after 7 days, 5m after 35 days, and 1h after 400 days; 1d/1mo are kept indefinitely. No durable flush queue or Reports/Settings pages yet.
-- Charts and tables have not had a full keyboard/screen-reader accessibility pass.
+- Charts and tables have accessibility names and a textual chart summary, but have not had a full keyboard/screen-reader conformance pass.
 
 ## Packaging
 

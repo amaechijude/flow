@@ -51,7 +51,9 @@
                         <TextBlock Text="{Binding TxText}" Classes="mono tx" FontSize="11" />
                     </StackPanel>
                     <controls:SplitBar Height="5" First="{Binding RxShare}" Second="{Binding TxShare}"
-                                       FirstBrush="{DynamicResource FlowSecondaryBrush}" SecondBrush="{DynamicResource FlowPrimaryBrush}" />
+                                       FirstBrush="{DynamicResource FlowSecondaryBrush}" SecondBrush="{DynamicResource FlowPrimaryBrush}"
+                                       AutomationProperties.Name="RX and TX share bar"
+                                       AutomationProperties.HelpText="Shows the relative share of received and transmitted bytes." />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="{Binding RxShareText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
                         <TextBlock Grid.Column="1" Text="{Binding TxShareText}" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
@@ -76,7 +78,9 @@
                         <TextBlock Text="{Binding UnattributedText}" Classes="mono warn" FontSize="11" />
                     </StackPanel>
                     <controls:SplitBar Height="5" First="{Binding AttributedShare}" Second="{Binding UnattributedShare}"
-                                       FirstBrush="{DynamicResource FlowTertiaryBrush}" SecondBrush="{DynamicResource FlowWarningBrush}" />
+                                       FirstBrush="{DynamicResource FlowTertiaryBrush}" SecondBrush="{DynamicResource FlowWarningBrush}"
+                                       AutomationProperties.Name="Attributed and unattributed share bar"
+                                       AutomationProperties.HelpText="Unattributed bytes are real observed traffic, not zero." />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="ATTRIBUTED" Classes="caps" Foreground="{DynamicResource FlowTertiaryBrush}" />
                         <TextBlock Grid.Column="1" Text="UNATTRIBUTED" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
@@ -141,7 +145,11 @@
                 <TextBlock Text="{Binding ChartCaption}" Classes="dim" FontSize="11" />
                 <Border Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
                         BorderThickness="1" CornerRadius="4" Padding="6">
-                    <controls:TimeSeriesChart Height="252" Points="{Binding ChartPoints}" />
+                    <controls:TimeSeriesChart Height="252" Points="{Binding ChartPoints}"
+                                              IsTabStop="True"
+                                              ToolTip.Tip="{Binding ChartCaption}"
+                                              AutomationProperties.Name="RX and TX by persisted bucket"
+                                              AutomationProperties.HelpText="{Binding ChartCaption}" />
                 </Border>
             </StackPanel>
         </Border>
@@ -167,7 +175,7 @@
                         <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
                     </Grid>
                     <Border Classes="divider" />
-                    <ItemsControl ItemsSource="{Binding TopApplications}">
+                    <ItemsControl ItemsSource="{Binding TopApplications}" AutomationProperties.Name="Top applications table">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ApplicationRow">
                                 <Border Padding="0,7" BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1">
@@ -199,7 +207,7 @@
                             <TextBlock Text="Network interfaces" Classes="section" />
                             <TextBlock Grid.Column="1" Text="ALL INTERFACES" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
                         </Grid>
-                        <ItemsControl ItemsSource="{Binding Interfaces}">
+                        <ItemsControl ItemsSource="{Binding Interfaces}" AutomationProperties.Name="Observed interfaces table">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:InterfaceRow">
                                     <Grid ColumnDefinitions="*,Auto" Margin="0,5">
@@ -231,7 +239,7 @@
                             <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
                         </Grid>
                         <Border Classes="divider" />
-                        <ItemsControl ItemsSource="{Binding RecentBuckets}">
+                        <ItemsControl ItemsSource="{Binding RecentBuckets}" AutomationProperties.Name="Recent persisted buckets table">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:TimeSeriesRow">
                                     <Grid ColumnDefinitions="*,70,70" Margin="0,4">

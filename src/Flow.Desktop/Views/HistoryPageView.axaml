@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Flow.Desktop.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1180"
+             x:Class="Flow.Desktop.Views.HistoryPageView"
+             x:DataType="vm:HistoryPageViewModel">
+
+    <StackPanel Spacing="16">
+        <Grid ColumnDefinitions="*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <TextBlock Text="Usage history" Classes="headline" FontSize="20" />
+                <Border Classes="pill primary" VerticalAlignment="Center">
+                    <TextBlock Text="PERSISTED BUCKETS" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                </Border>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="{Binding ResolutionText}" Classes="mono" FontSize="11" Foreground="{DynamicResource FlowSecondaryBrush}" />
+                <TextBlock Text="{Binding WindowText}" Classes="dim" FontSize="11" />
+            </StackPanel>
+        </Grid>
+
+        <Border Classes="card">
+            <StackPanel Spacing="6">
+                <TextBlock Text="Range summary" Classes="section" />
+                <TextBlock Text="{Binding SummaryText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
+                           AutomationProperties.Name="Persisted bucket range summary" />
+                <TextBlock Classes="dim" FontSize="11" TextWrapping="Wrap"
+                           Text="Buckets come from the local database or daemon IPC. Long ranges use coarser rollups whose boundary buckets are included whole, so totals may include bytes slightly outside the exact window. Times are local; storage and export are UTC." />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Daily totals (local time)" Classes="section" />
+                <Grid ColumnDefinitions="*,110,110,120,72" Margin="0,2,0,2">
+                    <TextBlock Grid.Column="0" Text="LOCAL DAY" Classes="caps" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="BUCKETS" Classes="caps" TextAlignment="Right" />
+                </Grid>
+                <Border Classes="divider" />
+                <ItemsControl ItemsSource="{Binding Days}" AutomationProperties.Name="Daily usage totals table">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:HistoryDailyRow">
+                            <Grid ColumnDefinitions="*,110,110,120,72" Margin="0,5">
+                                <TextBlock Grid.Column="0" Text="{Binding Day}" Classes="mono" FontSize="11" />
+                                <TextBlock Grid.Column="1" Text="{Binding Rx}" Classes="mono rx" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="2" Text="{Binding Tx}" Classes="mono tx" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="3" Text="{Binding Total}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                                <TextBlock Grid.Column="4" Text="{Binding Buckets}" Classes="mono" FontSize="11" TextAlignment="Right" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="No persisted buckets in this range." IsVisible="{Binding !HasDays}" Classes="dim" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+            <StackPanel Spacing="8">
+                <TextBlock Text="Persisted buckets" Classes="section" />
+                <Grid ColumnDefinitions="*,100,100,100" Margin="0,2,0,2">
+                    <TextBlock Grid.Column="0" Text="LOCAL TIME" Classes="caps" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                </Grid>
+                <Border Classes="divider" />
+                <ScrollViewer MaxHeight="340">
+                    <ItemsControl ItemsSource="{Binding Buckets}" AutomationProperties.Name="Persisted usage buckets table">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TimeSeriesRow">
+                                <Grid ColumnDefinitions="*,100,100,100" Margin="0,4">
+                                    <TextBlock Grid.Column="0" Text="{Binding Bucket}" Classes="mono" FontSize="10" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Rx}" Classes="mono rx" FontSize="10" TextAlignment="Right" />
+                                    <TextBlock Grid.Column="2" Text="{Binding Tx}" Classes="mono tx" FontSize="10" TextAlignment="Right" />
+                                    <TextBlock Grid.Column="3" Text="{Binding Total}" Classes="mono" FontSize="10" TextAlignment="Right" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+                <TextBlock Text="No buckets to display." IsVisible="{Binding !HasBuckets}" Classes="dim" />
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

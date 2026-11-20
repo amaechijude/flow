@@ -43,6 +43,7 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="148"
+                              AutomationProperties.Name="Time range"
                               ToolTip.Tip="Rolling window or local calendar day; times are shown in local time">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:RangeOption">
@@ -51,6 +52,7 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <ComboBox ItemsSource="{Binding InterfaceFilters}" SelectedItem="{Binding SelectedInterfaceFilter}" MinWidth="176"
+                              AutomationProperties.Name="Interface filter"
                               ToolTip.Tip="Filter summary, applications, processes and time series by interface">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:InterfaceFilterOption">
@@ -58,9 +60,12 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Content="⟳" Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh real persisted data and daemon status" />
-                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" ToolTip.Tip="Export the currently loaded view to CSV" />
-                    <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" ToolTip.Tip="Export the currently loaded view to JSON" />
+                    <Button Content="⟳" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh data and daemon status"
+                            ToolTip.Tip="Refresh real persisted data and daemon status" />
+                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" AutomationProperties.Name="Export current view as CSV"
+                            ToolTip.Tip="Export the currently loaded view to CSV" />
+                    <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" AutomationProperties.Name="Export current view as JSON"
+                            ToolTip.Tip="Export the currently loaded view to JSON" />
                     <TextBlock Text="Loading…" IsVisible="{Binding IsBusy}" VerticalAlignment="Center"
                                Foreground="{DynamicResource FlowPrimaryBrush}" FontSize="12" Margin="4,0,0,0" />
                 </StackPanel>
@@ -74,28 +79,53 @@
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel Grid.Row="0" Spacing="2">
                         <TextBlock Text="NAVIGATION" Classes="caps" Margin="10,8,0,6" />
-                        <Button Classes="nav" Classes.active="{Binding IsOverviewActive}" Command="{Binding NavigateCommand}" CommandParameter="overview">
+                        <Button Classes="nav" Classes.active="{Binding IsOverviewActive}" Command="{Binding NavigateCommand}" CommandParameter="overview"
+                                AutomationProperties.Name="Overview page">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="▦" FontSize="13" />
                                 <TextBlock Text="Overview" />
                             </StackPanel>
                         </Button>
-                        <Button Classes="nav" Classes.active="{Binding IsApplicationsActive}" Command="{Binding NavigateCommand}" CommandParameter="applications">
+                        <Button Classes="nav" Classes.active="{Binding IsApplicationsActive}" Command="{Binding NavigateCommand}" CommandParameter="applications"
+                                AutomationProperties.Name="Apps and processes page">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="▤" FontSize="13" />
                                 <TextBlock Text="Apps &amp; Processes" />
                             </StackPanel>
                         </Button>
-                        <Button Classes="nav" Classes.active="{Binding IsInterfacesActive}" Command="{Binding NavigateCommand}" CommandParameter="interfaces">
+                        <Button Classes="nav" Classes.active="{Binding IsInterfacesActive}" Command="{Binding NavigateCommand}" CommandParameter="interfaces"
+                                AutomationProperties.Name="Network interfaces page">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⇄" FontSize="13" />
                                 <TextBlock Text="Network Interfaces" />
                             </StackPanel>
                         </Button>
-                        <Button Classes="nav" Classes.active="{Binding IsDiagnosticsActive}" Command="{Binding NavigateCommand}" CommandParameter="diagnostics">
+                        <Button Classes="nav" Classes.active="{Binding IsDiagnosticsActive}" Command="{Binding NavigateCommand}" CommandParameter="diagnostics"
+                                AutomationProperties.Name="Diagnostics and daemon page">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⌗" FontSize="13" />
                                 <TextBlock Text="Diagnostics &amp; Daemon" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsReportsActive}" Command="{Binding NavigateCommand}" CommandParameter="reports"
+                                AutomationProperties.Name="Reports page">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="▤" FontSize="13" />
+                                <TextBlock Text="Reports" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsHistoryActive}" Command="{Binding NavigateCommand}" CommandParameter="history"
+                                AutomationProperties.Name="History page">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="◷" FontSize="13" />
+                                <TextBlock Text="History" />
+                            </StackPanel>
+                        </Button>
+                        <Button Classes="nav" Classes.active="{Binding IsSettingsActive}" Command="{Binding NavigateCommand}" CommandParameter="settings"
+                                AutomationProperties.Name="Settings and provenance page">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <TextBlock Text="⚙" FontSize="13" />
+                                <TextBlock Text="Settings" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -152,10 +182,11 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="Custom range" Classes="caps" VerticalAlignment="Center" />
                             <TextBlock Text="From" Classes="muted" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding CustomStartDate}" />
+                            <DatePicker SelectedDate="{Binding CustomStartDate}" AutomationProperties.Name="Custom range start date" />
                             <TextBlock Text="To" Classes="muted" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding CustomEndDate}" />
-                            <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}" />
+                            <DatePicker SelectedDate="{Binding CustomEndDate}" AutomationProperties.Name="Custom range end date" />
+                            <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}"
+                                    AutomationProperties.Name="Apply custom range" />
                             <TextBlock Text="Local days → UTC buckets; display is local time." Classes="dim" VerticalAlignment="Center" />
                         </StackPanel>
                     </Border>

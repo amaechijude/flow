@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Flow.Application.Queries;
 using Flow.Contracts.Monitoring;
 using Flow.Contracts.Usage;
 using Flow.Desktop.Services;
@@ -41,6 +42,9 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] public partial bool IsApplicationsActive { get; set; }
     [ObservableProperty] public partial bool IsInterfacesActive { get; set; }
     [ObservableProperty] public partial bool IsDiagnosticsActive { get; set; }
+    [ObservableProperty] public partial bool IsReportsActive { get; set; }
+    [ObservableProperty] public partial bool IsHistoryActive { get; set; }
+    [ObservableProperty] public partial bool IsSettingsActive { get; set; }
 
     [ObservableProperty] public partial string DaemonStateText { get; set; } = "DAEMON STATUS UNKNOWN";
     [ObservableProperty] public partial IBrush DaemonStateBrush { get; set; } = WarningBrush;
@@ -84,6 +88,9 @@ public partial class MainViewModel : ViewModelBase
     public ApplicationsPageViewModel Applications { get; } = new();
     public InterfacesPageViewModel Interfaces { get; } = new();
     public DiagnosticsPageViewModel Diagnostics { get; } = new();
+    public ReportsPageViewModel Reports { get; }
+    public HistoryPageViewModel History { get; } = new();
+    public SettingsPageViewModel Settings { get; } = new();
 
     public MainViewModel(
         IDaemonStatusClient statusClient,
@@ -97,6 +104,9 @@ public partial class MainViewModel : ViewModelBase
         _notifier = notifier;
         _dataSourceStatus = usageClient as IDataSourceStatus;
         _statusSourceStatus = statusClient as IDataSourceStatus;
+        Reports = new ReportsPageViewModel(
+            () => _ = ExportCsvAsync(),
+            () => _ = ExportJsonAsync());
 
         var todayLocal = DateTimeOffset.Now.Date;
         CustomStartDate = new DateTimeOffset(todayLocal, DateTimeOffset.Now.Offset);
@@ -139,6 +149,15 @@ public partial class MainViewModel : ViewModelBase
             case "diagnostics":
                 CurrentPage = Diagnostics;
                 break;
+            case "reports":
+                CurrentPage = Reports;
+                break;
+            case "history":
+                CurrentPage = History;
+                break;
+            case "settings":
+                CurrentPage = Settings;
+                break;
             default:
                 CurrentPage = Overview;
                 break;
@@ -148,6 +167,9 @@ public partial class MainViewModel : ViewModelBase
         IsApplicationsActive = ReferenceEquals(CurrentPage, Applications);
         IsInterfacesActive = ReferenceEquals(CurrentPage, Interfaces);
         IsDiagnosticsActive = ReferenceEquals(CurrentPage, Diagnostics);
+        IsReportsActive = ReferenceEquals(CurrentPage, Reports);
+        IsHistoryActive = ReferenceEquals(CurrentPage, History);
+        IsSettingsActive = ReferenceEquals(CurrentPage, Settings);
     }
 
     [RelayCommand]
@@ -208,6 +230,14 @@ public partial class MainViewModel : ViewModelBase
             Applications.Apply(snapshot);
             Interfaces.Apply(snapshot);
             Diagnostics.Apply(snapshot);
+
+            var resolution = UsageGranularityPolicy.Choose(start, end);
+            var resolutionLabel = resolution == "1m"
+                ? "1m"
+                : $"{resolution} (falls back to 1m until rollups exist)";
+            Reports.Apply(snapshot);
+            History.Apply(snapshot, resolutionLabel);
+            Settings.Apply(snapshot);
 
             ApplyShellStatus(status, ipcLive);
         }
