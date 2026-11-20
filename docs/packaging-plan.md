@@ -53,9 +53,11 @@ A prototype `.deb` can now be built with `./packaging/build-deb.sh`; the remaini
 - UI: Reports/History/Settings pages and basic accessibility names/textual chart
   summary are implemented; full screen-reader conformance pass, chart
   interaction/per-point inspection and comparisons remain.
-- Package: binaries, units, D-Bus service file, desktop launcher, dependencies
-  (`libbpf`, `libelf`, `zlib`), postinst/postrm scripts, upgrade/uninstall data
-  handling, and security/privacy/recovery tests.
+- Package: binaries, units, D-Bus service file, desktop launcher and dependencies
+  (`libbpf`, `libelf`, `zlib`) are in the prototype `.deb`. `postinst`/`prerm`/
+  `postrm` and upgrade/uninstall data handling are implemented and validated by
+  `test-deb.sh` and `test-install.sh` (see `packaging/data-policy.md` and ADR 0012).
+  Remaining: security/privacy/recovery tests and release-quality hardening.
 
 ## Accepted limitations for the first package
 

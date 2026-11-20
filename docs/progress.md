@@ -1343,3 +1343,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - The durable queue covers byte deltas only; metadata upserts remain best-effort.
 - Not validated under a real crash or a long privileged soak; no exact-window comparisons, upgrade/uninstall data handling, or systemd user-session validation yet.
+
+## 2026-11-20 (package upgrade/uninstall data lifecycle)
+
+### Implementation
+- Added `packaging/data-policy.md` and ADR 0012: `/var/lib/flow` is user measurement data. Upgrade preserves it and takes a quiescent `flow.db.pre-upgrade` copy after services stop; remove and default purge preserve it; full removal requires explicit `FLOW_PURGE_DATA=yes` or `PURGE_DATA=yes` in `/etc/flow/purge-data.conf` (parsed with grep, never sourced).
+- Added `postrm.sh`; extended `prerm.sh` with the upgrade backup and explicit lifecycle cases; `postinst.sh` now reports upgrades and reuses a configurable data dir. Maintainer scripts accept internal `FLOW_DATA_DIR`/`FLOW_PURGE_CONFIG` overrides for host-safe testing.
+- `build-deb.sh` ships `postrm` plus the data-policy doc; `test-deb.sh` now syntax-checks and simulates upgrade/remove/default-purge/opt-in-purge with stubbed commands; `test-install.sh` exercises install → upgrade → remove → default purge → opt-in purge in a disposable Ubuntu container.
+- Refreshed packaging README, packaging plan, root README and HANDOFF to reflect that a prototype .deb exists and to state the data policy.
+
+### Verification
+- `./packaging/build-deb.sh`, `./packaging/test-deb.sh` (including stubbed lifecycle assertions) and `./packaging/test-install.sh` (real Docker install/upgrade/remove/purge) all passed.
+- `dotnet build Flow.slnx` / `dotnet test Flow.slnx` unchanged at 81/81 (no .NET code changes in this increment).
+
+### Limitations / next
+- Pre-upgrade copy is best-effort and overwritten each upgrade; not a backup solution. The `flow` group is intentionally left behind on purge.
+- Release-quality security/privacy/recovery tests, real systemd user-session validation and full screen-reader conformance remain open.

@@ -94,7 +94,10 @@ Do not treat the attribution gate as closed. Important caveats:
 
 ## Packaging
 
-Not packaged yet. Remaining productization work is listed in `HANDOFF.md`:
-IPC/privilege topology, full UI accessibility conformance, and
-systemd/D-Bus/Polkit/`.deb` packaging. Keep the caveats above in any shipped
-documentation.
+A prototype `.deb` can be built and validated with `packaging/build-deb.sh`,
+`packaging/test-deb.sh` and `packaging/test-install.sh` (the latter needs Docker).
+It is not a release-quality package. Data survives upgrade, remove and default
+purge; full removal requires an explicit opt-in (`packaging/data-policy.md`,
+ADR 0012). Remaining productization work is listed in `HANDOFF.md`: full UI
+accessibility conformance and recovery/security/privacy tests. Keep the caveats
+above in any shipped documentation.

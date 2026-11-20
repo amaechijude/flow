@@ -22,10 +22,10 @@ docker run --rm \
     rm -f /etc/dpkg/dpkg.cfg.d/excludes
     useradd -m -s /bin/bash flowtest
 
-    echo "[1/5] Installing package with dependency checks disabled"
+    echo "[1/7] Installing package with dependency checks disabled"
     dpkg --force-depends -i /tmp/flow.deb
 
-    echo "[2/5] Verifying installed layout"
+    echo "[2/7] Verifying installed layout"
     test -x /usr/lib/flow/daemon/Flow.Daemon
     test -x /usr/lib/flow/desktop/Flow.Desktop
     test -x /usr/lib/flow/loader/flow_tcp_bytes_loader
@@ -34,23 +34,38 @@ docker run --rm \
     test -f /usr/share/dbus-1/services/org.flow.Daemon.service
     test -f /usr/share/applications/flow.desktop
     test -f /usr/share/doc/flow/README.md
+    test -f /usr/share/doc/flow/data-policy.md
 
-    echo "[3/5] Verifying group/DB permissions from postinst"
+    echo "[3/7] Verifying group/DB permissions from postinst"
     getent group flow >/dev/null
     stat -c "%U:%G %a" /var/lib/flow | grep -q "root:flow 2770"
     id -nG flowtest | tr " " "\n" | grep -qx flow
 
-    echo "[4/5] Removing package (data must survive)"
-    echo "persisted" > /var/lib/flow/flow.db
+    echo "[4/7] Simulating an upgrade: backup created, history preserved"
+    echo "history-and-settings" > /var/lib/flow/flow.db
+    sh /var/lib/dpkg/info/flow.prerm upgrade
+    test -f /var/lib/flow/flow.db.pre-upgrade
+    grep -q history-and-settings /var/lib/flow/flow.db.pre-upgrade
+    dpkg --force-depends -i /tmp/flow.deb
+    grep -q history-and-settings /var/lib/flow/flow.db
+    stat -c "%U:%G %a" /var/lib/flow | grep -q "root:flow 2770"
+
+    echo "[5/7] Removing package (data must survive)"
     dpkg -r flow >/dev/null
     test ! -e /usr/lib/flow/daemon/Flow.Daemon
     test ! -e /usr/share/applications/flow.desktop
     test -f /var/lib/flow/flow.db
-    grep -q persisted /var/lib/flow/flow.db
+    grep -q history-and-settings /var/lib/flow/flow.db
 
-    echo "[5/5] Purging package (data must still survive)"
+    echo "[6/7] Purging package by default (data must still survive)"
     dpkg -P flow >/dev/null
     test -f /var/lib/flow/flow.db
+    grep -q history-and-settings /var/lib/flow/flow.db
 
-    echo "disposable install/uninstall smoke test passed"
+    echo "[7/7] Opt-in purge removes data explicitly"
+    dpkg --force-depends -i /tmp/flow.deb
+    FLOW_PURGE_DATA=yes dpkg -P flow >/dev/null
+    test ! -e /var/lib/flow
+
+    echo "disposable install/upgrade/remove/purge smoke test passed"
   '

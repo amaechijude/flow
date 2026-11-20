@@ -37,7 +37,9 @@ cp "$repo_root/packaging/flow.desktop" "$stage/usr/share/applications/"
 cp "$repo_root/packaging/deb/DEBIAN/control" "$stage/DEBIAN/control"
 cp "$repo_root/packaging/postinst.sh" "$stage/DEBIAN/postinst"
 cp "$repo_root/packaging/prerm.sh" "$stage/DEBIAN/prerm"
+cp "$repo_root/packaging/postrm.sh" "$stage/DEBIAN/postrm"
 cp "$repo_root/README.md" "$stage/usr/share/doc/flow/README.md"
+cp "$repo_root/packaging/data-policy.md" "$stage/usr/share/doc/flow/data-policy.md"
 
 echo "[4/5] Setting permissions"
 find "$stage" -type d -exec chmod 0755 {} +
@@ -45,7 +47,7 @@ find "$stage" -type f -exec chmod 0644 {} +
 chmod 0755 "$stage/usr/lib/flow/daemon/Flow.Daemon"
 chmod 0755 "$stage/usr/lib/flow/desktop/Flow.Desktop"
 chmod 0755 "$stage/usr/lib/flow/loader/flow_tcp_bytes_loader"
-chmod 0755 "$stage/DEBIAN/postinst" "$stage/DEBIAN/prerm"
+chmod 0755 "$stage/DEBIAN/postinst" "$stage/DEBIAN/prerm" "$stage/DEBIAN/postrm"
 if command -v desktop-file-validate >/dev/null 2>&1; then
   desktop-file-validate "$stage/usr/share/applications/flow.desktop"
 fi

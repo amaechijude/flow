@@ -1,8 +1,8 @@
-# Packaging scaffolding (draft)
+# Packaging scaffolding and prototype `.deb`
 
-These files draft the systemd/D-Bus topology from `docs/packaging-plan.md`. They
-are not yet wired into a `.deb`; `dpkg-deb` metadata and maintainer scripts still
-need to be added.
+These files implement the systemd/D-Bus topology from `docs/packaging-plan.md`.
+A prototype `.deb` can be built and validated with the scripts below. It is
+still a prototype: not all release-quality items are complete.
 
 ## Files
 
@@ -10,8 +10,11 @@ need to be added.
   privileged eBPF loader, no D-Bus registration.
 - `flow-daemon.service` — user unit, `Flow:Mode=session`, D-Bus IPC only.
 - `org.flow.Daemon.service` — D-Bus session activation for the user daemon.
-- `postinst.sh` / `prerm.sh` — draft maintainer helpers for group/DB permissions
-  and service lifecycle.
+- `flow.desktop` — desktop launcher.
+- `postinst.sh`, `prerm.sh`, `postrm.sh` — maintainer scripts for group/DB
+  permissions, upgrade backup and data-lifecycle handling.
+- `data-policy.md` — **authoritative** policy for what happens to the database
+  on install, upgrade, remove and purge. See also ADR 0012.
 
 ## Intended layout
 
@@ -22,13 +25,14 @@ need to be added.
 /usr/lib/systemd/system/flow-collector.service
 /usr/lib/systemd/user/flow-daemon.service
 /usr/share/dbus-1/services/org.flow.Daemon.service
-/var/lib/flow/flow.db
+/var/lib/flow/flow.db                 # runtime measurement data, not a package file
+/var/lib/flow/flow.db.pre-upgrade     # upgrade safety copy
 ```
 
 Systemd `ExecStart` uses command-line configuration keys with `:` (for example
 `--Flow:Mode=collector`); environment variables use `__` instead. The collector
-writes the shared DB as root. The desktop user reads it through
-the system `flow` group. Any member of that group can read all usage history;
+writes the shared DB as root. The desktop user reads it through the system
+`flow` group. Any member of that group can read all usage history;
 per-user isolation would require per-user DBs or a broker and is out of scope
 for the first package.
 
@@ -39,6 +43,17 @@ only read-only queries on the user's session bus; data is already readable from
 `/var/lib/flow/flow.db` via the `flow` group, and the root collector has no
 D-Bus interface. See ADR 0011. Add Polkit only if privileged control operations
 or system-bus access are introduced later.
+
+## Data lifecycle (summary)
+
+- Upgrade: stop services, copy `flow.db` → `flow.db.pre-upgrade`, install new
+  files, re-assert permissions. History and settings are preserved.
+- `dpkg -r flow` (remove): data preserved.
+- `dpkg -P flow` (purge): data preserved **by default**.
+- Explicit full removal: `FLOW_PURGE_DATA=yes dpkg -P flow`, or set
+  `PURGE_DATA=yes` in `/etc/flow/purge-data.conf` before purging.
+
+The full policy, caveats and rationale are in `data-policy.md` and ADR 0012.
 
 ## Building the prototype binary package
 
@@ -55,17 +70,20 @@ and writes `packaging/build/flow_0.1.0_amd64.deb`. Build output is gitignored.
 ```bash
 ./packaging/build-deb.sh
 ./packaging/test-deb.sh
+./packaging/test-install.sh
 ```
 
-`test-deb.sh` extracts the `.deb`, verifies layout/control, validates the desktop
-entry, syntax-checks maintainer scripts, and simulates `postinst`/`prerm` with
-stubbed system commands so no host services or groups are modified.
-
-`test-install.sh` performs a disposable Docker-based install/remove/purge smoke
-test in `ubuntu:24.04`. It uses `dpkg --force-depends` because the container does
-not include the .NET runtime, removes the image's doc-exclusion dpkg config so
-`/usr/share/doc/flow/README.md` is installed, verifies file layout and group/DB
-permissions, and confirms `/var/lib/flow/flow.db` survives remove and purge.
+- `test-deb.sh` extracts the `.deb`, verifies layout/control and shipped docs,
+  validates the desktop entry, syntax-checks maintainer scripts, and simulates
+  install/upgrade/remove/purge with stubbed commands (no host services, groups
+  or paths are modified). It asserts the no-delete default and both opt-in
+  purge paths.
+- `test-install.sh` performs a disposable Docker-based
+  install → upgrade → remove → default purge → opt-in purge smoke test in
+  `ubuntu:24.04`. It uses `dpkg --force-depends` because the container does not
+  include the .NET runtime, removes the image's doc-exclusion dpkg config so
+  packaged docs install, verifies group/DB permissions, the upgrade backup and
+  that history survives every non-opt-in step.
 
 ## Manual validation before building a .deb
 
@@ -81,4 +99,5 @@ systemctl --user enable --now flow-daemon.service
 
 Stop with `sudo systemctl stop flow-collector.service` and
 `systemctl --user stop flow-daemon.service`. The maintainer scripts preserve
-`/var/lib/flow/flow.db` on removal.
+`/var/lib/flow` on remove and default purge; see `data-policy.md` for explicit
+full removal.
