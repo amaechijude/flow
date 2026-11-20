@@ -2,8 +2,8 @@
 
 Flow is a Linux network-usage monitor with a background daemon and an Avalonia
 desktop GUI. It records real persisted usage in SQLite and separates attributed
-per-process traffic from explicit unattributed traffic. It is a prototype, not
-a packaged release.
+per-process traffic from explicit unattributed traffic. It is a prototype with a
+buildable `.deb`, not a release-quality package.
 
 ## Current status
 
@@ -50,6 +50,115 @@ dotnet run --project src/Flow.Desktop/Flow.Desktop.csproj
 The privileged loader must be built from `prototype/bpf/` before using
 `Flow__Monitor=ebpf`. See `prototype/bpf/README.md`.
 
+## Install (prototype `.deb`)
+
+**Prerequisites:** Ubuntu 24.04+ with a graphical login, sudo, and the runtime
+dependencies (`dotnet-runtime-10.0`, `libbpf1`, `libelf1`, `zlib1g`). A systemd
+user session and session D-Bus are required for live IPC.
+
+On the build machine, compile the eBPF loader and build the package
+(`clang`, `bpftool`, libbpf/libelf/zlib dev packages are required):
+
+```bash
+clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I prototype/bpf \
+  -c prototype/bpf/flow_tcp_bytes.bpf.c -o prototype/bpf/flow_tcp_bytes.bpf.o
+bpftool gen skeleton prototype/bpf/flow_tcp_bytes.bpf.o > prototype/bpf/flow_tcp_bytes.skel.h
+cc -O2 -g -Wall -Wextra -I prototype/bpf \
+  -o prototype/bpf/flow_tcp_bytes_loader prototype/bpf/flow_tcp_bytes_loader.c -lbpf -lelf -lz
+
+./packaging/build-deb.sh
+# output: packaging/build/flow_0.1.0_amd64.deb
+```
+
+Copy the `.deb` to the target machine, then install it:
+
+```bash
+sudo apt install ./flow_0.1.0_amd64.deb
+# If .NET 10 is not in the distro repos, use the prototype form:
+sudo dpkg --force-depends -i ./flow_0.1.0_amd64.deb
+```
+
+`postinst` creates the `flow` group and `/var/lib/flow` (`root:flow 2770`),
+creates/owns the database as `root:flow 0660`, and enables the collector.
+Add your user and **log out and back in** so the group takes effect:
+
+```bash
+sudo usermod -aG flow "$USER"
+id -nG "$USER" | tr ' ' '\n' | grep -qx flow && echo "group OK"
+```
+
+Start both roles:
+
+```bash
+sudo systemctl enable --now flow-collector.service   # root, eBPF, no D-Bus
+systemctl --user enable --now flow-daemon.service    # user, read-only D-Bus IPC
+```
+
+Open Flow from the applications menu. The launcher passes
+`Flow__DatabasePath=/var/lib/flow/flow.db`; the collector writes that database
+and the session daemon serves queries from it. Do **not** run the desktop as root.
+Allow ~10 s after startup for the first real flush, then click ⟳.
+
+Verify:
+
+```bash
+systemctl is-active flow-collector.service
+systemctl --user is-active flow-daemon.service
+busctl --user call org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetContractVersion
+# -> i 3
+FLOW_READONLY=1 ./packaging/validate-user-session.sh
+```
+
+If the UI shows `DAEMON OFFLINE` with `0 B`, check
+`journalctl -u flow-collector.service -n 30`; older packages failed with
+`attempt to write a readonly database`. See `packaging/README.md` →
+"Troubleshooting" for the fix and the rebuild that includes it.
+
+## Uninstall and clean reinstall
+
+The database is **user measurement data**, not package data:
+
+| Command | Package files | `/var/lib/flow` data |
+| --- | --- | --- |
+| `sudo dpkg -r flow` | removed | preserved |
+| `sudo dpkg -P flow` | removed | preserved |
+| `sudo env FLOW_PURGE_DATA=yes dpkg -P flow` | removed | **deleted** |
+
+Note the `sudo env` form — plain `FLOW_PURGE_DATA=yes sudo dpkg -P flow` loses
+the variable because sudo strips the environment. An alternative is to create
+`/etc/flow/purge-data.conf` containing `PURGE_DATA=yes` before purging.
+
+For an auditable full cleanup, use the helper (dry-run first):
+
+```bash
+sudo ./packaging/uninstall-clean.sh --dry-run
+sudo ./packaging/uninstall-clean.sh                 # purge + delete data
+sudo ./packaging/uninstall-clean.sh --keep-data     # purge, keep history
+sudo ./packaging/uninstall-clean.sh --remove-dev-data  # also delete ~/.local/share/flow
+```
+
+It stops both units, purges with the correct opt-in, removes stale enablement
+symlinks and the optional purge config, and removes the `flow` group only when
+no data is preserved. Deleting data requires confirmation unless `--yes` is
+passed. The development database at `~/.local/share/flow/flow.db` is separate
+from the packaged `/var/lib/flow/flow.db` and is only removed with
+`--remove-dev-data`.
+
+To reinstall cleanly:
+
+```bash
+sudo systemctl stop flow-collector.service
+systemctl --user stop flow-daemon.service
+sudo dpkg -i ./flow_0.1.0_amd64.deb
+sudo systemctl restart flow-collector.service
+systemctl --user restart flow-daemon.service
+```
+
+Close and reopen Flow. If you kept data, `/var/lib/flow/flow.db` and its history
+are reused; after a full cleanup the collector creates a fresh database.
+
+Full policy and rationale: `packaging/data-policy.md` and ADR 0012.
+
 ## Validation evidence
 
 Controlled, privileged runs are recorded in `docs/measurements/`. The index is
@@ -92,18 +201,16 @@ Do not treat the attribution gate as closed. Important caveats:
 - The durable queue covers byte deltas only; application/process/interface metadata upserts remain best-effort and are re-upserted from later events.
 - Charts and tables have accessibility names and a textual chart summary, but have not had a full keyboard/screen-reader conformance pass.
 
-## Packaging
+## Packaging and validation
 
-A prototype `.deb` can be built and validated with `packaging/build-deb.sh`,
-`packaging/test-deb.sh` and `packaging/test-install.sh` (the latter needs Docker).
-A real-VM user-session validation kit is in
-`packaging/validate-user-session.sh` / `docs/validation/user-session.md`, with an
-SSH dispatcher in `packaging/run-user-session-validation.sh` (preflight passes
-here; the full sudo-driven run is an operator step). Static UI accessibility is
-audited by `scripts/a11y-audit.sh`; see `docs/a11y-audit.md` (runtime
-screen-reader verification is still outstanding).
-It is not a release-quality package. Data survives upgrade, remove and default
-purge; full removal requires an explicit opt-in (`packaging/data-policy.md`,
-ADR 0012). Remaining productization work is listed in `HANDOFF.md`: full UI
-accessibility conformance and recovery/security/privacy tests. Keep the caveats
-above in any shipped documentation.
+Build/validate with `packaging/build-deb.sh`, `packaging/test-deb.sh` and
+`packaging/test-install.sh` (the latter needs Docker). A real-VM user-session
+kit is in `packaging/validate-user-session.sh` / `docs/validation/user-session.md`,
+with an SSH dispatcher in `packaging/run-user-session-validation.sh`; the
+source-session and activation checks use `packaging/validate-source-session.sh`
+and `packaging/validate-dbus-activation.sh`. Static UI accessibility is audited
+by `scripts/a11y-audit.sh` (`docs/a11y-audit.md`); runtime screen-reader
+verification is still outstanding.
+
+This is not a release-quality package. Remaining productization work is in
+`HANDOFF.md`. Keep the caveats above in any shipped documentation.

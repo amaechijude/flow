@@ -1484,3 +1484,13 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Verification
 - `build-deb.sh`, `test-deb.sh` and `test-install.sh` passed with the new assertions (including DB ownership and launcher path).
 - The fix requires reinstalling the rebuilt `.deb` on the live host; that was not done here because sudo is unavailable in-session.
+
+## 2026-11-20 (README install/uninstall documentation)
+
+### Changes
+- Added "Install (prototype `.deb`)" and "Uninstall and clean reinstall" sections to the root `README.md`: prerequisites, loader/package build commands, dpkg/apt install, group membership and re-login, systemd roles, verification, the data-retention table, `uninstall-clean.sh` usage, and clean reinstall steps.
+- Documented the `DAEMON OFFLINE` / `0 B` troubleshooting pointer and replaced the older Packaging section with cross-references to the validation kit.
+- Corrected the loader build commands to the actual clang/bpftool/cc steps (there is no Makefile).
+
+### Verification
+- Documentation-only change; no code or package behaviour changed.
