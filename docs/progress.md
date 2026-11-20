@@ -1276,3 +1276,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Verification
 - `dotnet build Flow.slnx` succeeded.
 - `dotnet test Flow.slnx` → 54/54 passing.
+
+## 2026-11-20 (rollups implemented, not yet consumed by queries)
+
+### Implementation
+- Migration v3 adds `usage_rollup_state` and a granularity/time index.
+- Added `IUsageRollupService` / `UsageRollupService`: recomputes 5m, 1h, 1d, and calendar-month buckets from 1m buckets. Affected rollup rows are deleted and rebuilt, so re-runs are idempotent and late-arriving 1m deltas are included via a 2-hour lookback window.
+- Added `UsageRollupWorker` to the full/collector daemon roles; runs immediately and every 5 minutes, logs failures without stopping collection.
+- Added infrastructure test verifying totals by granularity, idempotence, and late-data correction.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded.
+- `dotnet test Flow.slnx` → 55/55 passing.
+
+### Limitations / next
+- UI/query paths still read only 1m buckets; rollups are persisted but not consumed. Retention/cleanup is not implemented, so 1m data is not yet pruned.

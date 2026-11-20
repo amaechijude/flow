@@ -8,7 +8,7 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **54/54 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **55/55 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
   and Diagnostics pages; CSV/JSON export uses a real file picker and includes
   provenance/caveats.
@@ -86,7 +86,7 @@ Do not treat the attribution gate as closed. Important caveats:
 - Historical rows keep older stable-key shapes after identity migrations.
 - IPC is session-bus v1 only; signals are best-effort/coalesced, and a root-run
   daemon may not claim the user-session D-Bus name.
-- No rollups, retention jobs, durable flush queue, or Reports/Settings pages yet.
+- Rollups (5m/1h/1d/1mo) are rebuilt from 1m buckets but are not yet used by UI queries; no retention jobs, durable flush queue, or Reports/Settings pages yet.
 - Charts and tables have not had a full keyboard/screen-reader accessibility pass.
 
 ## Packaging

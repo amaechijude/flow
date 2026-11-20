@@ -35,7 +35,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ## Current limitations / known issues
 - **Attribution/gate:** ebpf provider counts TCP/UDP (QUIC as UDP payload) with per-interface attribution where the socket route resolves; `ifindex 0` is grouped as unresolved. Accepted evidence: loopback and TCP+UDP byte accuracy, one verified process generation; per-interface on `lo`, two-interface veth, physical `wlp0s20f3` TCP+UDP, wildcard UDP RX on two interfaces, GRE, and real WireGuard devices; event-time netns identity (two-netns collision) and boottime identity fix (1/8-worker diagnostics `verified=True`); 60 s/300 s soaks and a production-load proxy. Overflow accounting is exact. Remaining attribution gaps: eviction/retention for process-generation rows (65,536 entries still loses ~2.3% at 33.5k children with CPU 45%/RSS 28 MB), public-VPN-over-physical-NIC with an external byte-counting peer, ICMP/non-TCP-UDP paths, multiple simultaneous physical interfaces, and sustained high-churn overhead. Procfs is unattributed by design.
 - **IPC:** per-user session-bus v1 only; signals are best-effort/coalesced (no replay, up to ~2s latency) and resubscription after daemon restart is lightly exercised; no control operations/Polkit, no system-bus policy/activation artifacts. Root-run ebpf daemon may not register IPC name for user-session desktop.
-- **Persistence/reporting:** no rollups (1m→5m→h→d→mo), no retention/cleanup jobs; Reports/Settings pages and comparisons are not implemented (diagnostics/export cover current reporting).
+- **Persistence/reporting:** rollups (1m→5m→h→d→mo) are rebuilt idempotently but UI queries still read 1m buckets; no retention/cleanup jobs; Reports/Settings pages and comparisons are not implemented (diagnostics/export cover current reporting).
 - **Reliability:** flush retry is in-memory/timer-driven (no durable queue/explicit backoff policy); `LastError` not cleared on recovery; monitoring session measurement version/provider details minimal.
 - **UI/productization:** custom charts are minimal (no zoom/tooltips/per-point inspection) and not a11y-verified; app startup was smoke-tested on Wayland but no screenshot/a11y conformance pass; no systemd/D-Bus/Polkit packaging or `.deb`.
 - **Docs:** ADR 0003 remains the v1 topology record; ADR 0004 records contract v3 and UI choices.
@@ -50,7 +50,7 @@ Flow is an Ubuntu 26.04 (GNOME/Wayland) network-usage monitor with a background 
 ```bash
 cd /home/amaechi/code/flow
 dotnet build Flow.slnx -v minimal
-dotnet test Flow.slnx -v minimal   # expect 54/54
+dotnet test Flow.slnx -v minimal   # expect 55/55
 ```
 - **Daemon (no root, unattributed interface totals):** `Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj`
 - **Daemon (privileged, TCP+UDP attributed, prototype):** `sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj` (IPC name registration may fail under sudo; DB persistence still works)

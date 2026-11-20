@@ -19,6 +19,7 @@ public static class DbMigrator
 
         Apply(connection, tx, 1, "initial_schema", InitialSchemaSql);
         Apply(connection, tx, 2, "usage_buckets_null_safe_uniqueness", UsageBucketsNullSafeUniquenessSql);
+        Apply(connection, tx, 3, "usage_rollup_state", UsageRollupStateSql);
 
         tx.Commit();
     }
@@ -192,5 +193,15 @@ public static class DbMigrator
             COALESCE(interface_id, ''),
             is_attributed
         );
+        """;
+
+    private const string UsageRollupStateSql = """
+        CREATE TABLE IF NOT EXISTS usage_rollup_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_rolled_minute_utc TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_usage_buckets_granularity_time
+            ON usage_buckets(granularity, bucket_start_utc);
         """;
 }
