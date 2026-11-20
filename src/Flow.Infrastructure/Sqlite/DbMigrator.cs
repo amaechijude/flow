@@ -20,6 +20,7 @@ public static class DbMigrator
         Apply(connection, tx, 1, "initial_schema", InitialSchemaSql);
         Apply(connection, tx, 2, "usage_buckets_null_safe_uniqueness", UsageBucketsNullSafeUniquenessSql);
         Apply(connection, tx, 3, "usage_rollup_state", UsageRollupStateSql);
+        Apply(connection, tx, 4, "pending_usage_deltas", PendingUsageDeltasSql);
 
         tx.Commit();
     }
@@ -203,5 +204,31 @@ public static class DbMigrator
 
         CREATE INDEX IF NOT EXISTS idx_usage_buckets_granularity_time
             ON usage_buckets(granularity, bucket_start_utc);
+        """;
+
+    // Durable hand-off between the ingestion pipeline and the 1-minute bucket
+    // table. Rows are enqueued before the in-memory buffer is released and are
+    // deleted in the SAME transaction that applies their deltas, so a crash can
+    // never double-count (a retry simply re-applies rows still present here).
+    private const string PendingUsageDeltasSql = """
+        CREATE TABLE IF NOT EXISTS pending_usage_deltas (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bucket_start_utc TEXT NOT NULL,
+            application_key TEXT NULL,
+            process_stable_key TEXT NULL,
+            interface_id TEXT NULL,
+            rx_bytes INTEGER NOT NULL,
+            tx_bytes INTEGER NOT NULL,
+            is_attributed INTEGER NOT NULL,
+            attribution_note TEXT NULL,
+            measurement_provider TEXT NULL,
+            measurement_hook TEXT NULL,
+            enqueued_at_utc TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_pending_usage_deltas_order
+            ON pending_usage_deltas(id);
         """;
 }

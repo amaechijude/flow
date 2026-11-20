@@ -1327,3 +1327,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - Charts still lack zoom/tooltip/per-point inspection; a full keyboard/screen-reader conformance pass and runtime smoke test of the new pages remain open.
 - Comparisons, durable flush retry/backoff, upgrade/uninstall data handling and real systemd user-session validation remain open.
+
+## 2026-11-20 (durable flush queue with retry/backoff)
+
+### Implementation
+- Migration v4 adds `pending_usage_deltas`. `IDurableUsageQueue` / `SqliteDurableUsageQueue` enqueue deltas before the in-memory buffer is released; applying a batch to 1-minute buckets and deleting its queue rows happen in one transaction, so retries cannot double-count. Pending rows survive process restart and are drained on pipeline start.
+- `UsageIngestionPipeline` accepts an optional durable queue: enqueue-first hand-off with exponential backoff (1s base, 30s cap), failure recording, and recovery that clears `LastError` only once the queue is empty. The legacy direct-write path is preserved when no queue is supplied.
+- `UsageRollupWorker` holds its watermark behind the oldest pending delta so bytes applied after a long outage are still rebuilt into rollups.
+- `MonitoringStatusDto` gained additive, backward-compatible durable diagnostics (pending count, oldest pending time, flush attempts, next retry, backoff seconds), surfaced on the Diagnostics page. Contract version stays v3 (old clients ignore new fields).
+
+### Verification
+- `dotnet build Flow.slnx` succeeded (0 errors).
+- `dotnet test Flow.slnx` → 81/81 passing. New coverage: queue atomicity/injected-failure retry/no-double-count/batch-size/restart recovery (Infrastructure), pipeline enqueue-vs-direct/retry-recovery/preload-drain (Application), rollup watermark vs pending delta (Daemon), and status JSON round-trip plus legacy-JSON compatibility.
+
+### Limitations / next
+- The durable queue covers byte deltas only; metadata upserts remain best-effort.
+- Not validated under a real crash or a long privileged soak; no exact-window comparisons, upgrade/uninstall data handling, or systemd user-session validation yet.

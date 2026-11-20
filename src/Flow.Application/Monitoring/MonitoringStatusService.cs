@@ -31,6 +31,11 @@ public sealed class MonitoringStatusService : IMonitoringStatusService
             d.EventsDropped,
             d.EventsAggregated,
             d.BatchesWritten,
-            d.WriteErrors);
+            d.WriteErrors,
+            d.PendingDurableDeltas,
+            d.OldestPendingAtUtc,
+            d.DurableFlushAttempts,
+            d.NextRetryAtUtc,
+            d.RetryBackoffSeconds);
     }
 }

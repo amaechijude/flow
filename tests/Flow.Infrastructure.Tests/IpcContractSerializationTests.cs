@@ -21,7 +21,12 @@ public sealed class IpcContractSerializationTests
             new DateTimeOffset(2026, 11, 15, 3, 59, 0, TimeSpan.Zero),
             new DateTimeOffset(2026, 11, 15, 4, 0, 0, TimeSpan.Zero),
             null,
-            20, 1, 10, 5, 0);
+            20, 1, 10, 5, 0,
+            7,
+            new DateTimeOffset(2026, 11, 15, 3, 58, 0, TimeSpan.Zero),
+            3,
+            new DateTimeOffset(2026, 11, 15, 4, 0, 2, TimeSpan.Zero),
+            2.5);
 
         var json = IpcJson.Serialize(dto);
         var back = IpcJson.Deserialize<MonitoringStatusDto>(json);
@@ -30,6 +35,24 @@ public sealed class IpcContractSerializationTests
         Assert.Equal(dto.ProviderName, back.ProviderName);
         Assert.Equal(dto.EventsAggregated, back.EventsAggregated);
         Assert.Equal(dto.BatchesWritten, back.BatchesWritten);
+        Assert.Equal(7, back.PendingDurableDeltas);
+        Assert.Equal(dto.OldestPendingAtUtc, back.OldestPendingAtUtc);
+        Assert.Equal(3, back.DurableFlushAttempts);
+        Assert.Equal(dto.NextRetryAtUtc, back.NextRetryAtUtc);
+        Assert.Equal(2.5, back.RetryBackoffSeconds);
+    }
+
+    [Fact]
+    public void OlderStatusJsonWithoutDurableFieldsStillDeserializes()
+    {
+        const string oldJson = """
+            {"State":"Monitoring","LastUpdatedUtc":"2026-11-15T04:00:00+00:00","ProviderName":"p","MeasurementDescription":null,"HealthMessage":null,"AttributedEvents":null,"UnattributedEvents":null,"LastEventAtUtc":null,"LastFlushAtUtc":null,"LastError":null,"EventsReceived":0,"EventsDropped":0,"EventsAggregated":0,"BatchesWritten":0,"WriteErrors":0}
+            """;
+        var back = IpcJson.Deserialize<MonitoringStatusDto>(oldJson);
+        Assert.NotNull(back);
+        Assert.Equal(0, back.PendingDurableDeltas);
+        Assert.Null(back.OldestPendingAtUtc);
+        Assert.Equal(0, back.DurableFlushAttempts);
     }
 
     [Fact]

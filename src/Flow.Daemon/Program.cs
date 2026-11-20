@@ -30,6 +30,7 @@ using (var conn = connectionFactory.CreateOpenConnection())
 builder.Services.AddSingleton(connectionFactory);
 builder.Services.AddSingleton<UsageRepository>();
 builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<UsageRepository>());
+builder.Services.AddSingleton<IDurableUsageQueue, SqliteDurableUsageQueue>();
 builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<IUsageQueryService>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<UsageRollupService>();

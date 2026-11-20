@@ -113,6 +113,31 @@
         </Grid>
 
         <Border Classes="card">
+            <StackPanel Spacing="8">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock Text="Durable flush queue" Classes="section" />
+                    <Border Classes="pill warning" IsVisible="{Binding HasPendingDurable}" VerticalAlignment="Center">
+                        <TextBlock Text="PENDING" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
+                    </Border>
+                </StackPanel>
+                <Grid ColumnDefinitions="150,*,150,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Pending deltas" Classes="caps" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding PendingDurableText}" Classes="mono" FontSize="11"
+                               AutomationProperties.Name="Pending durable deltas" />
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Flush attempts" Classes="caps" />
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding DurableAttemptsText}" Classes="mono" FontSize="11" />
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Oldest pending" Classes="caps" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding OldestPendingText}" Classes="mono" FontSize="11" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Next retry / backoff" Classes="caps" />
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding NextRetryText}" Classes="mono" FontSize="11" />
+                </Grid>
+                <TextBlock Text="{Binding BackoffText, StringFormat='Current backoff: {0}'}" Classes="dim" FontSize="10" />
+                <TextBlock Classes="dim" FontSize="10" TextWrapping="Wrap"
+                           Text="Deltas are written to a durable SQLite queue before leaving the in-memory buffer, then applied to 1-minute buckets with retry/backoff. Pending rows are never dropped; a successful apply and the queue delete share one transaction, so retries cannot double-count." />
+            </StackPanel>
+        </Border>
+
+        <Border Classes="card">
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">

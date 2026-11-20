@@ -10,8 +10,11 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
 {
     private readonly INetworkMonitor _monitor;
     private readonly IUsageBucketStore _store;
+    private readonly IDurableUsageQueue? _durableQueue;
     private readonly IMonitoringMetadataStore? _metadataStore;
     private readonly ILogger<UsageIngestionPipeline> _logger;
+    private readonly TimeSpan _durableBaseDelay;
+    private readonly TimeSpan _durableMaxDelay;
     private readonly MonitoringDiagnostics _diagnostics = new();
     private readonly Channel<NetworkUsageEvent> _channel;
     private readonly TimeSpan _flushInterval;
@@ -21,6 +24,8 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
     private int _startState; // 0 stopped, 1 running
     private int _disposeState; // 0 active, 1 disposed
     private long? _sessionId;
+    private int _durableFailures;
+    private DateTimeOffset _nextDurableAttemptUtc = DateTimeOffset.MinValue;
 
     public UsageIngestionPipeline(
         INetworkMonitor monitor,
@@ -28,12 +33,18 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
         ILogger<UsageIngestionPipeline> logger,
         IMonitoringMetadataStore? metadataStore = null,
         int channelCapacity = 10_000,
-        TimeSpan? flushInterval = null)
+        TimeSpan? flushInterval = null,
+        IDurableUsageQueue? durableQueue = null,
+        TimeSpan? durableBaseDelay = null,
+        TimeSpan? durableMaxDelay = null)
     {
         _monitor = monitor;
         _store = store;
+        _durableQueue = durableQueue;
         _metadataStore = metadataStore;
         _logger = logger;
+        _durableBaseDelay = durableBaseDelay ?? TimeSpan.FromSeconds(1);
+        _durableMaxDelay = durableMaxDelay ?? TimeSpan.FromSeconds(30);
         _flushInterval = flushInterval ?? TimeSpan.FromSeconds(5);
         _channel = Channel.CreateBounded<NetworkUsageEvent>(new BoundedChannelOptions(channelCapacity)
         {
@@ -58,6 +69,19 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
         _diagnostics.LastError = null;
         _readerTask = Task.Run(() => ReadLoopAsync(_cts.Token), CancellationToken.None);
         _writerTask = Task.Run(() => AggregateAndFlushLoopAsync(_cts.Token), CancellationToken.None);
+        if (_durableQueue is not null)
+        {
+            // Recover deltas enqueued by a previous process (including after a crash).
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await RefreshDurableDiagnosticsAsync(_cts.Token).ConfigureAwait(false);
+                    await TryDrainDurableAsync(_cts.Token).ConfigureAwait(false);
+                }
+                catch { /* diagnostics and drain handle their own failures */ }
+            }, CancellationToken.None);
+        }
         return Task.CompletedTask;
     }
 
@@ -144,6 +168,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
                 {
                     await tickTask.ConfigureAwait(false);
                     await FlushAsync(buffer, apps, procs, ifaces, ct).ConfigureAwait(false);
+                    await DrainDurableIfEnabledAsync(ct).ConfigureAwait(false);
                     tickTask = timer.WaitForNextTickAsync(ct).AsTask();
                     continue;
                 }
@@ -152,6 +177,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
                 {
                     DrainAvailable(buffer, apps, procs, ifaces);
                     await FlushAsync(buffer, apps, procs, ifaces, ct).ConfigureAwait(false);
+                    await DrainDurableIfEnabledAsync(ct).ConfigureAwait(false);
                     break;
                 }
 
@@ -164,6 +190,10 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
         {
             DrainAvailable(buffer, apps, procs, ifaces);
             try { await FlushAsync(buffer, apps, procs, ifaces, CancellationToken.None).ConfigureAwait(false); } catch { }
+            if (_durableQueue is not null)
+            {
+                try { await TryDrainDurableAsync(CancellationToken.None).ConfigureAwait(false); } catch { }
+            }
         }
         catch (Exception ex)
         {
@@ -221,7 +251,12 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
         CancellationToken ct)
     {
         if (buffer.Count == 0 && (apps?.Count ?? 0) == 0 && (procs?.Count ?? 0) == 0 && (ifaces?.Count ?? 0) == 0)
+        {
+            // Pending deltas from an earlier cycle (or process) still need draining.
+            if (_durableQueue is not null)
+                await DrainDurableIfEnabledAsync(ct).ConfigureAwait(false);
             return;
+        }
 
         // Snapshot current state so we can safely retain/retry on failure while allowing new events to accumulate.
         List<(string Key, DateTimeOffset Seen)>? ifaceBatch = null;
@@ -276,7 +311,17 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
             }
 
             if (deltaBatch is not null && deltaBatch.Count > 0)
-                await _store.WriteMinuteDeltasAsync(deltaBatch, ct).ConfigureAwait(false);
+            {
+                if (_durableQueue is not null)
+                {
+                    // Persist first; only then release the in-memory accumulators.
+                    await _durableQueue.EnqueueAsync(deltaBatch, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    await _store.WriteMinuteDeltasAsync(deltaBatch, ct).ConfigureAwait(false);
+                }
+            }
 
             // Commit: remove flushed snapshots (preserve any newer arrivals accumulated during async writes).
             if (ifaceBatch is not null && ifaces is not null)
@@ -315,15 +360,19 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
                             buffer.Remove(key);
                     }
                 }
-                _diagnostics.IncrementBatchesWritten();
+                if (_durableQueue is null)
+                    _diagnostics.IncrementBatchesWritten();
             }
 
-            _diagnostics.LastFlushAtUtc = DateTimeOffset.UtcNow;
-            if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
+            if (_durableQueue is null)
             {
-                // A successful flush is the recovery signal for write-path errors.
-                _diagnostics.State = MonitoringState.Monitoring;
-                _diagnostics.LastError = null;
+                _diagnostics.LastFlushAtUtc = DateTimeOffset.UtcNow;
+                if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
+                {
+                    // A successful flush is the recovery signal for write-path errors.
+                    _diagnostics.State = MonitoringState.Monitoring;
+                    _diagnostics.LastError = null;
+                }
             }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || _cts.IsCancellationRequested)
@@ -338,6 +387,78 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
             LogFlushFailed(_logger, ex, deltaBatch?.Count ?? 0);
             // Retain buffered deltas/metadata for retry on next flush cycle (upserts are idempotent/additive-safe).
         }
+    }
+
+    private async Task DrainDurableIfEnabledAsync(CancellationToken ct)
+    {
+        if (_durableQueue is null) return;
+        await RefreshDurableDiagnosticsAsync(ct).ConfigureAwait(false);
+        await TryDrainDurableAsync(ct).ConfigureAwait(false);
+    }
+
+    private async Task RefreshDurableDiagnosticsAsync(CancellationToken ct)
+    {
+        if (_durableQueue is null) return;
+        try
+        {
+            _diagnostics.PendingDurableDeltas = await _durableQueue.PendingCountAsync(ct).ConfigureAwait(false);
+            _diagnostics.OldestPendingAtUtc = await _durableQueue.OldestPendingAtUtcAsync(ct).ConfigureAwait(false);
+        }
+        catch { /* queue diagnostics are best effort; never break collection */ }
+    }
+
+    private async Task TryDrainDurableAsync(CancellationToken ct)
+    {
+        if (_durableQueue is null) return;
+        if (DateTimeOffset.UtcNow < _nextDurableAttemptUtc) return;
+
+        _diagnostics.IncrementDurableFlushAttempts();
+        try
+        {
+            var applied = await _durableQueue.FlushOnceAsync(ct).ConfigureAwait(false);
+            if (applied > 0)
+                _diagnostics.IncrementBatchesWritten();
+
+            _durableFailures = 0;
+            _nextDurableAttemptUtc = DateTimeOffset.MinValue;
+            _diagnostics.NextRetryAtUtc = null;
+            _diagnostics.RetryBackoffSeconds = 0;
+            await RefreshDurableDiagnosticsAsync(ct).ConfigureAwait(false);
+
+            if (_diagnostics.PendingDurableDeltas == 0)
+            {
+                _diagnostics.LastFlushAtUtc = DateTimeOffset.UtcNow;
+                if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
+                {
+                    _diagnostics.State = MonitoringState.Monitoring;
+                    _diagnostics.LastError = null;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested || _cts.IsCancellationRequested)
+        {
+            // Shutdown: deltas remain safely enqueued for the next start.
+        }
+        catch (Exception ex)
+        {
+            _durableFailures++;
+            var delay = BackoffDelay(_durableFailures);
+            _nextDurableAttemptUtc = DateTimeOffset.UtcNow + delay;
+            _diagnostics.NextRetryAtUtc = _nextDurableAttemptUtc;
+            _diagnostics.RetryBackoffSeconds = delay.TotalSeconds;
+            _diagnostics.IncrementWriteErrors();
+            _diagnostics.State = MonitoringState.Degraded;
+            _diagnostics.LastError = ex.Message;
+            try { await _durableQueue.RecordFailureAsync(ex, CancellationToken.None).ConfigureAwait(false); } catch { }
+            LogDurableFlushFailed(_logger, ex, delay.TotalSeconds, _durableFailures);
+            await RefreshDurableDiagnosticsAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    private TimeSpan BackoffDelay(int failures)
+    {
+        var seconds = _durableBaseDelay.TotalSeconds * Math.Pow(2, Math.Max(0, failures - 1));
+        return TimeSpan.FromSeconds(Math.Min(_durableMaxDelay.TotalSeconds, seconds));
     }
 
     private static string NormalizeInterfaceId(string interfaceName) => interfaceName.Trim().ToLowerInvariant();
@@ -402,4 +523,7 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
 
     [LoggerMessage(EventId = 1003, Level = LogLevel.Error, Message = "Failed to flush {Count} aggregated usage deltas")]
     private static partial void LogFlushFailed(ILogger logger, Exception exception, int count);
+
+    [LoggerMessage(EventId = 1004, Level = LogLevel.Warning, Message = "Durable flush attempt {Attempt} failed; retrying in {DelaySeconds:0.0}s. Enqueued deltas are retained.")]
+    private static partial void LogDurableFlushFailed(ILogger logger, Exception exception, double delaySeconds, int attempt);
 }

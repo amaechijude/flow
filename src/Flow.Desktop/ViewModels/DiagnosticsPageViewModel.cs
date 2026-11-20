@@ -35,6 +35,13 @@ public partial class DiagnosticsPageViewModel : ViewModelBase
     [ObservableProperty] public partial string DropRateText { get; set; } = "0.00%";
     [ObservableProperty] public partial double DropShare { get; set; }
 
+    [ObservableProperty] public partial string PendingDurableText { get; set; } = "0";
+    [ObservableProperty] public partial string OldestPendingText { get; set; } = "—";
+    [ObservableProperty] public partial string DurableAttemptsText { get; set; } = "0";
+    [ObservableProperty] public partial string NextRetryText { get; set; } = "—";
+    [ObservableProperty] public partial string BackoffText { get; set; } = "0.0 s";
+    [ObservableProperty] public partial bool HasPendingDurable { get; set; }
+
     [ObservableProperty] public partial string UsageSourceText { get; set; } = "not queried";
     [ObservableProperty] public partial string StatusSourceText { get; set; } = "not queried";
     [ObservableProperty] public partial string SignalText { get; set; } = "No signal state yet.";
@@ -86,6 +93,13 @@ public partial class DiagnosticsPageViewModel : ViewModelBase
         var dropShare = status.EventsReceived <= 0 ? 0 : Math.Clamp((double)status.EventsDropped / status.EventsReceived, 0, 1);
         DropShare = dropShare;
         DropRateText = (dropShare * 100).ToString("0.00", CultureInfo.InvariantCulture) + "%";
+
+        PendingDurableText = status.PendingDurableDeltas.ToString("N0", CultureInfo.InvariantCulture);
+        HasPendingDurable = status.PendingDurableDeltas > 0;
+        OldestPendingText = Format(status.OldestPendingAtUtc);
+        DurableAttemptsText = status.DurableFlushAttempts.ToString("N0", CultureInfo.InvariantCulture);
+        NextRetryText = Format(status.NextRetryAtUtc);
+        BackoffText = status.RetryBackoffSeconds.ToString("0.0", CultureInfo.InvariantCulture) + " s";
 
         UsageSourceText = snapshot.UsageDataSource;
         StatusSourceText = snapshot.StatusDataSource;

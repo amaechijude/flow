@@ -49,7 +49,7 @@ Session mode status comes from the latest persisted monitoring session. Live pip
 A prototype `.deb` can now be built with `./packaging/build-deb.sh`; the remaining items below are for release quality.
 
 - IPC hardening: signal continuity, reconnect/error mapping, `LastError` clearing.
-- Persistence: 1m→5m→h→d→mo rollups preserving totals are implemented (idempotent rebuild worker) and consumed by long-range queries via a single-granularity policy; retention prunes 1m/5m/1h after 7/35/400 days (1d/1mo kept indefinitely). Durable flush retry/backoff remains.
+- Persistence: 1m→5m→h→d→mo rollups preserving totals are implemented (idempotent rebuild worker) and consumed by long-range queries via a single-granularity policy; retention prunes 1m/5m/1h after 7/35/400 days (1d/1mo kept indefinitely). Durable flush/retry with exponential backoff is implemented with atomic apply-and-delete and restart recovery; durable diagnostics are exposed over IPC.
 - UI: Reports/History/Settings pages and basic accessibility names/textual chart
   summary are implemented; full screen-reader conformance pass, chart
   interaction/per-point inspection and comparisons remain.

@@ -9,7 +9,8 @@ namespace Flow.Daemon;
 public sealed partial class UsageRollupWorker(
     IUsageRollupService rollups,
     IUsageRetentionService retention,
-    ILogger<UsageRollupWorker> logger) : BackgroundService
+    ILogger<UsageRollupWorker> logger,
+    IDurableUsageQueue? durableQueue = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -18,7 +19,8 @@ public sealed partial class UsageRollupWorker(
         {
             try
             {
-                var written = await rollups.RebuildThroughAsync(DateTimeOffset.UtcNow, stoppingToken).ConfigureAwait(false);
+                var through = await SafeRollupThroughAsync(stoppingToken).ConfigureAwait(false);
+                var written = await rollups.RebuildThroughAsync(through, stoppingToken).ConfigureAwait(false);
                 if (written > 0)
                     LogRollupsRebuilt(logger, written);
 
@@ -37,6 +39,25 @@ public sealed partial class UsageRollupWorker(
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Do not advance the rollup watermark past the oldest durable delta that
+    /// has not been applied yet. Otherwise a delta applied after a long outage
+    /// would fall outside the rebuild lookback and be missing from rollups.
+    /// </summary>
+    private async Task<DateTimeOffset> SafeRollupThroughAsync(CancellationToken ct)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (durableQueue is null) return now;
+        try
+        {
+            var oldest = await durableQueue.OldestPendingAtUtcAsync(ct).ConfigureAwait(false);
+            if (oldest.HasValue && oldest.Value < now)
+                return oldest.Value.AddMinutes(-1);
+        }
+        catch { /* queue diagnostics are best effort */ }
+        return now;
     }
 
     [LoggerMessage(EventId = 3001, Level = LogLevel.Debug, Message = "Rebuilt {Rows} usage rollup rows")]

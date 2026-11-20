@@ -17,4 +17,9 @@ public sealed record MonitoringStatusDto(
     long EventsDropped = 0,
     long EventsAggregated = 0,
     long BatchesWritten = 0,
-    long WriteErrors = 0);
+    long WriteErrors = 0,
+    long PendingDurableDeltas = 0,
+    DateTimeOffset? OldestPendingAtUtc = null,
+    long DurableFlushAttempts = 0,
+    DateTimeOffset? NextRetryAtUtc = null,
+    double RetryBackoffSeconds = 0);
