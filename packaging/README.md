@@ -93,12 +93,15 @@ separation, session-bus ownership, D-Bus activation and restart resilience.
 
 ```bash
 FLOW_PREFLIGHT_ONLY=1 ./packaging/validate-user-session.sh   # no system changes
+FLOW_READONLY=1 ./packaging/validate-user-session.sh         # installed package, no restarts
 ./packaging/validate-user-session.sh                          # needs sudo on a VM
+./packaging/validate-source-session.sh                        # source binaries, private bus
 ```
 
-Run as the logged-in user (never root). Preflight was executed where this kit
-was prepared; the full run requires a disposable VM with sudo and is an
-operator step. It does not purge data or prove eBPF byte accuracy.
+Run as the logged-in user (never root). Read-only validation (16/16) and the
+source-session validator (15/15) were actually executed here; the mutating full
+run still requires a disposable VM with sudo and is an operator step. Neither
+purges data nor proves eBPF byte accuracy.
 
 `run-user-session-validation.sh` dispatches the kit to such a VM over SSH
 (`FLOW_VM_SSH='user@vm'`, optional `FLOW_VM_PREFLIGHT_ONLY=1`) and copies the

@@ -1421,3 +1421,18 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Note
 - No remaining product work was taken in this increment, per operator direction. Open items are unchanged (attribution high-churn, runtime screen-reader pass, real-VM validation, pointer chart interaction).
+
+## 2026-11-20 (real-session validation executed)
+
+### Implementation
+- Added `FLOW_READONLY=1` to `validate-user-session.sh`: validates an already installed package without installs, restarts or daemon stops; fixed bus-name ownership checks to use the PID column (a `-` PID is only activatable, not owned).
+- Added `packaging/validate-source-session.sh`: starts a private D-Bus with no inherited activatable services, runs source-built session and collector binaries, verifies real name ownership, contract/method/signal exposure, name release, collector/session role separation, real procfs bucket writes and shared-DB queries. Fixed a cleanup bug caused by starting daemons inside command substitutions.
+
+### Verification (actually executed here)
+- `FLOW_READONLY=1 ./packaging/validate-user-session.sh` → 16/16 PASS against the installed package on this host's real systemd user session: both units active, correct roles, contract v3 + real IPC queries, `root:flow 2770` data directory, flow group membership.
+- `./packaging/validate-source-session.sh` → 15/15 PASS on a private bus; no leftover processes after cleanup.
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 86/86 passing.
+
+### Remaining
+- Mutating checks (collector restart, installed-unit stop/ownership, on-demand D-Bus activation, restart resilience) were deliberately not run on the live desktop. They still need a disposable VM or an operator willing to interrupt the session briefly.
+- Runtime screen-reader verification and privileged attribution gaps remain unchanged.

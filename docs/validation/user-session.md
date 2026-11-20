@@ -35,7 +35,12 @@ package. Running it end-to-end is an operator step on a disposable VM.
 # Fast preflight: no system changes, checks session/systemd/tools/group.
 FLOW_PREFLIGHT_ONLY=1 ./packaging/validate-user-session.sh
 
-# Full validation (installs the package and restarts units).
+# Read-only validation of an already installed package: no installs, restarts
+# or daemon stops. Safe to run on a live desktop.
+FLOW_READONLY=1 FLOW_VALIDATE_REPORT=/tmp/flow-user-session-validation \
+  ./packaging/validate-user-session.sh
+
+# Full validation (installs the package and restarts units); needs sudo.
 FLOW_VALIDATE_REPORT=/tmp/flow-user-session-validation \
   ./packaging/validate-user-session.sh
 ```
@@ -91,6 +96,31 @@ writes raw output plus `journalctl` excerpts into the report directory.
 
 All query values must come from the real database. If a call returns a plausible
 number with no persisted buckets behind it, that is a failure, not a pass.
+
+## Results obtained in the development environment
+
+Two checks were actually executed here, against a real systemd user session and
+a real session bus:
+
+- **`FLOW_READONLY=1 ./packaging/validate-user-session.sh` → 16/16 PASS** on the
+  installed package: real `flow-collector.service` (collector mode, eBPF monitor)
+  and `flow-daemon.service` (session mode, no eBPF) active, contract v3 and real
+  IPC queries, `root:flow 2770` data directory, and the real flow group.
+- **`./packaging/validate-source-session.sh` → 15/15 PASS** using source-built
+  binaries on a private D-Bus (no inherited activatable services): bus ownership
+  belongs to the source daemon, interface/method/signal exposure, contract v3
+  calls, name release on stop, the collector does **not** claim the bus name,
+  the collector writes real procfs buckets, and a restarted session daemon
+  queries the shared database. It never touches the user's running daemon.
+
+The remaining mutating checks — collector restart, the stop/ownership test on
+the installed unit, on-demand D-Bus activation, and restart resilience — were
+deliberately skipped on the live desktop. They still require the full run on a
+disposable VM (or an operator willing to interrupt the session briefly).
+
+Note: `busctl list` also shows *activatable* names with a `-` PID. The scripts
+check the PID column (or use a private bus without service files) so an
+activatable-but-unowned name is not mistaken for an owner.
 
 ## Interpreting failures
 

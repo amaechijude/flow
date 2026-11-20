@@ -38,9 +38,13 @@ section "Preflight"
 if [[ "$(id -u)" -eq 0 ]]; then
   die "run as the logged-in desktop user, not root (the desktop must not run as root)"
 fi
-for tool in systemctl busctl journalctl dpkg timeout sudo stat; do
+readonly_mode="${FLOW_READONLY:-0}"
+for tool in systemctl busctl journalctl dpkg timeout stat; do
   command -v "$tool" >/dev/null 2>&1 || die "required tool missing: $tool"
 done
+if [[ "$readonly_mode" != "1" ]]; then
+  command -v sudo >/dev/null 2>&1 || die "required tool missing: sudo"
+fi
 [[ -f "$deb" ]] || die "$deb not found; run ./packaging/build-deb.sh first"
 [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] || die "no session bus (DBUS_SESSION_BUS_ADDRESS is unset)"
 pid1="$(ps -p 1 -o comm=)"
@@ -63,7 +67,11 @@ if [[ "${FLOW_PREFLIGHT_ONLY:-0}" == "1" ]]; then
   exit 0
 fi
 
-if [[ "${FLOW_SKIP_INSTALL:-0}" != "1" ]]; then
+if [[ "$readonly_mode" == "1" ]]; then
+  note "read-only mode: no installs, restarts or unit stops will be performed"
+fi
+
+if [[ "${FLOW_SKIP_INSTALL:-0}" != "1" && "$readonly_mode" != "1" ]]; then
   sudo -n true 2>/dev/null || die "passwordless sudo required for install (or FLOW_SKIP_INSTALL=1 with the package already installed)"
   section "Install prototype package"
   read -r -a dpkg_flags <<< "${FLOW_DPKG_FLAGS:---force-depends}"
@@ -75,24 +83,35 @@ if [[ "${FLOW_SKIP_INSTALL:-0}" != "1" ]]; then
 fi
 
 section "Collector (system unit)"
-sudo systemctl restart flow-collector.service >/dev/null 2>&1 || true
-check_cmd "flow-collector.service is active" sudo systemctl is-active flow-collector.service
-collector_exec="$(sudo systemctl show -p ExecStart --value flow-collector.service 2>/dev/null || true)"
+if [[ "$readonly_mode" == "1" ]]; then
+  note "read-only: skipping collector restart"
+else
+  sudo systemctl restart flow-collector.service >/dev/null 2>&1 || true
+fi
+check_cmd "flow-collector.service is active" systemctl is-active flow-collector.service
+collector_exec="$(systemctl show -p ExecStart --value flow-collector.service 2>/dev/null || true)"
 if contains '--Flow:Mode=collector' <<<"$collector_exec"; then pass "collector runs in collector mode"; else fail "collector ExecStart lacks --Flow:Mode=collector: $collector_exec"; fi
 if contains '--Flow:Monitor=ebpf' <<<"$collector_exec"; then pass "collector uses the ebpf monitor"; else fail "collector ExecStart lacks --Flow:Monitor=ebpf: $collector_exec"; fi
 
-section "Session bus is not claimed by the collector"
-systemctl --user stop flow-daemon.service >/dev/null 2>&1 || true
-sleep 1
-# Close Flow.Desktop during this check; an open client can trigger D-Bus activation.
-if busctl --user list --no-pager 2>/dev/null | grep -q "$service"; then
-  fail "$service is still on the session bus with the user daemon stopped"
+section "Session bus ownership"
+if [[ "$readonly_mode" == "1" ]]; then
+  note "read-only: skipping the 'stop user daemon' ownership test; validate it with validate-source-session.sh"
 else
-  pass "no $service owner while the user daemon is stopped"
+  systemctl --user stop flow-daemon.service >/dev/null 2>&1 || true
+  sleep 1
+  # busctl list also shows activatable names (PID column '-'); only a real
+  # owner PID proves the name is claimed.
+  if busctl --user list --no-pager 2>/dev/null | awk -v n="$service" '$1 == n && $2 != "-" { found = 1 } END { exit !found }'; then
+    fail "$service still has an owner with the user daemon stopped"
+  else
+    pass "no $service owner while the user daemon is stopped"
+  fi
 fi
 
 section "User daemon (systemd --user)"
-systemctl --user enable --now flow-daemon.service >"$report/enable.out" 2>&1 || true
+if [[ "$readonly_mode" != "1" ]]; then
+  systemctl --user enable --now flow-daemon.service >"$report/enable.out" 2>&1 || true
+fi
 check_cmd "flow-daemon.service is active" systemctl --user is-active flow-daemon.service
 session_exec="$(systemctl --user show -p ExecStart --value flow-daemon.service 2>/dev/null || true)"
 if contains '--Flow:Mode=session' <<<"$session_exec"; then pass "session daemon runs in session mode"; else fail "session ExecStart lacks --Flow:Mode=session: $session_exec"; fi
@@ -120,20 +139,30 @@ else
 fi
 
 section "D-Bus on-demand activation"
-systemctl --user stop flow-daemon.service >/dev/null 2>&1 || true
-sleep 1
-activation="$(busctl --user call --timeout=12 "$service" "$object" "$iface" GetContractVersion 2>&1)"
-if grep -qw '3' <<<"$activation"; then pass "activation call reached the daemon (v3)"; else fail "activation call failed: $activation"; fi
-sleep 1
-check_cmd "systemd started flow-daemon.service via D-Bus activation" systemctl --user is-active flow-daemon.service
+if [[ "$readonly_mode" == "1" ]]; then
+  note "read-only: skipping the stop+activate test (it briefly interrupts the user daemon)"
+else
+  systemctl --user stop flow-daemon.service >/dev/null 2>&1 || true
+  sleep 1
+  activation="$(busctl --user call --timeout=12 "$service" "$object" "$iface" GetContractVersion 2>&1)"
+  if grep -qw '3' <<<"$activation"; then pass "activation call reached the daemon (v3)"; else fail "activation call failed: $activation"; fi
+  sleep 1
+  check_cmd "systemd started flow-daemon.service via D-Bus activation" systemctl --user is-active flow-daemon.service
+fi
 
 section "Restart resilience and data path"
-sudo systemctl restart flow-collector.service >/dev/null 2>&1 || true
-systemctl --user restart flow-daemon.service >/dev/null 2>&1 || true
-sleep 2
-check_cmd "collector active after restart" sudo systemctl is-active flow-collector.service
-check_cmd "session daemon active after restart" systemctl --user is-active flow-daemon.service
-if [[ -f /var/lib/flow/flow.db ]]; then pass "database still present at /var/lib/flow/flow.db"; else fail "database missing after restarts"; fi
+if [[ "$readonly_mode" == "1" ]]; then
+  note "read-only: skipping restarts; checking current state instead"
+  check_cmd "collector currently active" systemctl is-active flow-collector.service
+  check_cmd "session daemon currently active" systemctl --user is-active flow-daemon.service
+else
+  sudo systemctl restart flow-collector.service >/dev/null 2>&1 || true
+  systemctl --user restart flow-daemon.service >/dev/null 2>&1 || true
+  sleep 2
+  check_cmd "collector active after restart" systemctl is-active flow-collector.service
+  check_cmd "session daemon active after restart" systemctl --user is-active flow-daemon.service
+fi
+if [[ -f /var/lib/flow/flow.db ]]; then pass "database present at /var/lib/flow/flow.db"; else fail "database missing"; fi
 if [[ "$(stat -c '%U:%G %a' /var/lib/flow 2>/dev/null)" == "root:flow 2770" ]]; then pass "data directory permissions are root:flow 2770"; else fail "unexpected /var/lib/flow permissions: $(stat -c '%U:%G %a' /var/lib/flow 2>/dev/null)"; fi
 
 section "Logs"
