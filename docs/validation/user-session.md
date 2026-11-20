@@ -90,7 +90,7 @@ writes raw output plus `journalctl` excerpts into the report directory.
 | 11 | Real status | `busctl --user call ... GetStatusJson` | non-empty JSON with `state`, `providerName`, `pendingDurableDeltas` |
 | 12 | Real queries | `busctl --user call ... GetUsageSummaryJson sss <start> <end> ""` | JSON with `rxBytes` / `txBytes` |
 | 13 | Signal | `timeout 12 busctl --user monitor org.flow.Daemon` | `StatusChanged` observed (best effort) |
-| 14 | On-demand activation | stop unit, then call `GetContractVersion` | call succeeds and unit becomes active |
+| 14 | On-demand activation | stop unit, then call `GetContractVersion` | call succeeds (or is retried on older binaries) and unit becomes active |
 | 15 | Restart resilience | restart both units, re-run 9–12 | all still pass; `/var/lib/flow/flow.db` present |
 | 16 | Data path | `stat -c '%U:%G %a' /var/lib/flow` | `root:flow 2770` |
 
@@ -113,10 +113,24 @@ a real session bus:
   the collector writes real procfs buckets, and a restarted session daemon
   queries the shared database. It never touches the user's running daemon.
 
+- **`FLOW_VALIDATE_REPORT=... ./packaging/validate-dbus-activation.sh` → 5/5 PASS**
+  on the installed host: stopping `flow-daemon.service` released the name, an
+  activating `GetContractVersion` call re-started it with a new PID, and the
+  post-activation query worked. This script has a recovery trap that restarts
+  the daemon manually if activation fails.
+- **`./packaging/validate-source-session.sh` → 20/20 PASS** including an
+  on-demand activation test against the source binary on its private bus.
+
+The installed binary on this host still predates the activation-race fix
+(described below), so its activating call returned a transient "method not
+found" and needed a retry. The source-built binary registers its D-Bus object
+before claiming the well-known name, so its first activating call succeeds.
+Reinstalling the rebuilt `.deb` brings that fix to the installed daemon.
+
 The remaining mutating checks — collector restart, the stop/ownership test on
-the installed unit, on-demand D-Bus activation, and restart resilience — were
-deliberately skipped on the live desktop. They still require the full run on a
-disposable VM (or an operator willing to interrupt the session briefly).
+the installed unit, and restart resilience — were deliberately skipped on the
+live desktop. They still require the full run on a disposable VM (or an
+operator willing to interrupt the session briefly).
 
 Note: `busctl list` also shows *activatable* names with a `-` PID. The scripts
 check the PID column (or use a private bus without service files) so an

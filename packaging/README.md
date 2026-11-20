@@ -103,6 +103,11 @@ source-session validator (15/15) were actually executed here; the mutating full
 run still requires a disposable VM with sudo and is an operator step. Neither
 purges data nor proves eBPF byte accuracy.
 
+`validate-dbus-activation.sh` is an opt-in, no-sudo check that briefly stops the
+user daemon and verifies D-Bus activation brings it back (with a recovery trap).
+`validate-source-session.sh` runs the same topology with source binaries on a
+private bus, including activation.
+
 `run-user-session-validation.sh` dispatches the kit to such a VM over SSH
 (`FLOW_VM_SSH='user@vm'`, optional `FLOW_VM_PREFLIGHT_ONLY=1`) and copies the
 report back. No VM was available where this was prepared, so the full run was

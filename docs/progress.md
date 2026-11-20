@@ -1436,3 +1436,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Remaining
 - Mutating checks (collector restart, installed-unit stop/ownership, on-demand D-Bus activation, restart resilience) were deliberately not run on the live desktop. They still need a disposable VM or an operator willing to interrupt the session briefly.
 - Runtime screen-reader verification and privileged attribution gaps remain unchanged.
+
+## 2026-11-20 (D-Bus activation verified; startup race fixed)
+
+### Implementation
+- Added `packaging/validate-dbus-activation.sh`: opt-in, no-sudo check that stops the installed user daemon, triggers activation, verifies a new PID and working queries, with a recovery trap that restarts the daemon if activation fails.
+- Fixed `DbusIpcHostedService` to register the D-Bus object **before** claiming the well-known name, eliminating the transient "method not found" error on the call that triggers activation.
+- Extended `validate-source-session.sh` with a private service file and an activation test against the source binary.
+
+### Verification (executed here)
+- Installed host: activation script → 5/5 PASS (name released, new PID after activation, post-activation queries work). The installed binary still had the old ordering, so its activating call needed a retry.
+- Source binary on the private bus: 20/20 PASS, including "activating call returned contract v3 without a retry" after the ordering fix.
+- `./packaging/build-deb.sh`, `test-deb.sh`, `test-install.sh` passed with the rebuilt daemon; `dotnet test Flow.slnx` → 86/86.
+
+### Remaining
+- Reinstall the rebuilt `.deb` on the live host to pick up the activation-order fix (no sudo available here).
+- Collector restart, installed-unit stop/ownership and restart resilience still need a disposable VM or an operator-interrupted session.

@@ -34,8 +34,14 @@ if [[ ! -x "$daemon" ]]; then
 fi
 : > "$report/results.txt"
 
-printf 'Starting private session bus (no inherited activatable services)\n'
-mkdir -p "$runtime/empty"
+db="$runtime/flow.db"
+printf 'Starting private session bus (only a private Flow activation file)\n'
+mkdir -p "$runtime/empty/dbus-1/services"
+cat > "$runtime/empty/dbus-1/services/org.flow.Daemon.service" <<EOF
+[D-BUS Service]
+Name=org.flow.Daemon
+Exec=$daemon --Flow:Mode=session --Flow:DatabasePath=$db
+EOF
 XDG_DATA_HOME="$runtime/empty" XDG_DATA_DIRS="$runtime/empty" \
   dbus-daemon --session --fork --print-address=1 --print-pid=1 >"$runtime/bus.info" 2>"$runtime/bus.err" || die "dbus-daemon failed"
 bus_addr="$(sed -n '1p' "$runtime/bus.info")"
@@ -50,7 +56,6 @@ name_owner_pid() {
   bctl list --no-pager 2>/dev/null | awk '$1 == "org.flow.Daemon" && $2 != "-" { print $2; exit }'
 }
 
-db="$runtime/flow.db"
 start_daemon() {
   local mode="$1" monitor="${2:-}"
   if [[ -n "$monitor" ]]; then
@@ -140,6 +145,27 @@ session_pid="$started_pid"
 if wait_for_name present 6; then pass "session daemon restarted on the bus"; else fail "session daemon did not restart"; fi
 summary2="$(bctl call --timeout=10 org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetUsageSummaryJson sss "$start_iso" "$end_iso" '' 2>&1)"
 if grep -q 'rxBytes' <<<"$summary2"; then pass "session daemon queried the shared database"; else fail "post-restart query failed: $summary2"; fi
+
+printf '\n== D-Bus on-demand activation (source binary) ==\n'
+kill "$session_pid" >/dev/null 2>&1 || true
+if wait_for_name absent 6; then pass "name released before activation test"; else fail "name still owned before activation test"; fi
+activation="$(bctl call --timeout=12 org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetContractVersion 2>&1)"
+printf '%s\n' "$activation" > "$report/activation.out"
+if grep -qw '3' <<<"$activation"; then
+  pass "activating call returned contract v3 without a retry"
+else
+  note "activating call raced startup: $(head -1 <<<"$activation")"
+fi
+if wait_for_name present 8; then pass "activation spawned a new daemon"; else fail "activation did not spawn a daemon"; fi
+activated_pid="$(name_owner_pid)"
+if [[ -n "$activated_pid" && "$activated_pid" != "$session_pid" ]]; then
+  pids+=("$activated_pid")
+  pass "activated daemon is a new process (pid $activated_pid)"
+else
+  fail "activated daemon pid unchanged: $activated_pid"
+fi
+retry="$(bctl call --timeout=10 org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetContractVersion 2>&1)"
+if grep -qw '3' <<<"$retry"; then pass "post-activation call returned v3"; else fail "post-activation call failed: $retry"; fi
 
 printf '\nChecks: %d, failures: %d\nReport: %s\n' "$CHECKS" "$FAILS" "$report"
 [[ "$FAILS" -eq 0 ]] || exit 1

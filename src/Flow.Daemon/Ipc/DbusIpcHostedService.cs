@@ -53,9 +53,12 @@ public sealed partial class DbusIpcHostedService : IHostedService, IAsyncDisposa
 
             _connection = new Connection(address);
             await _connection.ConnectAsync().ConfigureAwait(false);
-            await _connection.RegisterServiceAsync(FlowIpc.ServiceName).ConfigureAwait(false);
             _service = new FlowDaemonDbusService(_status, _queries);
+            // Register the object BEFORE the well-known name. Otherwise an
+            // activating client can reach the name while the methods do not
+            // exist yet and gets a spurious "method not found" error.
             await _connection.RegisterObjectAsync(_service).ConfigureAwait(false);
+            await _connection.RegisterServiceAsync(FlowIpc.ServiceName).ConfigureAwait(false);
             LogStarted(_logger, address, FlowIpc.ServiceName, FlowIpc.ObjectPath);
 
             _signalCts = new CancellationTokenSource();
