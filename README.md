@@ -8,7 +8,7 @@ a packaged release.
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **55/55 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **70/70 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
   and Diagnostics pages; CSV/JSON export uses a real file picker and includes
   provenance/caveats.
@@ -86,12 +86,12 @@ Do not treat the attribution gate as closed. Important caveats:
 - Historical rows keep older stable-key shapes after identity migrations.
 - IPC is session-bus v1 only; signals are best-effort/coalesced, and a root-run
   daemon may not claim the user-session D-Bus name.
-- Rollups (5m/1h/1d/1mo) are rebuilt from 1m buckets but are not yet used by UI queries; no retention jobs, durable flush queue, or Reports/Settings pages yet.
+- Rollups (5m/1h/1d/1mo) are rebuilt idempotently from 1m buckets and consumed by queries for long ranges (one granularity per query; boundary buckets are included whole, so long-range totals may include bytes slightly outside the exact window). Retention prunes 1m after 7 days, 5m after 35 days, and 1h after 400 days; 1d/1mo are kept indefinitely. No durable flush queue or Reports/Settings pages yet.
 - Charts and tables have not had a full keyboard/screen-reader accessibility pass.
 
 ## Packaging
 
 Not packaged yet. Remaining productization work is listed in `HANDOFF.md`:
-IPC/privilege topology, UI accessibility/reporting, persistence/rollups, and
-systemd/D-Bus/Polkit/`.deb` packaging. Keep the caveats above in any shipped
+IPC/privilege topology, UI accessibility/reporting, durable flush retry/backoff,
+and systemd/D-Bus/Polkit/`.deb` packaging. Keep the caveats above in any shipped
 documentation.

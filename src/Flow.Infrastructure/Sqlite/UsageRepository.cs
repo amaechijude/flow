@@ -17,11 +17,33 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         _factory = factory;
     }
 
+    private static string ResolveGranularity(SqliteConnection conn, DateTimeOffset startUtc, DateTimeOffset endUtc)
+    {
+        var chosen = UsageGranularityPolicy.Choose(startUtc, endUtc);
+        if (chosen == "1m")
+            return chosen;
+
+        // Rollups may not exist yet (fresh DB or before the first worker tick).
+        // Fall back to 1m rather than returning an empty result.
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT 1 FROM usage_buckets
+            WHERE granularity = $g AND bucket_start_utc >= $start AND bucket_start_utc <= $end
+            LIMIT 1;
+            """;
+        cmd.Parameters.AddWithValue("$g", chosen);
+        cmd.Parameters.AddWithValue("$start", UsageGranularityPolicy.AlignDown(startUtc, chosen).ToString("O"));
+        cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
+        return cmd.ExecuteScalar() is null ? "1m" : chosen;
+    }
+
     public Task<UsageSummaryDto> GetSummaryAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var conn = _factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
+        var granularity = ResolveGranularity(conn, startUtc, endUtc);
+        var queryStart = UsageGranularityPolicy.AlignDown(startUtc, granularity);
         cmd.CommandText = """
             SELECT
               COALESCE(SUM(CASE WHEN is_attributed = 1 THEN rx_bytes ELSE 0 END), 0) AS rx_attr,
@@ -29,10 +51,12 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
               COALESCE(SUM(CASE WHEN is_attributed = 0 THEN rx_bytes ELSE 0 END), 0) AS rx_unattr,
               COALESCE(SUM(CASE WHEN is_attributed = 0 THEN tx_bytes ELSE 0 END), 0) AS tx_unattr
             FROM usage_buckets
-            WHERE bucket_start_utc >= $start AND bucket_start_utc < $end
+            WHERE granularity = $granularity
+              AND bucket_start_utc >= $start AND bucket_start_utc <= $end
               AND ($iface IS NULL OR interface_id = $iface);
             """;
-        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$granularity", granularity);
+        cmd.Parameters.AddWithValue("$start", queryStart.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
         cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
 
@@ -55,6 +79,8 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         cancellationToken.ThrowIfCancellationRequested();
         using var conn = _factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
+        var granularity = ResolveGranularity(conn, startUtc, endUtc);
+        var queryStart = UsageGranularityPolicy.AlignDown(startUtc, granularity);
         cmd.CommandText = """
             SELECT
               COALESCE(b.application_key, '(unattributed)') AS app_key,
@@ -66,13 +92,15 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
               COALESCE(SUM(b.rx_bytes + b.tx_bytes), 0) AS total
             FROM usage_buckets b
             LEFT JOIN applications a ON a.application_key = b.application_key
-            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+            WHERE b.granularity = $granularity
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
               AND ($iface IS NULL OR b.interface_id = $iface)
             GROUP BY COALESCE(b.application_key, '(unattributed)'), a.display_name
             ORDER BY total DESC
             LIMIT $limit;
             """;
-        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$granularity", granularity);
+        cmd.Parameters.AddWithValue("$start", queryStart.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
         cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$limit", Math.Max(1, limit));
@@ -97,18 +125,22 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         cancellationToken.ThrowIfCancellationRequested();
         using var conn = _factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
+        var granularity = ResolveGranularity(conn, startUtc, endUtc);
+        var queryStart = UsageGranularityPolicy.AlignDown(startUtc, granularity);
         cmd.CommandText = """
             SELECT bucket_start_utc,
                    COALESCE(SUM(rx_bytes), 0) AS rx,
                    COALESCE(SUM(tx_bytes), 0) AS tx
             FROM usage_buckets
-            WHERE bucket_start_utc >= $start AND bucket_start_utc < $end
+            WHERE granularity = $granularity
+              AND bucket_start_utc >= $start AND bucket_start_utc <= $end
               AND ($iface IS NULL OR interface_id = $iface)
               AND ($app IS NULL OR application_key = $app)
             GROUP BY bucket_start_utc
             ORDER BY bucket_start_utc ASC;
             """;
-        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$granularity", granularity);
+        cmd.Parameters.AddWithValue("$start", queryStart.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
         cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$app", (object?)applicationKey ?? DBNull.Value);
@@ -384,6 +416,8 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         cancellationToken.ThrowIfCancellationRequested();
         using var conn = _factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
+        var granularity = ResolveGranularity(conn, startUtc, endUtc);
+        var queryStart = UsageGranularityPolicy.AlignDown(startUtc, granularity);
         cmd.CommandText = """
             SELECT
               COALESCE(b.interface_id, '(unknown)') AS iface_key,
@@ -396,11 +430,13 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
               COALESCE(SUM(b.rx_bytes + b.tx_bytes), 0) AS total
             FROM usage_buckets b
             LEFT JOIN network_interfaces ni ON ni.interface_id = b.interface_id
-            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+            WHERE b.granularity = $granularity
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
             GROUP BY COALESCE(b.interface_id, '(unknown)'), ni.interface_name, ni.interface_type
             ORDER BY total DESC;
             """;
-        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$granularity", granularity);
+        cmd.Parameters.AddWithValue("$start", queryStart.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
         using var reader = cmd.ExecuteReader();
         var list = new List<InterfaceUsageDto>();
@@ -423,6 +459,8 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         cancellationToken.ThrowIfCancellationRequested();
         using var conn = _factory.CreateOpenConnection();
         using var cmd = conn.CreateCommand();
+        var granularity = ResolveGranularity(conn, startUtc, endUtc);
+        var queryStart = UsageGranularityPolicy.AlignDown(startUtc, granularity);
         cmd.CommandText = """
             SELECT
               COALESCE(b.process_stable_key, '(unattributed)') AS proc_key,
@@ -437,13 +475,15 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
             FROM usage_buckets b
             LEFT JOIN processes p ON p.process_stable_key = b.process_stable_key
             LEFT JOIN applications a ON a.application_key = COALESCE(b.application_key, p.application_key)
-            WHERE b.bucket_start_utc >= $start AND b.bucket_start_utc < $end
+            WHERE b.granularity = $granularity
+              AND b.bucket_start_utc >= $start AND b.bucket_start_utc <= $end
               AND ($iface IS NULL OR b.interface_id = $iface)
             GROUP BY COALESCE(b.process_stable_key, '(unattributed)'), b.application_key, a.display_name, a.application_key, p.executable_path
             ORDER BY total DESC
             LIMIT $limit;
             """;
-        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
+        cmd.Parameters.AddWithValue("$granularity", granularity);
+        cmd.Parameters.AddWithValue("$start", queryStart.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
         cmd.Parameters.AddWithValue("$iface", (object?)interfaceId ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$limit", Math.Max(1, limit));

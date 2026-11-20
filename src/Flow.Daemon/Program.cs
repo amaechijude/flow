@@ -33,6 +33,8 @@ builder.Services.AddSingleton<IUsageBucketStore>(sp => sp.GetRequiredService<Usa
 builder.Services.AddSingleton<IMonitoringMetadataStore>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<IUsageQueryService>(sp => sp.GetRequiredService<UsageRepository>());
 builder.Services.AddSingleton<UsageRollupService>();
+builder.Services.AddSingleton<UsageRetentionService>();
+builder.Services.AddSingleton<IUsageRetentionService>(sp => sp.GetRequiredService<UsageRetentionService>());
 builder.Services.AddSingleton<IUsageRollupService>(sp => sp.GetRequiredService<UsageRollupService>());
 
 if (mode != DaemonMode.Session)

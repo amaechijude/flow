@@ -31,7 +31,7 @@ public sealed class UsageRollupService : IUsageRollupService
         // 1-minute deltas for the current/previous minute can arrive late. The
         // delete+recompute cycle makes this idempotent.
         var anchor = last.HasValue && last.Value < through ? last.Value : through;
-        var from = SubtractLookback(anchor);
+        var from = last.HasValue ? SubtractLookback(anchor) : DateTimeOffset.MinValue;
 
         var rows = ReadMinuteRows(from, through, cancellationToken);
         var rollups = BuildRollups(rows);

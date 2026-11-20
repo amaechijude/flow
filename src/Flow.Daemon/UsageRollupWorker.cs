@@ -8,6 +8,7 @@ namespace Flow.Daemon;
 /// </summary>
 public sealed partial class UsageRollupWorker(
     IUsageRollupService rollups,
+    IUsageRetentionService retention,
     ILogger<UsageRollupWorker> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -20,6 +21,11 @@ public sealed partial class UsageRollupWorker(
                 var written = await rollups.RebuildThroughAsync(DateTimeOffset.UtcNow, stoppingToken).ConfigureAwait(false);
                 if (written > 0)
                     LogRollupsRebuilt(logger, written);
+
+                var now = DateTimeOffset.UtcNow;
+                var deleted = await retention.ApplyAsync(now, stoppingToken).ConfigureAwait(false);
+                if (deleted > 0)
+                    LogRetentionApplied(logger, deleted);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -38,4 +44,7 @@ public sealed partial class UsageRollupWorker(
 
     [LoggerMessage(EventId = 3002, Level = LogLevel.Warning, Message = "Usage rollup rebuild failed; will retry")]
     private static partial void LogRollupFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 3003, Level = LogLevel.Debug, Message = "Usage retention removed {Rows} expired buckets")]
+    private static partial void LogRetentionApplied(ILogger logger, int rows);
 }

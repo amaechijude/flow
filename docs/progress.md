@@ -1291,3 +1291,19 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Limitations / next
 - UI/query paths still read only 1m buckets; rollups are persisted but not consumed. Retention/cleanup is not implemented, so 1m data is not yet pruned.
+
+## 2026-11-20 (query granularity + retention implemented)
+
+### Implementation
+- `UsageGranularityPolicy` chooses one persisted granularity per query range (≤2h→1m, ≤2d→5m, ≤31d→1h, ≤366d→1d, else 1mo) and aligns start down to the bucket boundary. Using a single granularity prevents double-counting overlapping 1m and rollup rows.
+- All five usage queries (`GetSummaryAsync`, `GetTopApplicationsAsync`, `GetUsageTimeSeriesAsync`, `GetInterfaceUsageAsync`, `GetTopProcessesAsync`) now filter by `granularity` and fall back to 1m until rollups exist. A boundary bucket is included whole, so long-range totals may include bytes slightly outside the exact requested window (documented in README/HANDOFF).
+- `IUsageRetentionService` / `UsageRetentionService`: prunes 1m after 7 days, 5m after 35 days, 1h after 400 days; 1d/1mo kept indefinitely. Wired into `UsageRollupWorker` (runs after each rollup rebuild, failures logged without stopping collection).
+- Added Application tests for granularity selection/alignment and an Infrastructure test proving a long-range query keeps its totals after 1m rows are pruned.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded (0 errors).
+- `dotnet test Flow.slnx` → 70/70 passing (Domain 1, Application 20, Infrastructure 11, Linux 21, Daemon 13, System 4).
+
+### Limitations / next
+- Boundary buckets are included whole; exact-window billing is not claimed.
+- Durable flush retry/backoff, Reports/History/Settings pages, comparisons, full UI a11y, and real systemd user-session validation remain open.
