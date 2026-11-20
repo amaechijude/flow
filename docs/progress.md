@@ -1452,3 +1452,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Remaining
 - Reinstall the rebuilt `.deb` on the live host to pick up the activation-order fix (no sudo available here).
 - Collector restart, installed-unit stop/ownership and restart resilience still need a disposable VM or an operator-interrupted session.
+
+## 2026-11-20 (clean uninstall helper)
+
+### Implementation
+- Added `packaging/uninstall-clean.sh`: stops/disables both units with explicit session-bus env for `runuser`, kills leftover daemons, purges via `env FLOW_PURGE_DATA=yes dpkg -P flow` (or plain purge with `--keep-data`), removes user-unit enablement symlink, optional purge config and the `flow` group (kept when data is preserved), optionally removes the source-run DB with `--remove-dev-data`, and verifies the result.
+- Added `--dry-run` (no changes, skips verification), `--yes` (skip confirmation) and `--help`. Documented in `packaging/README.md`; noted in `data-policy.md` that sudo strips `FLOW_PURGE_DATA` unless `sudo env ...` is used.
+
+### Verification
+- `bash -n` and both dry-run variants executed (default and `--keep-data`); the group is correctly preserved with `--keep-data` and the purge uses the explicit opt-in otherwise.
+- `./packaging/build-deb.sh` and `./packaging/test-deb.sh` passed with the updated shipped docs.
+- The destructive path was not run on this host (no root/sudo); the Docker install test already covers the equivalent purge opt-in.
+
+### Note
+- Reinstalling the rebuilt `.deb` on the live host is still needed to pick up the D-Bus activation-order fix.

@@ -55,6 +55,21 @@ or system-bus access are introduced later.
 
 The full policy, caveats and rationale are in `data-policy.md` and ADR 0012.
 
+For a complete, auditable uninstall use `uninstall-clean.sh` (run with sudo):
+
+```bash
+sudo ./packaging/uninstall-clean.sh --dry-run              # inspect, changes nothing
+sudo ./packaging/uninstall-clean.sh                        # purge + delete data
+sudo ./packaging/uninstall-clean.sh --keep-data            # purge, keep /var/lib/flow
+sudo ./packaging/uninstall-clean.sh --remove-dev-data      # also delete ~/.local/share/flow
+```
+
+It stops both units, purges with the explicit opt-in, removes leftover enablement,
+the optional purge config and the `flow` group (only when no data is preserved),
+then verifies the result. Deleting data requires confirmation unless `--yes` is
+passed. A dry-run was checked here; the destructive path was not run on the
+live host because sudo is unavailable.
+
 ## Building the prototype binary package
 
 ```bash

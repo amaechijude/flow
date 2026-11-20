@@ -30,6 +30,11 @@ evidence that cannot be reconstructed, so it is never removed implicitly.
 config-file check uses an exact `PURGE_DATA=yes` match and is never sourced as
 shell code (no root code execution from a user-writable file).
 
+Note that sudo strips environment variables by default: use
+`sudo env FLOW_PURGE_DATA=yes dpkg -P flow` (or the config file), not
+`FLOW_PURGE_DATA=yes sudo dpkg -P flow`. `packaging/uninstall-clean.sh` handles
+this and the other leftovers; see `packaging/README.md`.
+
 ## Caveats
 
 - `flow.db.pre-upgrade` is a best-effort file copy taken after the collector is
