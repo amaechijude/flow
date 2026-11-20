@@ -320,7 +320,11 @@ public sealed partial class UsageIngestionPipeline : IMonitoringController, IMon
 
             _diagnostics.LastFlushAtUtc = DateTimeOffset.UtcNow;
             if (Volatile.Read(ref _startState) == 1 && _diagnostics.State == MonitoringState.Degraded)
+            {
+                // A successful flush is the recovery signal for write-path errors.
                 _diagnostics.State = MonitoringState.Monitoring;
+                _diagnostics.LastError = null;
+            }
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested || _cts.IsCancellationRequested)
         {

@@ -1262,3 +1262,17 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Verification
 - Documentation-only change; build/test baseline unchanged (54/54).
+
+## 2026-11-20 (removed systemd Docker harness; IPC recovery fix)
+
+### Cleanup
+- Removed `packaging/Dockerfile.systemd`, the `flow-systemd-test` Docker image, and the temporary ICU/globalization workarounds that only existed for that minimal container.
+- Reverted packaging control/unit files to the validated install/uninstall state. Full user-session/systemd activation still needs a real desktop session or disposable VM; the collector unit was observed active with a drop-in during the abandoned container test, but no harness is kept.
+
+### IPC hardening
+- `UsageIngestionPipeline` now clears `LastError` when a successful flush transitions `Degraded → Monitoring`.
+- Added assertion in the transient-write-error test that `LastError` is null after recovery.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded.
+- `dotnet test Flow.slnx` → 54/54 passing.

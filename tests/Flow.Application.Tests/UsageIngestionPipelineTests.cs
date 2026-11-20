@@ -107,6 +107,7 @@ public sealed class UsageIngestionPipelineTests
 
         Assert.True(pipeline.Diagnostics.WriteErrors >= 1);
         Assert.True(pipeline.Diagnostics.BatchesWritten >= 1);
+        Assert.Null(pipeline.LastError); // cleared after successful recovery flush
         Assert.False(string.IsNullOrWhiteSpace(pipeline.Diagnostics.ProviderName));
         var totals = store.TotalsFor(bucket, "app.a", "eth0", true);
         Assert.Equal(10, totals.rx);
