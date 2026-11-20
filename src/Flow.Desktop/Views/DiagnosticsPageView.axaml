@@ -10,7 +10,7 @@
     <StackPanel Spacing="16">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Diagnostics &amp; daemon" Classes="headline" FontSize="20" />
+                <TextBlock Text="Diagnostics &amp; daemon" Classes="headline" AutomationProperties.HeadingLevel="1" FontSize="20" />
                 <Border Classes="pill" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="6" Height="6" Fill="{Binding StateBrush}" VerticalAlignment="Center" />
@@ -26,7 +26,7 @@
         <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
             <Border Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Daemon status" Classes="section" />
+                    <TextBlock Text="Daemon status" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="State" Classes="caps" />
                         <TextBlock Grid.Column="1" Text="{Binding StateText}" Classes="mono" Foreground="{Binding StateBrush}" />
@@ -55,7 +55,7 @@
 
             <Border Grid.Column="1" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Pipeline counters" Classes="section" />
+                    <TextBlock Text="Pipeline counters" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="Events received" Classes="caps" />
                         <TextBlock Grid.Column="1" Text="{Binding EventsReceivedText}" Classes="mono" />
@@ -88,7 +88,7 @@
 
             <Border Grid.Column="2" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Data path &amp; IPC" Classes="section" />
+                    <TextBlock Text="Data path &amp; IPC" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="Usage source" Classes="caps" />
                         <TextBlock Grid.Column="1" Text="{Binding UsageSourceText}" Classes="mono" FontSize="10" TextAlignment="Right" TextWrapping="Wrap" MaxWidth="150" />
@@ -115,7 +115,7 @@
         <Border Classes="card">
             <StackPanel Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="10">
-                    <TextBlock Text="Durable flush queue" Classes="section" />
+                    <TextBlock Text="Durable flush queue" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Border Classes="pill warning" IsVisible="{Binding HasPendingDurable}" VerticalAlignment="Center">
                         <TextBlock Text="PENDING" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
                     </Border>
@@ -141,7 +141,7 @@
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="Persisted 1-minute buckets" Classes="section" />
+                        <TextBlock Text="Persisted 1-minute buckets" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <Border Classes="pill" VerticalAlignment="Center">
                             <TextBlock Text="READ-ONLY SNAPSHOT" Classes="caps" />
                         </Border>
@@ -150,14 +150,14 @@
                 </Grid>
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBox Text="{Binding BucketSearchText}" PlaceholderText="Filter persisted buckets…" MaxWidth="360" HorizontalAlignment="Left"
-                             AutomationProperties.Name="Filter persisted buckets" />
+                             AutomationProperties.Name="Filter persisted buckets" AutomationProperties.HelpText="Space-separated terms applied to bucket time and byte counts." />
                     <TextBlock Grid.Column="1" Text="{Binding BucketSummary}" Classes="dim" FontSize="10" VerticalAlignment="Center" />
                 </Grid>
                 <Grid ColumnDefinitions="*,100,100,110">
                     <TextBlock Text="BUCKET (LOCAL)" Classes="caps" />
-                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                 </Grid>
                 <Border Classes="divider" />
                 <ListBox ItemsSource="{Binding Buckets}" MaxHeight="380" AutomationProperties.Name="Persisted buckets list">
@@ -178,7 +178,7 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Measurement transparency" Classes="section" />
+                <TextBlock Text="Measurement transparency" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <TextBlock Classes="muted" TextWrapping="Wrap"
                            Text="Flow does not measure kernel CPU overhead, eBPF ring-buffer occupancy, packet-capture drops, socket counts, or per-endpoint latency in this build, so those values are intentionally not displayed. Procfs counters are interface-level and unattributed; eBPF TCP hooks attribute bytes per process but are TCP-only, require privileges, and currently have no per-interface identity. Process identity uses stable keys derived from PID start time where available; PID-reuse and event-time identity hardening remain in progress." />
                 <TextBlock Text="{Binding MeasurementText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />

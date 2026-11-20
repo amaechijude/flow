@@ -37,7 +37,7 @@
             <Border Grid.Column="0" Classes="card">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Total throughput" Classes="section" />
+                        <TextBlock Text="Total throughput" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <TextBlock Grid.Column="1" Text="⇅" Foreground="{DynamicResource FlowPrimaryBrush}" />
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
@@ -64,7 +64,7 @@
             <Border Grid.Column="1" Classes="card">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Attribution split" Classes="section" />
+                        <TextBlock Text="Attribution split" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <TextBlock Grid.Column="1" Text="⌗" Foreground="{DynamicResource FlowTertiaryBrush}" />
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
@@ -91,7 +91,7 @@
             <Border Grid.Column="2" Classes="card">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Active interfaces" Classes="section" />
+                        <TextBlock Text="Active interfaces" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <TextBlock Grid.Column="1" Text="⇄" Foreground="{DynamicResource FlowSecondaryBrush}" />
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
@@ -107,7 +107,7 @@
             <Border Grid.Column="3" Classes="card">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Window peak" Classes="section" />
+                        <TextBlock Text="Window peak" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <TextBlock Grid.Column="1" Text="⚡" Foreground="{DynamicResource FlowWarningBrush}" />
                     </Grid>
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
@@ -126,7 +126,7 @@
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="Real-time telemetry stream" Classes="section" />
+                        <TextBlock Text="Real-time telemetry stream" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <Border Classes="pill primary" VerticalAlignment="Center">
                             <TextBlock Text="1-MIN RESOLUTION" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                         </Border>
@@ -147,6 +147,7 @@
                         BorderThickness="1" CornerRadius="4" Padding="6">
                     <controls:TimeSeriesChart Height="252" Points="{Binding ChartPoints}"
                                               IsTabStop="True"
+                                              Summary="{Binding ChartCaption}"
                                               ToolTip.Tip="{Binding ChartCaption}"
                                               AutomationProperties.Name="RX and TX by persisted bucket"
                                               AutomationProperties.HelpText="{Binding ChartCaption}" />
@@ -160,7 +161,7 @@
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="Top application consumers" Classes="section" />
+                            <TextBlock Text="Top application consumers" Classes="section" AutomationProperties.HeadingLevel="2" />
                             <Border Classes="pill" VerticalAlignment="Center">
                                 <TextBlock Text="PERSISTED RANGE" Classes="caps" />
                             </Border>
@@ -169,10 +170,10 @@
                     </Grid>
 
                     <Grid ColumnDefinitions="*,72,72,84" Margin="0,2,0,2">
-                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" />
-                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
-                        <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                        <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                     </Grid>
                     <Border Classes="divider" />
                     <ItemsControl ItemsSource="{Binding TopApplications}" AutomationProperties.Name="Top applications table">
@@ -188,7 +189,7 @@
                                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding RxText}" Classes="mono rx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
                                         <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
                                         <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding TotalText}" Classes="mono" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
-                                        <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="4" Height="3" Margin="0,7,0,0"
+                                        <controls:UsageBar AutomationProperties.AccessibilityView="Raw" Grid.Row="1" Grid.ColumnSpan="4" Height="3" Margin="0,7,0,0"
                                                            Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
                                     </Grid>
                                 </Border>
@@ -204,7 +205,7 @@
                 <Border Classes="card">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Network interfaces" Classes="section" />
+                            <TextBlock Text="Network interfaces" Classes="section" AutomationProperties.HeadingLevel="2" />
                             <TextBlock Grid.Column="1" Text="ALL INTERFACES" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
                         </Grid>
                         <ItemsControl ItemsSource="{Binding Interfaces}" AutomationProperties.Name="Observed interfaces table">
@@ -230,13 +231,13 @@
                 <Border Classes="card">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Recent 1-minute buckets" Classes="section" />
+                            <TextBlock Text="Recent 1-minute buckets" Classes="section" AutomationProperties.HeadingLevel="2" />
                             <TextBlock Grid.Column="1" Text="SQLITE VIEW" Classes="caps" />
                         </Grid>
                         <Grid ColumnDefinitions="*,70,70" Margin="0,1">
-                            <TextBlock Text="LOCAL TIME" Classes="caps" />
-                            <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                            <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                            <TextBlock Text="LOCAL TIME" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                            <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                            <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                         </Grid>
                         <Border Classes="divider" />
                         <ItemsControl ItemsSource="{Binding RecentBuckets}" AutomationProperties.Name="Recent persisted buckets table">

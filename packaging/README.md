@@ -100,6 +100,11 @@ Run as the logged-in user (never root). Preflight was executed where this kit
 was prepared; the full run requires a disposable VM with sudo and is an
 operator step. It does not purge data or prove eBPF byte accuracy.
 
+`run-user-session-validation.sh` dispatches the kit to such a VM over SSH
+(`FLOW_VM_SSH='user@vm'`, optional `FLOW_VM_PREFLIGHT_ONLY=1`) and copies the
+report back. No VM was available where this was prepared, so the full run was
+not executed.
+
 ## Manual validation before building a .deb
 
 ```bash

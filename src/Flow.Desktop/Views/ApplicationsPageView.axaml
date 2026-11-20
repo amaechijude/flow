@@ -11,7 +11,7 @@
     <StackPanel Spacing="16">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Process allocation matrix" Classes="headline" FontSize="20" />
+                <TextBlock Text="Process allocation matrix" Classes="headline" AutomationProperties.HeadingLevel="1" FontSize="20" />
                 <Border Classes="pill primary" VerticalAlignment="Center">
                     <TextBlock Text="PERSISTED BUCKETS" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                 </Border>
@@ -24,7 +24,7 @@
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="Applications" Classes="section" />
+                        <TextBlock Text="Applications" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <Border Classes="pill" VerticalAlignment="Center">
                             <TextBlock Text="RANKED BY PERSISTED BYTES" Classes="caps" />
                         </Border>
@@ -34,20 +34,20 @@
 
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                     <TextBox Grid.Column="0" Text="{Binding AppSearchText}" PlaceholderText="Filter by application name or key…" MaxWidth="420" HorizontalAlignment="Left"
-                             AutomationProperties.Name="Filter applications" />
+                             AutomationProperties.Name="Filter applications" AutomationProperties.HelpText="Space-separated terms; filtering hides rows only and does not recompute totals." />
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                        <Button Classes="tab" Classes.active="{Binding IsAllFilter}" Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all" />
-                        <Button Classes="tab" Classes.active="{Binding IsAttributedFilter}" Content="Attributed" Command="{Binding SetFilterCommand}" CommandParameter="attributed" />
-                        <Button Classes="tab" Classes.active="{Binding IsUnattributedFilter}" Content="Unattributed" Command="{Binding SetFilterCommand}" CommandParameter="unattributed" />
+                        <Button Classes="tab" Classes.active="{Binding IsAllFilter}" Content="All" Command="{Binding SetFilterCommand}" CommandParameter="all" AutomationProperties.Name="Show all applications" />
+                        <Button Classes="tab" Classes.active="{Binding IsAttributedFilter}" Content="Attributed" Command="{Binding SetFilterCommand}" CommandParameter="attributed" AutomationProperties.Name="Show attributed applications only" />
+                        <Button Classes="tab" Classes.active="{Binding IsUnattributedFilter}" Content="Unattributed" Command="{Binding SetFilterCommand}" CommandParameter="unattributed" AutomationProperties.Name="Show unattributed applications only" />
                     </StackPanel>
                 </Grid>
 
                 <Grid ColumnDefinitions="*,70,70,86,92" ColumnSpacing="4">
-                    <Button Grid.Column="0" Classes="sort left" Content="APPLICATION" Command="{Binding SortApplicationsCommand}" CommandParameter="name" />
-                    <Button Grid.Column="1" Classes="sort" Content="RX" Command="{Binding SortApplicationsCommand}" CommandParameter="rx" />
-                    <Button Grid.Column="2" Classes="sort" Content="TX" Command="{Binding SortApplicationsCommand}" CommandParameter="tx" />
-                    <Button Grid.Column="3" Classes="sort" Content="UNATTR" Command="{Binding SortApplicationsCommand}" CommandParameter="unattributed" />
-                    <Button Grid.Column="4" Classes="sort" Content="TOTAL" Command="{Binding SortApplicationsCommand}" CommandParameter="total" />
+                    <Button Grid.Column="0" Classes="sort left" Content="APPLICATION" Command="{Binding SortApplicationsCommand}" AutomationProperties.Name="Sort applications by APPLICATION" AutomationProperties.HelpText="{Binding AppSortSummary}" CommandParameter="name" />
+                    <Button Grid.Column="1" Classes="sort" Content="RX" Command="{Binding SortApplicationsCommand}" AutomationProperties.Name="Sort applications by RX" AutomationProperties.HelpText="{Binding AppSortSummary}" CommandParameter="rx" />
+                    <Button Grid.Column="2" Classes="sort" Content="TX" Command="{Binding SortApplicationsCommand}" AutomationProperties.Name="Sort applications by TX" AutomationProperties.HelpText="{Binding AppSortSummary}" CommandParameter="tx" />
+                    <Button Grid.Column="3" Classes="sort" Content="UNATTR" Command="{Binding SortApplicationsCommand}" AutomationProperties.Name="Sort applications by UNATTR" AutomationProperties.HelpText="{Binding AppSortSummary}" CommandParameter="unattributed" />
+                    <Button Grid.Column="4" Classes="sort" Content="TOTAL" Command="{Binding SortApplicationsCommand}" AutomationProperties.Name="Sort applications by TOTAL" AutomationProperties.HelpText="{Binding AppSortSummary}" CommandParameter="total" />
                 </Grid>
                 <Border Classes="divider" />
 
@@ -68,7 +68,7 @@
                                             <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding TxText}" Classes="mono tx" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
                                             <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
                                             <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding TotalText}" Classes="mono" FontSize="11" TextAlignment="Right" Margin="0,2,0,0" />
-                                            <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="5" Height="3" Margin="0,7,0,0"
+                                            <controls:UsageBar AutomationProperties.AccessibilityView="Raw" Grid.Row="1" Grid.ColumnSpan="5" Height="3" Margin="0,7,0,0"
                                                                Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
                                         </Grid>
                                     </Border>
@@ -81,7 +81,7 @@
                     <Border Grid.Column="1" Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
                             BorderThickness="1" CornerRadius="5" Padding="12">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="Application detail" Classes="section" />
+                            <TextBlock Text="Application detail" Classes="section" AutomationProperties.HeadingLevel="2" />
                             <StackPanel IsVisible="{Binding SelectedApplication, Converter={x:Static ObjectConverters.IsNotNull}}">
                                 <StackPanel Spacing="8" DataContext="{Binding SelectedApplication}" x:DataType="vm:ApplicationRow">
                                     <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -103,7 +103,7 @@
                                         <TextBlock Text="Share of range" Classes="caps" />
                                         <TextBlock Grid.Column="1" Text="{Binding ShareText}" Classes="mono" />
                                     </Grid>
-                                    <controls:UsageBar Height="5" Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
+                                    <controls:UsageBar AutomationProperties.AccessibilityView="Raw" Height="5" Value="{Binding Share}" BarBrush="{DynamicResource FlowPrimaryBrush}" />
                                     <TextBlock Text="Caveat: attributed bytes depend on the provider. Unattributed bytes are real observed traffic that could not be assigned to a process/application key; they are not inferred."
                                                Classes="dim" FontSize="10" TextWrapping="Wrap" />
                                 </StackPanel>
@@ -120,7 +120,7 @@
             <StackPanel Spacing="10">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="Processes" Classes="section" />
+                        <TextBlock Text="Processes" Classes="section" AutomationProperties.HeadingLevel="2" />
                         <Border Classes="pill" VerticalAlignment="Center">
                             <TextBlock Text="STABLE KEYS · PID START TIME" Classes="caps" />
                         </Border>
@@ -129,15 +129,15 @@
                 </Grid>
 
                 <TextBox Text="{Binding ProcessSearchText}" PlaceholderText="Filter by process name, application, stable key or executable path…" MaxWidth="520" HorizontalAlignment="Left"
-                         AutomationProperties.Name="Filter processes" />
+                         AutomationProperties.Name="Filter processes" AutomationProperties.HelpText="Space-separated terms; filtering hides rows only and does not recompute totals." />
 
                 <Grid ColumnDefinitions="*,96,70,70,86,92" ColumnSpacing="4">
-                    <Button Grid.Column="0" Classes="sort left" Content="PROCESS / EXECUTABLE" Command="{Binding SortProcessesCommand}" CommandParameter="name" />
-                    <Button Grid.Column="1" Classes="sort" Content="STABLE KEY" Command="{Binding SortProcessesCommand}" CommandParameter="name" />
-                    <Button Grid.Column="2" Classes="sort" Content="RX" Command="{Binding SortProcessesCommand}" CommandParameter="rx" />
-                    <Button Grid.Column="3" Classes="sort" Content="TX" Command="{Binding SortProcessesCommand}" CommandParameter="tx" />
-                    <Button Grid.Column="4" Classes="sort" Content="UNATTR" Command="{Binding SortProcessesCommand}" CommandParameter="unattributed" />
-                    <Button Grid.Column="5" Classes="sort" Content="TOTAL" Command="{Binding SortProcessesCommand}" CommandParameter="total" />
+                    <Button Grid.Column="0" Classes="sort left" Content="PROCESS / EXECUTABLE" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by PROCESS / EXECUTABLE" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="name" />
+                    <Button Grid.Column="1" Classes="sort" Content="STABLE KEY" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by STABLE KEY" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="name" />
+                    <Button Grid.Column="2" Classes="sort" Content="RX" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by RX" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="rx" />
+                    <Button Grid.Column="3" Classes="sort" Content="TX" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by TX" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="tx" />
+                    <Button Grid.Column="4" Classes="sort" Content="UNATTR" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by UNATTR" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="unattributed" />
+                    <Button Grid.Column="5" Classes="sort" Content="TOTAL" Command="{Binding SortProcessesCommand}" AutomationProperties.Name="Sort processes by TOTAL" AutomationProperties.HelpText="{Binding ProcessSortSummary}" CommandParameter="total" />
                 </Grid>
                 <Border Classes="divider" />
 
@@ -158,7 +158,7 @@
                                         <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding TxText}" Classes="mono tx" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
                                         <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding UnattributedText}" Classes="mono warn" FontSize="9" TextAlignment="Right" Margin="0,4,0,0" />
                                         <TextBlock Grid.Row="0" Grid.Column="5" Text="{Binding TotalText}" Classes="mono" FontSize="10" TextAlignment="Right" Margin="0,3,0,0" />
-                                        <controls:UsageBar Grid.Row="1" Grid.ColumnSpan="6" Height="3" Margin="0,7,0,0"
+                                        <controls:UsageBar AutomationProperties.AccessibilityView="Raw" Grid.Row="1" Grid.ColumnSpan="6" Height="3" Margin="0,7,0,0"
                                                            Value="{Binding Share}" BarBrush="{DynamicResource FlowSecondaryBrush}" />
                                     </Grid>
                                 </Border>

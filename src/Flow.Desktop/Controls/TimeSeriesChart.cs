@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Media;
 
 namespace Flow.Desktop.Controls;
@@ -20,6 +22,10 @@ public sealed class TimeSeriesChart : Control
 
     public static readonly StyledProperty<string> EmptyTextProperty =
         AvaloniaProperty.Register<TimeSeriesChart, string>(nameof(EmptyText), "No persisted buckets in this range.");
+
+    /// <summary>Textual alternative for the drawing, also used as automation help text.</summary>
+    public static readonly StyledProperty<string> SummaryProperty =
+        AvaloniaProperty.Register<TimeSeriesChart, string>(nameof(Summary), "");
 
     public static readonly StyledProperty<IBrush?> RxBrushProperty =
         AvaloniaProperty.Register<TimeSeriesChart, IBrush?>(nameof(RxBrush), new SolidColorBrush(Color.Parse("#4EDEA3")));
@@ -48,6 +54,76 @@ public sealed class TimeSeriesChart : Control
     {
         get => GetValue(EmptyTextProperty);
         set => SetValue(EmptyTextProperty, value);
+    }
+
+    public string Summary
+    {
+        get => GetValue(SummaryProperty);
+        set => SetValue(SummaryProperty, value);
+    }
+
+    private int _focusedIndex = -1;
+
+    /// <summary>The keyboard-selected data point as text, or empty when none is selected.</summary>
+    public string FocusedPointText
+    {
+        get
+        {
+            var points = Points;
+            if (points is null || _focusedIndex < 0 || _focusedIndex >= points.Count) return "";
+            var point = points[_focusedIndex];
+            return $"point {_focusedIndex + 1} of {points.Count}, {point.Timestamp.ToLocalTime():yyyy-MM-dd HH:mm} local, " +
+                   $"RX {FormatBytes(point.RxBytes)}, TX {FormatBytes(point.TxBytes)}, total {FormatBytes(point.Total)}";
+        }
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new TimeSeriesChartAutomationPeer(this);
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        var points = Points;
+        if (points is not null && points.Count > 0)
+        {
+            var handled = true;
+            switch (e.Key)
+            {
+                case Key.Left:
+                    _focusedIndex = _focusedIndex < 0 ? points.Count - 1 : Math.Max(0, _focusedIndex - 1);
+                    break;
+                case Key.Right:
+                    _focusedIndex = _focusedIndex < 0 ? 0 : Math.Min(points.Count - 1, _focusedIndex + 1);
+                    break;
+                case Key.Home:
+                    _focusedIndex = 0;
+                    break;
+                case Key.End:
+                    _focusedIndex = points.Count - 1;
+                    break;
+                default:
+                    handled = false;
+                    break;
+            }
+            if (handled)
+            {
+                e.Handled = true;
+                InvalidateVisual();
+            }
+        }
+        base.OnKeyDown(e);
+    }
+
+    protected override void OnGotFocus(FocusChangedEventArgs e)
+    {
+        base.OnGotFocus(e);
+        // Expose a text alternative immediately on focus, before any arrow key.
+        if (Points is { Count: > 0 } && _focusedIndex < 0)
+            _focusedIndex = 0;
+    }
+
+    protected override void OnLostFocus(FocusChangedEventArgs e)
+    {
+        _focusedIndex = -1;
+        base.OnLostFocus(e);
     }
 
     public IBrush? RxBrush
@@ -125,6 +201,16 @@ public sealed class TimeSeriesChart : Control
         // Series geometry.
         DrawSeries(context, points, p => p.RxBytes, maxValue, plot, rxBrush, 0x33);
         DrawSeries(context, points, p => p.TxBytes, maxValue, plot, txBrush, 0x2A);
+
+        // Keyboard-focused point marker (also exposed to assistive technology).
+        if (_focusedIndex >= 0 && _focusedIndex < points.Count)
+        {
+            var fx = points.Count == 1
+                ? plot.Left + plot.Width / 2
+                : plot.Left + _focusedIndex / (double)(points.Count - 1) * plot.Width;
+            var fy = plot.Bottom - Math.Max(points[_focusedIndex].RxBytes, points[_focusedIndex].TxBytes) / (double)maxValue * plot.Height;
+            context.DrawEllipse(null, new Pen(new SolidColorBrush(Colors.White), 2), new Point(fx, fy), 6, 6);
+        }
 
         // Peak marker based on total traffic (rx+tx).
         var peakIndex = 0;

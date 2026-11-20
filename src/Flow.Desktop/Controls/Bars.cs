@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Media;
 
@@ -29,6 +30,8 @@ public sealed class SplitBar : Control
     {
         AffectsRender<SplitBar>(FirstProperty, SecondProperty, FirstBrushProperty, SecondBrushProperty, TrackBrushProperty);
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new SplitBarAutomationPeer(this);
 
     public double First
     {
@@ -102,6 +105,8 @@ public sealed class UsageBar : Control
     {
         AffectsRender<UsageBar>(ValueProperty, BarBrushProperty, TrackBrushProperty);
     }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new UsageBarAutomationPeer(this);
 
     public double Value
     {

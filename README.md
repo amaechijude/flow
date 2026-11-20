@@ -97,8 +97,11 @@ Do not treat the attribution gate as closed. Important caveats:
 A prototype `.deb` can be built and validated with `packaging/build-deb.sh`,
 `packaging/test-deb.sh` and `packaging/test-install.sh` (the latter needs Docker).
 A real-VM user-session validation kit is in
-`packaging/validate-user-session.sh` / `docs/validation/user-session.md`
-(preflight passes here; the full sudo-driven run is an operator step).
+`packaging/validate-user-session.sh` / `docs/validation/user-session.md`, with an
+SSH dispatcher in `packaging/run-user-session-validation.sh` (preflight passes
+here; the full sudo-driven run is an operator step). Static UI accessibility is
+audited by `scripts/a11y-audit.sh`; see `docs/a11y-audit.md` (runtime
+screen-reader verification is still outstanding).
 It is not a release-quality package. Data survives upgrade, remove and default
 purge; full removal requires an explicit opt-in (`packaging/data-policy.md`,
 ADR 0012). Remaining productization work is listed in `HANDOFF.md`: full UI

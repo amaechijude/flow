@@ -10,7 +10,7 @@
     <StackPanel Spacing="16">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="{Binding ReportTitle}" Classes="headline" FontSize="20" />
+                <TextBlock Text="{Binding ReportTitle}" Classes="headline" AutomationProperties.HeadingLevel="1" FontSize="20" />
                 <Border Classes="pill primary" VerticalAlignment="Center">
                     <TextBlock Text="REAL PERSISTED DATA" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                 </Border>
@@ -26,7 +26,7 @@
         <Border Classes="card">
             <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="*,Auto">
-                    <TextBlock Text="Report metadata" Classes="section" />
+                    <TextBlock Text="Report metadata" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <TextBlock Grid.Column="1" Text="{Binding StateText}" Classes="caps" Foreground="{DynamicResource FlowSecondaryBrush}" />
                 </Grid>
                 <TextBlock Text="{Binding RangeText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
@@ -42,7 +42,7 @@
         <Grid ColumnDefinitions="*,*,*" ColumnSpacing="14">
             <Border Grid.Column="0" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Total (attributed + unattributed)" Classes="section" />
+                    <TextBlock Text="Total (attributed + unattributed)" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <TextBlock Text="{Binding TotalText}" Classes="metric" AutomationProperties.Name="Total bytes" />
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Text="RX" Classes="caps rx" />
@@ -56,7 +56,7 @@
             </Border>
             <Border Grid.Column="1" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Attribution split" Classes="section" />
+                    <TextBlock Text="Attribution split" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <TextBlock Text="{Binding AttributedPercentText}" Classes="metric" Foreground="{DynamicResource FlowTertiaryBrush}"
                                AutomationProperties.Name="Percentage of bytes attributed to a process" />
                     <Grid ColumnDefinitions="*,Auto">
@@ -71,7 +71,7 @@
             </Border>
             <Border Grid.Column="2" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Interfaces" Classes="section" />
+                    <TextBlock Text="Interfaces" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <TextBlock Text="{Binding InterfaceCountText}" Classes="metric" Foreground="{DynamicResource FlowSecondaryBrush}"
                                AutomationProperties.Name="Number of observed interface keys" />
                     <TextBlock Text="interface key(s) observed in range" Classes="dim" FontSize="11" TextWrapping="Wrap" />
@@ -81,7 +81,7 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Caveats (part of the report)" Classes="section" />
+                <TextBlock Text="Caveats (part of the report)" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <TextBlock Text="{Binding CaveatsText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                            AutomationProperties.Name="Attribution and coverage caveats" />
             </StackPanel>
@@ -90,11 +90,11 @@
         <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
             <Border Grid.Column="0" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Top applications" Classes="section" />
+                    <TextBlock Text="Top applications" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Grid ColumnDefinitions="*,80,80" Margin="0,2,0,2">
-                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" />
-                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="0" Text="APPLICATION" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                     </Grid>
                     <Border Classes="divider" />
                     <ItemsControl ItemsSource="{Binding Applications}" AutomationProperties.Name="Top applications in report">
@@ -114,11 +114,11 @@
 
             <Border Grid.Column="1" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Top processes" Classes="section" />
+                    <TextBlock Text="Top processes" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <Grid ColumnDefinitions="*,80,80" Margin="0,2,0,2">
-                        <TextBlock Grid.Column="0" Text="PROCESS" Classes="caps" />
-                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
+                        <TextBlock Grid.Column="0" Text="PROCESS" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                        <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                        <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                     </Grid>
                     <Border Classes="divider" />
                     <ItemsControl ItemsSource="{Binding Processes}" AutomationProperties.Name="Top processes in report">

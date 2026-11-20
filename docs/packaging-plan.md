@@ -43,7 +43,7 @@ Session mode status comes from the latest persisted monitoring session. Live pip
   registers `org.flow.Daemon` on the session bus.
 - D-Bus session activation file for the user daemon.
 - Polkit decision accepted (ADR 0011): no policy for read-only session-bus queries; add only if privileged control operations or system-bus access are introduced.
-- Real-VM validation kit prepared (`packaging/validate-user-session.sh`, `docs/validation/user-session.md`) for role separation, bus ownership, contract v3, D-Bus activation and restart resilience. Preflight passes where prepared; the full sudo-driven run on a disposable VM remains an operator step.
+- Real-VM validation kit prepared (`packaging/validate-user-session.sh`, SSH dispatcher `packaging/run-user-session-validation.sh`, `docs/validation/user-session.md`) for role separation, bus ownership, contract v3, D-Bus activation and restart resilience. Preflight passes where prepared; the full sudo-driven run on a disposable VM remains an operator step.
 
 ## Phase 4 — Remaining product work before a release-quality `.deb`
 
@@ -51,8 +51,7 @@ A prototype `.deb` can now be built with `./packaging/build-deb.sh`; the remaini
 
 - IPC hardening: signal continuity, reconnect/error mapping, `LastError` clearing.
 - Persistence: 1m→5m→h→d→mo rollups preserving totals are implemented (idempotent rebuild worker) and consumed by long-range queries via a single-granularity policy; retention prunes 1m/5m/1h after 7/35/400 days (1d/1mo kept indefinitely). Durable flush/retry with exponential backoff is implemented with atomic apply-and-delete and restart recovery; durable diagnostics are exposed over IPC.
-- UI: Reports/History/Settings/Comparison pages and basic accessibility names/textual chart
-  summary are implemented; precision-aware comparisons report bucket coverage and never claim billing-grade exactness. Full screen-reader conformance pass and chart interaction/per-point inspection remain.
+- UI: Reports/History/Settings/Comparison pages are implemented; precision-aware comparisons report bucket coverage and never claim billing-grade exactness. Static a11y audit, automation peers, landmarks/live regions and keyboard chart point inspection are done (`docs/a11y-audit.md`); runtime screen-reader verification and pointer chart interaction remain.
 - Package: binaries, units, D-Bus service file, desktop launcher and dependencies
   (`libbpf`, `libelf`, `zlib`) are in the prototype `.deb`. `postinst`/`prerm`/
   `postrm` and upgrade/uninstall data handling are implemented and validated by

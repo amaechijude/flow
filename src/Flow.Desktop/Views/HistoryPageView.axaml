@@ -10,7 +10,7 @@
     <StackPanel Spacing="16">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Usage history" Classes="headline" FontSize="20" />
+                <TextBlock Text="Usage history" Classes="headline" AutomationProperties.HeadingLevel="1" FontSize="20" />
                 <Border Classes="pill primary" VerticalAlignment="Center">
                     <TextBlock Text="PERSISTED BUCKETS" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                 </Border>
@@ -23,7 +23,7 @@
 
         <Border Classes="card">
             <StackPanel Spacing="6">
-                <TextBlock Text="Range summary" Classes="section" />
+                <TextBlock Text="Range summary" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <TextBlock Text="{Binding SummaryText}" Classes="mono" FontSize="12" TextWrapping="Wrap"
                            AutomationProperties.Name="Persisted bucket range summary" />
                 <TextBlock Classes="dim" FontSize="11" TextWrapping="Wrap"
@@ -33,13 +33,13 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Daily totals (local time)" Classes="section" />
+                <TextBlock Text="Daily totals (local time)" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <Grid ColumnDefinitions="*,110,110,120,72" Margin="0,2,0,2">
-                    <TextBlock Grid.Column="0" Text="LOCAL DAY" Classes="caps" />
-                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="4" Text="BUCKETS" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="0" Text="LOCAL DAY" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="BUCKETS" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                 </Grid>
                 <Border Classes="divider" />
                 <ItemsControl ItemsSource="{Binding Days}" AutomationProperties.Name="Daily usage totals table">
@@ -61,12 +61,12 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Persisted buckets" Classes="section" />
+                <TextBlock Text="Persisted buckets" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <Grid ColumnDefinitions="*,100,100,100" Margin="0,2,0,2">
-                    <TextBlock Grid.Column="0" Text="LOCAL TIME" Classes="caps" />
-                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="0" Text="LOCAL TIME" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                    <TextBlock Grid.Column="1" Text="RX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="TX" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="TOTAL" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                 </Grid>
                 <Border Classes="divider" />
                 <ScrollViewer MaxHeight="340">

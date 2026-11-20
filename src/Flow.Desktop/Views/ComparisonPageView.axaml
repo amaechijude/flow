@@ -10,7 +10,7 @@
     <StackPanel Spacing="16">
         <Grid ColumnDefinitions="*,Auto">
             <StackPanel Orientation="Horizontal" Spacing="10">
-                <TextBlock Text="Window comparison" Classes="headline" FontSize="20" />
+                <TextBlock Text="Window comparison" Classes="headline" AutomationProperties.HeadingLevel="1" FontSize="20" />
                 <Border Classes="pill primary" VerticalAlignment="Center">
                     <TextBlock Text="REAL PERSISTED DATA" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                 </Border>
@@ -20,7 +20,7 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Window precision" Classes="section" />
+                <TextBlock Text="Window precision" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto" RowSpacing="6">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Current" Classes="caps" />
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CurrentRangeText}" Classes="mono" FontSize="11" TextWrapping="Wrap" />
@@ -51,13 +51,13 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Metric deltas (current − previous)" Classes="section" />
+                <TextBlock Text="Metric deltas (current − previous)" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <Grid ColumnDefinitions="*,120,120,120,110" Margin="0,2,0,2">
-                    <TextBlock Grid.Column="0" Text="METRIC" Classes="caps" />
-                    <TextBlock Grid.Column="1" Text="CURRENT" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="2" Text="PREVIOUS" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="3" Text="DELTA" Classes="caps" TextAlignment="Right" />
-                    <TextBlock Grid.Column="4" Text="CHANGE" Classes="caps" TextAlignment="Right" />
+                    <TextBlock Grid.Column="0" Text="METRIC" Classes="caps" AutomationProperties.IsColumnHeader="True" />
+                    <TextBlock Grid.Column="1" Text="CURRENT" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="2" Text="PREVIOUS" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="3" Text="DELTA" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
+                    <TextBlock Grid.Column="4" Text="CHANGE" Classes="caps" AutomationProperties.IsColumnHeader="True" TextAlignment="Right" />
                 </Grid>
                 <Border Classes="divider" />
                 <ItemsControl ItemsSource="{Binding Metrics}" AutomationProperties.Name="Comparison metric deltas">
@@ -80,7 +80,7 @@
         <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
             <Border Grid.Column="0" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Applications" Classes="section" />
+                    <TextBlock Text="Applications" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <ScrollViewer MaxHeight="300">
                         <ItemsControl ItemsSource="{Binding Applications}" AutomationProperties.Name="Application comparison rows">
                             <ItemsControl.ItemTemplate>
@@ -99,7 +99,7 @@
             </Border>
             <Border Grid.Column="1" Classes="card">
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Processes" Classes="section" />
+                    <TextBlock Text="Processes" Classes="section" AutomationProperties.HeadingLevel="2" />
                     <ScrollViewer MaxHeight="300">
                         <ItemsControl ItemsSource="{Binding Processes}" AutomationProperties.Name="Process comparison rows">
                             <ItemsControl.ItemTemplate>
@@ -120,7 +120,7 @@
 
         <Border Classes="card">
             <StackPanel Spacing="8">
-                <TextBlock Text="Interfaces" Classes="section" />
+                <TextBlock Text="Interfaces" Classes="section" AutomationProperties.HeadingLevel="2" />
                 <ItemsControl ItemsSource="{Binding Interfaces}" AutomationProperties.Name="Interface comparison rows">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ComparisonRowView">

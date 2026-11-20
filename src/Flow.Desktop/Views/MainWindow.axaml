@@ -13,7 +13,8 @@
     <Grid RowDefinitions="56,*">
         <!-- Top bar: brand, truthful daemon/IPC status, shared range + filter controls. -->
         <Border Grid.Row="0" Background="{DynamicResource FlowSurfaceBrush}"
-                BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1" Padding="16,0">
+                BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,0,1" Padding="16,0"
+                 AutomationProperties.LandmarkType="Banner" AutomationProperties.Name="Flow status and range controls">
             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -43,7 +44,7 @@
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                     <ComboBox ItemsSource="{Binding Ranges}" SelectedItem="{Binding SelectedRange}" MinWidth="148"
-                              AutomationProperties.Name="Time range"
+                              AutomationProperties.Name="Time range" AutomationProperties.HelpText="Rolling window or local calendar day; times are shown in local time."
                               ToolTip.Tip="Rolling window or local calendar day; times are shown in local time">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:RangeOption">
@@ -52,7 +53,7 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                     <ComboBox ItemsSource="{Binding InterfaceFilters}" SelectedItem="{Binding SelectedInterfaceFilter}" MinWidth="176"
-                              AutomationProperties.Name="Interface filter"
+                              AutomationProperties.Name="Interface filter" AutomationProperties.HelpText="Filters summary, applications, processes and time series by interface."
                               ToolTip.Tip="Filter summary, applications, processes and time series by interface">
                         <ComboBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:InterfaceFilterOption">
@@ -60,11 +61,11 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Content="⟳" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh data and daemon status"
+                    <Button Content="⟳" Command="{Binding RefreshCommand}" AutomationProperties.Name="Refresh data and daemon status" AutomationProperties.HelpText="Requeries real persisted data and live daemon status."
                             ToolTip.Tip="Refresh real persisted data and daemon status" />
-                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" AutomationProperties.Name="Export current view as CSV"
+                    <Button Content="Export CSV" Command="{Binding ExportCsvCommand}" AutomationProperties.Name="Export current view as CSV" AutomationProperties.HelpText="Writes the currently loaded real view to a CSV file with provenance and caveats."
                             ToolTip.Tip="Export the currently loaded view to CSV" />
-                    <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" AutomationProperties.Name="Export current view as JSON"
+                    <Button Content="Export JSON" Command="{Binding ExportJsonCommand}" AutomationProperties.Name="Export current view as JSON" AutomationProperties.HelpText="Writes the currently loaded real view to a JSON file with provenance and caveats."
                             ToolTip.Tip="Export the currently loaded view to JSON" />
                     <TextBlock Text="Loading…" IsVisible="{Binding IsBusy}" VerticalAlignment="Center"
                                Foreground="{DynamicResource FlowPrimaryBrush}" FontSize="12" Margin="4,0,0,0" />
@@ -75,61 +76,62 @@
         <Grid Grid.Row="1" ColumnDefinitions="232,*">
             <!-- Sidebar navigation + honest monitor summary. -->
             <Border Grid.Column="0" Background="{DynamicResource FlowSurfaceLowBrush}"
-                    BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,1,0" Padding="10">
+                    BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="0,0,1,0" Padding="10"
+                    AutomationProperties.LandmarkType="Navigation" AutomationProperties.Name="Main navigation">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel Grid.Row="0" Spacing="2">
                         <TextBlock Text="NAVIGATION" Classes="caps" Margin="10,8,0,6" />
                         <Button Classes="nav" Classes.active="{Binding IsOverviewActive}" Command="{Binding NavigateCommand}" CommandParameter="overview"
-                                AutomationProperties.Name="Overview page">
+                                AutomationProperties.Name="Overview page" AutomationProperties.AutomationId="nav-overview">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="▦" FontSize="13" />
                                 <TextBlock Text="Overview" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsApplicationsActive}" Command="{Binding NavigateCommand}" CommandParameter="applications"
-                                AutomationProperties.Name="Apps and processes page">
+                                AutomationProperties.Name="Apps and processes page" AutomationProperties.AutomationId="nav-applications">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="▤" FontSize="13" />
                                 <TextBlock Text="Apps &amp; Processes" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsInterfacesActive}" Command="{Binding NavigateCommand}" CommandParameter="interfaces"
-                                AutomationProperties.Name="Network interfaces page">
+                                AutomationProperties.Name="Network interfaces page" AutomationProperties.AutomationId="nav-interfaces">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⇄" FontSize="13" />
                                 <TextBlock Text="Network Interfaces" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsDiagnosticsActive}" Command="{Binding NavigateCommand}" CommandParameter="diagnostics"
-                                AutomationProperties.Name="Diagnostics and daemon page">
+                                AutomationProperties.Name="Diagnostics and daemon page" AutomationProperties.AutomationId="nav-diagnostics">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⌗" FontSize="13" />
                                 <TextBlock Text="Diagnostics &amp; Daemon" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsReportsActive}" Command="{Binding NavigateCommand}" CommandParameter="reports"
-                                AutomationProperties.Name="Reports page">
+                                AutomationProperties.Name="Reports page" AutomationProperties.AutomationId="nav-reports">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="▤" FontSize="13" />
                                 <TextBlock Text="Reports" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsHistoryActive}" Command="{Binding NavigateCommand}" CommandParameter="history"
-                                AutomationProperties.Name="History page">
+                                AutomationProperties.Name="History page" AutomationProperties.AutomationId="nav-history">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="◷" FontSize="13" />
                                 <TextBlock Text="History" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsSettingsActive}" Command="{Binding NavigateCommand}" CommandParameter="settings"
-                                AutomationProperties.Name="Settings and provenance page">
+                                AutomationProperties.Name="Settings and provenance page" AutomationProperties.AutomationId="nav-settings">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⚙" FontSize="13" />
                                 <TextBlock Text="Settings" />
                             </StackPanel>
                         </Button>
                         <Button Classes="nav" Classes.active="{Binding IsComparisonActive}" Command="{Binding NavigateCommand}" CommandParameter="comparison"
-                                AutomationProperties.Name="Comparison page">
+                                AutomationProperties.Name="Comparison page" AutomationProperties.AutomationId="nav-comparison">
                             <StackPanel Orientation="Horizontal" Spacing="10">
                                 <TextBlock Text="⇄" FontSize="13" />
                                 <TextBlock Text="Comparison" />
@@ -162,7 +164,8 @@
                                 <Border Classes="divider" />
                                 <TextBlock Text="Live values come from the daemon over D-Bus or from the same persisted SQLite data when IPC is unreachable."
                                            Classes="dim" FontSize="10" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding LastRefreshText}" Classes="dim" FontSize="10" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding LastRefreshText}" Classes="dim" FontSize="10" TextWrapping="Wrap"
+                                            AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Last refresh time" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -170,7 +173,8 @@
             </Border>
 
             <!-- Content: shared notice banner + current page. -->
-            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*">
+            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*"
+                  AutomationProperties.LandmarkType="Main" AutomationProperties.Name="Main content">
                 <Border Grid.Row="0" IsVisible="{Binding ShowDaemonNotice}" Margin="24,18,24,0" Padding="12,10"
                         Background="{DynamicResource FlowWarningSoftBrush}" BorderBrush="{DynamicResource FlowBorderStrongBrush}"
                         BorderThickness="1" CornerRadius="5">
@@ -178,7 +182,8 @@
                         <TextBlock Text="⚠" Foreground="{DynamicResource FlowWarningBrush}" FontSize="15" VerticalAlignment="Top" />
                         <StackPanel Spacing="2">
                             <TextBlock Text="ATTRIBUTION / CONNECTION NOTICE" Classes="caps" Foreground="{DynamicResource FlowWarningBrush}" />
-                            <TextBlock Text="{Binding DaemonNoticeText}" Classes="muted" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding DaemonNoticeText}" Classes="muted" TextWrapping="Wrap"
+                                       AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Attribution and connection notice" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
@@ -188,10 +193,12 @@
                             BorderBrush="{DynamicResource FlowBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="12,8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="Custom range" Classes="caps" VerticalAlignment="Center" />
-                            <TextBlock Text="From" Classes="muted" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding CustomStartDate}" AutomationProperties.Name="Custom range start date" />
-                            <TextBlock Text="To" Classes="muted" VerticalAlignment="Center" />
-                            <DatePicker SelectedDate="{Binding CustomEndDate}" AutomationProperties.Name="Custom range end date" />
+                            <TextBlock x:Name="CustomRangeFromLabel" Text="From" Classes="muted" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding CustomStartDate}" AutomationProperties.Name="Custom range start date"
+                                        AutomationProperties.LabeledBy="{Binding #CustomRangeFromLabel}" />
+                            <TextBlock x:Name="CustomRangeToLabel" Text="To" Classes="muted" VerticalAlignment="Center" />
+                            <DatePicker SelectedDate="{Binding CustomEndDate}" AutomationProperties.Name="Custom range end date"
+                                        AutomationProperties.LabeledBy="{Binding #CustomRangeToLabel}" />
                             <Button Content="Apply" Classes="primary" Command="{Binding RefreshCommand}"
                                     AutomationProperties.Name="Apply custom range" />
                             <TextBlock Text="Local days → UTC buckets; display is local time." Classes="dim" VerticalAlignment="Center" />
@@ -203,7 +210,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="Compare with" Classes="caps" VerticalAlignment="Center" />
                             <ComboBox ItemsSource="{Binding ComparisonModes}" SelectedItem="{Binding SelectedComparisonMode}" MinWidth="160"
-                                      AutomationProperties.Name="Comparison window mode"
+                                      AutomationProperties.Name="Comparison window mode" AutomationProperties.HelpText="Choose the preceding window to compare with the current range."
                                       ToolTip.Tip="Choose the preceding window to compare against the current range" />
                             <TextBlock Text="The previous window uses the same granularity and interface filter." Classes="dim" VerticalAlignment="Center" />
                         </StackPanel>
@@ -212,7 +219,8 @@
                     <Border IsVisible="{Binding ExportStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                             Background="{DynamicResource FlowPrimarySoftBrush}" BorderBrush="{DynamicResource FlowBorderStrongBrush}"
                             BorderThickness="1" CornerRadius="5" Padding="12,8">
-                        <TextBlock Text="{Binding ExportStatus}" Classes="mono" Foreground="{DynamicResource FlowPrimaryBrush}" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding ExportStatus}" Classes="mono" Foreground="{DynamicResource FlowPrimaryBrush}" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="Export result" />
                     </Border>
                 </StackPanel>
 

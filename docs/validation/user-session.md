@@ -46,6 +46,25 @@ session. `FLOW_DPKG_FLAGS` can override the default `--force-depends` (used
 because the VM may not have the .NET runtime installed), and
 `FLOW_SKIP_INSTALL=1` validates an already installed package.
 
+### Dispatched runner (disposable VM over SSH)
+
+`packaging/run-user-session-validation.sh` copies the built `.deb` and the
+validation kit to a disposable VM and brings the report back locally. It never
+modifies the local host and never runs as root.
+
+```bash
+FLOW_VM_SSH='ubuntu@192.168.64.5' ./packaging/run-user-session-validation.sh
+FLOW_VM_SSH='ubuntu@192.168.64.5' FLOW_VM_PREFLIGHT_ONLY=1 \
+  ./packaging/run-user-session-validation.sh
+```
+
+The VM must have a graphical login, passwordless sudo, and `ssh`/`scp` access.
+`FLOW_VM_SSH_OPTS` can supply extra SSH flags and `FLOW_VM_DIR` the remote
+staging directory. The local report defaults to a fresh `/tmp` directory and can
+be pinned with `FLOW_VALIDATE_REPORT`. This runner was prepared and syntax/
+preflight-checked here, but no VM was available in this session, so the full run
+remains an operator step.
+
 The script prints `PASS`/`FAIL` per check, exits nonzero on any failure, and
 writes raw output plus `journalctl` excerpts into the report directory.
 

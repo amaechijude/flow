@@ -1391,3 +1391,20 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 ### Limitations / next
 - Exactness refers only to window/bucket alignment; provider attribution, high-churn and measurement caveats still apply. Coarse rollup windows are labelled approximate, not billed as exact.
 - Remaining: full screen-reader conformance, chart per-point interaction, and real-VM user-session validation execution.
+
+## 2026-11-20 (static a11y conformance + VM validation runner)
+
+### Implementation
+- Added real `AutomationPeer` implementations for `TimeSeriesChart` (Image, name/help text from the real caption, per-point `ItemStatus`), `SplitBar` and `UsageBar` (ProgressBar with actual fractions). The chart is focusable and Left/Right/Home/End select a real bucket, with a visual marker and spoken summary.
+- Added window landmarks (Banner/Navigation/Main), heading levels, stable navigation `AutomationId`s, `HelpText` on selectors/search boxes, `LabeledBy` on custom-range dates, `LiveSetting="Polite"` on status/export/refresh text, `IsColumnHeader` on table headers, and `AccessibilityView="Raw"` on decorative in-row bars.
+- Added `scripts/a11y-audit.sh` (66 controls checked, passes) and `docs/a11y-audit.md` documenting the static conformance record, keyboard map and honest gaps.
+- Added `packaging/run-user-session-validation.sh`: SSH dispatcher that preflights a disposable VM, copies the `.deb` and validation kit, runs the kit and retrieves the report; documented in `docs/validation/user-session.md`. Preflight/no-target paths were checked here; no VM was available for the full run.
+
+### Verification
+- `dotnet build Flow.slnx` succeeded; `dotnet test Flow.slnx` → 86/86 passing.
+- `./scripts/a11y-audit.sh` → 66/66 controls named or explicitly Raw.
+- `./packaging/build-deb.sh`, `./packaging/test-deb.sh` and `./packaging/test-install.sh` all passed after the UI changes.
+
+### Limitations / next
+- No runtime screen-reader session and no disposable VM with sudo were available here, so AT announcements and the full user-session validation remain operator steps on a real desktop/VM.
+- Pointer chart interaction (zoom/tooltip) is still open.
