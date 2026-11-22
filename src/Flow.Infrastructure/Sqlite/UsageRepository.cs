@@ -17,24 +17,73 @@ public sealed class UsageRepository : IUsageBucketStore, IMonitoringMetadataStor
         _factory = factory;
     }
 
+    private static readonly string[] AllGranularities = ["1m", "5m", "1h", "1d", "1mo"];
+
     private static string ResolveGranularity(SqliteConnection conn, DateTimeOffset startUtc, DateTimeOffset endUtc)
     {
         var chosen = UsageGranularityPolicy.Choose(startUtc, endUtc);
         if (chosen == "1m")
             return chosen;
 
-        // Rollups may not exist yet (fresh DB or before the first worker tick).
-        // Fall back to 1m rather than returning an empty result.
+        // A rollup is only trustworthy if it spans all the bytes that exist in
+        // the window. "Any row exists" is not enough: a partially built rollup
+        // would silently report a tiny recent slice as the whole period (e.g.
+        // a 7-day total smaller than a single day inside it).
+        var coverage = AllGranularities.ToDictionary(g => g, g => Coverage(conn, g, startUtc, endUtc));
+        var reference = AllGranularities.FirstOrDefault(g => coverage[g].Min is not null);
+
+        // Without any persisted buckets there is nothing to choose; 1m is the
+        // honest (empty) source. The finest granularity with data is the
+        // reference: coarser buckets start earlier only because of alignment,
+        // which must not be mistaken for older data.
+        if (reference is null)
+            return "1m";
+
+        var candidates = chosen switch
+        {
+            "1mo" => new[] { "1mo", "1d", "1h", "5m" },
+            "1d" => new[] { "1d", "1h", "5m" },
+            "1h" => new[] { "1h", "5m" },
+            _ => new[] { "5m" },
+        };
+
+        var refMin = coverage[reference].Min!.Value;
+        var refMax = coverage[reference].Max!.Value;
+        foreach (var g in candidates)
+        {
+            var (min, max) = coverage[g];
+            if (min is null || max is null) continue;
+
+            // The rollup must start no later than the oldest finer bucket
+            // (plus one rollup bucket) and reach the newest finer bucket.
+            if (min.Value <= refMin + UsagePrecision.BucketDuration(refMin, g) &&
+                max.Value >= UsageGranularityPolicy.AlignDown(refMax, g))
+                return g;
+        }
+
+        // Rollups are incomplete or missing - the finest available data is the
+        // only honest source for this window.
+        return "1m";
+    }
+
+    private static (DateTimeOffset? Min, DateTimeOffset? Max) Coverage(
+        SqliteConnection conn, string granularity, DateTimeOffset startUtc, DateTimeOffset endUtc)
+    {
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            SELECT 1 FROM usage_buckets
-            WHERE granularity = $g AND bucket_start_utc >= $start AND bucket_start_utc < $end
-            LIMIT 1;
+            SELECT MIN(bucket_start_utc), MAX(bucket_start_utc)
+            FROM usage_buckets
+            WHERE granularity = $g AND bucket_start_utc >= $start AND bucket_start_utc < $end;
             """;
-        cmd.Parameters.AddWithValue("$g", chosen);
-        cmd.Parameters.AddWithValue("$start", UsageGranularityPolicy.AlignDown(startUtc, chosen).ToString("O"));
+        cmd.Parameters.AddWithValue("$g", granularity);
+        cmd.Parameters.AddWithValue("$start", startUtc.ToString("O"));
         cmd.Parameters.AddWithValue("$end", endUtc.ToString("O"));
-        return cmd.ExecuteScalar() is null ? "1m" : chosen;
+        using var reader = cmd.ExecuteReader();
+        if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+            return (null, null);
+        return (
+            DateTimeOffset.Parse(reader.GetString(0), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind),
+            DateTimeOffset.Parse(reader.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
     }
 
     public Task<UsageSummaryDto> GetSummaryAsync(DateTimeOffset startUtc, DateTimeOffset endUtc, string? interfaceId = null, CancellationToken cancellationToken = default)

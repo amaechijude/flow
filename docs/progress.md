@@ -1494,3 +1494,32 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 
 ### Verification
 - Documentation-only change; no code or package behaviour changed.
+
+## 2026-11-22 (fix: long ranges smaller than short ranges in the desktop app)
+
+### Reported symptom
+- Desktop Overview with `Yesterday` selected showed ~100+ MiB, `Today` ~90 MiB, but `Last 7 days` showed **less** than either. A 7-day window must be >= any single day inside it.
+
+### Diagnosis (live DB `/var/lib/flow/flow.db`, local TZ Africa/Lagos)
+- Granularity per query: `Choose()` maps <=2h->1m, <=2d->5m, <=31d->1h; `ResolveGranularity()` used a **presence check** ("does any rollup row exist in the window?"), not a coverage check.
+- Measured rollup state: `1m` rows 2026-11-20T09:37Z -> 2026-11-21T21:09Z (~1.5 days, 1,069.8 MiB), but `5m`/`1h`/`1d`/`1mo` rollups only covered 2026-11-21T20:00Z -> 21:00Z (~123 MiB). `usage_rollup_state` watermark was at 21:05Z.
+- Reproduced with repository query semantics: `Yesterday` (no 5m rows in window) fell back to 1m = **309.8 MiB**; `Today` (5m rows existed) = **117.4 MiB** (1m truth 762.6 MiB); `Last 7 days` (1h rows existed) = **117.4 MiB** (1m truth 1,069.8 MiB). Hence 7d < 1d.
+- Root cause in `UsageRollupService.RebuildThroughAsync`: it read only a 2-hour lookback of 1m rows (`last - 2h`) but **deleted all rollups from the month floor**, then rebuilt from that narrow slice. Every 5-minute tick therefore collapsed rollups to the last ~2 hours. The query layer then trusted those partial rollups whenever any row existed.
+
+### Fixes
+- `UsageRollupService`: rebuild in tiers (5m<-1m, 1h<-5m, 1d<-1h, 1mo<-1d). Each tier deletes and recomputes only buckets inside its source's available horizon, so older rollups survive retention and a fresh/stalled DB is backfilled when target coverage lags source coverage. Watermark still held behind the durable queue by `UsageRollupWorker`.
+- `UsageRepository.ResolveGranularity`: verify coverage before trusting a rollup. Uses the finest granularity with data in the window as reference; a candidate rollup must start no later than the oldest finer bucket (plus one bucket) and reach the newest finer bucket, otherwise falls back to 1m. Prevents partial rollups from being reported as whole-period totals.
+- Added regressions: `RepeatedRebuildsDoNotEraseOlderRollupCoverage`, `RebuildBackfillsMissingHistoryWhenWatermarkIsAhead`, `PartialRollupsCannotMakeLongerRangeSmallerThanShorterRange`.
+
+### Verification
+- `dotnet test Flow.slnx`: **89/89 passing** (Domain 1, Application 29, Infrastructure 20, Linux 21, Daemon 14, System 4).
+- Ran the fixed repository against a backup of the live DB on a copy: after one rebuild all granularities cover the same range and total (1m/5m/1h/1d/1mo all 1,113.6 MiB); `Yesterday` 801.1 MiB, `Today` 4.3 MiB, `Last 7 days` 1,113.6 MiB — the invariant now holds.
+
+### Deployment note
+- These are source fixes. The installed app runs `/usr/lib/flow/{daemon,desktop}`; the live DB still has the broken rollups until the rebuilt `.deb` is reinstalled and the collector restarted. `sudo -n` is unavailable in-session, so reinstall must be done by the user (or with an interactive sudo).
+
+### Package built (2026-11-22)
+- `./packaging/build-deb.sh` succeeded; `./packaging/test-deb.sh` passed (layout, control, maintainer-script simulation, data policy).
+- Verified the fixed `Flow.Infrastructure.dll` checksum is identical in the Release output, packaged daemon, and packaged desktop.
+- Artifact: `packaging/build/flow_0.1.0_amd64.deb` (installed version is also 0.1.0, so this is a same-version reinstall, not a downgrade).
+- Install requires interactive sudo: `sudo dpkg -i packaging/build/flow_0.1.0_amd64.deb`, then `sudo systemctl enable --now flow-collector.service` and `systemctl --user enable --now flow-daemon.service`, then restart the desktop app.
