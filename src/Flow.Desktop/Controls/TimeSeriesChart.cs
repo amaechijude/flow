@@ -21,6 +21,14 @@ public sealed class TimeSeriesChart : Control
     public static readonly StyledProperty<IReadOnlyList<ChartPoint>?> PointsProperty =
         AvaloniaProperty.Register<TimeSeriesChart, IReadOnlyList<ChartPoint>?>(nameof(Points));
 
+    /// <summary>The selected range's start; when set with <see cref="WindowEnd"/>, the x axis spans it.</summary>
+    public static readonly StyledProperty<DateTimeOffset?> WindowStartProperty =
+        AvaloniaProperty.Register<TimeSeriesChart, DateTimeOffset?>(nameof(WindowStart));
+
+    /// <summary>The selected range's end; when set with <see cref="WindowStart"/>, the x axis spans it.</summary>
+    public static readonly StyledProperty<DateTimeOffset?> WindowEndProperty =
+        AvaloniaProperty.Register<TimeSeriesChart, DateTimeOffset?>(nameof(WindowEnd));
+
     public static readonly StyledProperty<string> EmptyTextProperty =
         AvaloniaProperty.Register<TimeSeriesChart, string>(nameof(EmptyText), "No persisted buckets in this range.");
 
@@ -42,13 +50,35 @@ public sealed class TimeSeriesChart : Control
 
     static TimeSeriesChart()
     {
-        AffectsRender<TimeSeriesChart>(PointsProperty, RxBrushProperty, TxBrushProperty, GridBrushProperty, LabelBrushProperty);
+        AffectsRender<TimeSeriesChart>(PointsProperty, WindowStartProperty, WindowEndProperty,
+            RxBrushProperty, TxBrushProperty, GridBrushProperty, LabelBrushProperty);
     }
 
     public IReadOnlyList<ChartPoint>? Points
     {
         get => GetValue(PointsProperty);
         set => SetValue(PointsProperty, value);
+    }
+
+    public DateTimeOffset? WindowStart
+    {
+        get => GetValue(WindowStartProperty);
+        set => SetValue(WindowStartProperty, value);
+    }
+
+    public DateTimeOffset? WindowEnd
+    {
+        get => GetValue(WindowEndProperty);
+        set => SetValue(WindowEndProperty, value);
+    }
+
+    /// <summary>Fraction of the selected window at which a bucket starts, clamped to [0,1].</summary>
+    internal static double WindowFraction(DateTimeOffset timestamp, DateTimeOffset windowStart, DateTimeOffset windowEnd)
+    {
+        var startTicks = windowStart.UtcDateTime.Ticks;
+        var endTicks = windowEnd.UtcDateTime.Ticks;
+        if (endTicks <= startTicks) return 0;
+        return Math.Clamp((timestamp.UtcDateTime.Ticks - startTicks) / (double)(endTicks - startTicks), 0, 1);
     }
 
     public string EmptyText
@@ -178,6 +208,21 @@ public sealed class TimeSeriesChart : Control
         var maxValue = points.Max(p => Math.Max(p.RxBytes, p.TxBytes));
         if (maxValue <= 0) maxValue = 1;
 
+        // When the selected window is supplied, buckets are placed by their
+        // timestamp so the chart reflects the range the user chose (including
+        // periods with no data). Without a window, fall back to even spacing.
+        var hasWindow = WindowStart is not null && WindowEnd is not null && WindowEnd.Value > WindowStart.Value;
+        var windowStartTicks = hasWindow ? WindowStart!.Value.UtcDateTime.Ticks : 0;
+        var windowEndTicks = hasWindow ? WindowEnd!.Value.UtcDateTime.Ticks : 0;
+
+        double XAt(int index)
+        {
+            var fraction = hasWindow
+                ? WindowFraction(points[index].Timestamp, WindowStart!.Value, WindowEnd!.Value)
+                : (points.Count == 1 ? 0.5 : index / (double)(points.Count - 1));
+            return plot.Left + fraction * plot.Width;
+        }
+
         // Horizontal grid + y labels.
         const int gridLines = 4;
         for (var i = 0; i <= gridLines; i++)
@@ -189,26 +234,35 @@ public sealed class TimeSeriesChart : Control
             DrawText(context, FormatBytes(value), new Point(4, y - 7), 10, labelBrush);
         }
 
-        // X labels: first / middle / last real bucket timestamps.
-        DrawText(context, DisplayTime.Axis(points[0].Timestamp), new Point(plot.Left, plot.Bottom + 6), 10, labelBrush);
-        if (points.Count > 2)
+        // X labels: the selected window's boundaries, or the data extent when
+        // no window was supplied.
+        if (hasWindow)
         {
-            var mid = DisplayTime.Axis(points[points.Count / 2].Timestamp);
-            DrawText(context, mid, new Point(plot.Left + plot.Width / 2 - 12, plot.Bottom + 6), 10, labelBrush);
+            var midTicks = windowStartTicks + (windowEndTicks - windowStartTicks) / 2;
+            DrawText(context, DisplayTime.Axis(WindowStart!.Value), new Point(plot.Left, plot.Bottom + 6), 10, labelBrush);
+            DrawText(context, DisplayTime.Axis(new DateTimeOffset(midTicks, TimeSpan.Zero)),
+                new Point(plot.Left + plot.Width / 2 - 12, plot.Bottom + 6), 10, labelBrush);
+            DrawText(context, DisplayTime.Axis(WindowEnd!.Value), new Point(plot.Right - 26, plot.Bottom + 6), 10, labelBrush);
         }
-        var lastLabel = DisplayTime.Axis(points[^1].Timestamp);
-        DrawText(context, lastLabel, new Point(plot.Right - 26, plot.Bottom + 6), 10, labelBrush);
+        else
+        {
+            DrawText(context, DisplayTime.Axis(points[0].Timestamp), new Point(plot.Left, plot.Bottom + 6), 10, labelBrush);
+            if (points.Count > 2)
+            {
+                var mid = DisplayTime.Axis(points[points.Count / 2].Timestamp);
+                DrawText(context, mid, new Point(plot.Left + plot.Width / 2 - 12, plot.Bottom + 6), 10, labelBrush);
+            }
+            DrawText(context, DisplayTime.Axis(points[^1].Timestamp), new Point(plot.Right - 26, plot.Bottom + 6), 10, labelBrush);
+        }
 
         // Series geometry.
-        DrawSeries(context, points, p => p.RxBytes, maxValue, plot, rxBrush, 0x33);
-        DrawSeries(context, points, p => p.TxBytes, maxValue, plot, txBrush, 0x2A);
+        DrawSeries(context, points, p => p.RxBytes, maxValue, plot, rxBrush, 0x33, XAt);
+        DrawSeries(context, points, p => p.TxBytes, maxValue, plot, txBrush, 0x2A, XAt);
 
         // Keyboard-focused point marker (also exposed to assistive technology).
         if (_focusedIndex >= 0 && _focusedIndex < points.Count)
         {
-            var fx = points.Count == 1
-                ? plot.Left + plot.Width / 2
-                : plot.Left + _focusedIndex / (double)(points.Count - 1) * plot.Width;
+            var fx = XAt(_focusedIndex);
             var fy = plot.Bottom - Math.Max(points[_focusedIndex].RxBytes, points[_focusedIndex].TxBytes) / (double)maxValue * plot.Height;
             context.DrawEllipse(null, new Pen(new SolidColorBrush(Colors.White), 2), new Point(fx, fy), 6, 6);
         }
@@ -220,7 +274,7 @@ public sealed class TimeSeriesChart : Control
         var peak = points[peakIndex];
         if (peak.Total > 0)
         {
-            var x = plot.Left + (points.Count == 1 ? plot.Width : peakIndex / (double)(points.Count - 1) * plot.Width);
+            var x = XAt(peakIndex);
             var y = plot.Bottom - Math.Max(peak.RxBytes, peak.TxBytes) / (double)maxValue * plot.Height;
             context.DrawLine(new Pen(new SolidColorBrush(Color.Parse("#884CD7F6")), 1, new DashStyle([3, 3], 0)), new Point(x, plot.Top), new Point(x, plot.Bottom));
             context.DrawEllipse(new SolidColorBrush(Color.Parse("#4CD7F6")), null, new Point(x, y), 3.5, 3.5);
@@ -229,15 +283,25 @@ public sealed class TimeSeriesChart : Control
         }
     }
 
-    private static void DrawSeries(DrawingContext context, IReadOnlyList<ChartPoint> points, Func<ChartPoint, long> selector, long maxValue, Rect plot, IBrush brush, byte fillAlpha)
+    private static void DrawSeries(DrawingContext context, IReadOnlyList<ChartPoint> points, Func<ChartPoint, long> selector,
+        long maxValue, Rect plot, IBrush brush, byte fillAlpha, Func<int, double> xAt)
     {
         if (points.Count == 0) return;
 
         Point PointAt(int i)
         {
-            var x = points.Count == 1 ? plot.Left + plot.Width / 2 : plot.Left + i / (double)(points.Count - 1) * plot.Width;
             var y = plot.Bottom - selector(points[i]) / (double)maxValue * plot.Height;
-            return new Point(x, y);
+            return new Point(xAt(i), y);
+        }
+
+        // A single bucket is a bar/dot at its place in the window, not a
+        // zero-length line that would draw nothing.
+        if (points.Count == 1)
+        {
+            var only = PointAt(0);
+            context.DrawLine(new Pen(brush, 1.6), new Point(only.X, plot.Bottom), only);
+            context.DrawEllipse(brush, null, only, 3, 3);
+            return;
         }
 
         var line = new StreamGeometry();

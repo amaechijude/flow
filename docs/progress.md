@@ -1523,3 +1523,26 @@ sudo python3 scripts/validate-ebpf-attribution.py --mode soak --duration 300 --s
 - Verified the fixed `Flow.Infrastructure.dll` checksum is identical in the Release output, packaged daemon, and packaged desktop.
 - Artifact: `packaging/build/flow_0.1.0_amd64.deb` (installed version is also 0.1.0, so this is a same-version reinstall, not a downgrade).
 - Install requires interactive sudo: `sudo dpkg -i packaging/build/flow_0.1.0_amd64.deb`, then `sudo systemctl enable --now flow-collector.service` and `systemctl --user enable --now flow-daemon.service`, then restart the desktop app.
+
+## 2026-11-23 (fix: Overview chart empty on launch; chart now uses the selected range)
+
+### Reported symptom
+- Screenshot: on launch all KPI cards showed real data (124 MiB total, 111 buckets, window peak at 10:30) but the "Real-time telemetry stream" chart drew "No persisted buckets in this range." even though its caption reported 111 persisted buckets. The caption/data extent (09:56–12:08) did not reflect the selected `Today` window (00:00–24:00).
+
+### Diagnosis
+- `OverviewPageViewModel.ChartPoints` was a single `ObservableCollection<ChartPoint>` mutated in place by `Clear()`/`Add()`. Avalonia bindings transfer the collection instance to `TimeSeriesChart.Points` once; in-place mutations do not raise a property change, so `AffectsRender` never invalidated the chart after the initial (empty) render. A direct Avalonia probe confirmed that neither assigning the collection to a control nor binding to it produces a target property change on `CollectionChanged`.
+- `TimeSeriesChart` spaced points by index and labelled the x axis from the first/middle/last data points, so it showed the data extent rather than the selected window; the "1-MIN RESOLUTION" pill was hardcoded even for ranges resolved to coarser granularity.
+
+### Fixes
+- `OverviewPageViewModel`: `ChartPoints` is now a settable observable list; each `Apply` assigns a fresh list (new instance → binding update → re-render). Added `ChartWindowStartUtc`/`ChartWindowEndUtc` and a data-derived `ChartResolutionText` (with policy fallback when empty). Captions now state both the data extent and the selected window; "Recent persisted buckets" and the empty peak text no longer claim 1-minute granularity.
+- `TimeSeriesChart`: added `WindowStart`/`WindowEnd` styled properties (registered with `AffectsRender`). When supplied, bucket x positions are their timestamps' fraction of the selected window (clamped for boundary buckets) and the x axis labels the window boundaries; without a window it keeps the previous index-based fallback. Single buckets render as a bar/dot at their time position.
+- `OverviewPageView.axaml`: bound the new window/resolution properties, wrapped the caption, and hid the resolution pill when no data is loaded.
+- Added `Flow.SystemTests.OverviewChartTests` (fresh list on every apply, window propagation, data-derived resolution, window fraction/clamping) and `InternalsVisibleTo` for the desktop test seam.
+
+### Verification
+- `dotnet build Flow.slnx`: succeeded (0 warnings, 0 errors after rebuild).
+- `dotnet test Flow.slnx`: **92/92 passing** (Domain 1, Application 29, Infrastructure 20, Linux 21, Daemon 14, System 7).
+- Offscreen `RenderTargetBitmap` probe rendered the chart with 111 buckets inside a 24 h window: points appear at their real window positions with `Mon`/window boundary axis labels instead of an empty plot.
+
+### Deployment note
+- These are source fixes; the installed app runs `/usr/lib/flow/desktop`. A fresh `packaging/build/flow_0.1.0_amd64.deb` was rebuilt and `./packaging/test-deb.sh` passed, but reinstall needs interactive sudo (`sudo dpkg -i packaging/build/flow_0.1.0_amd64.deb`) followed by a desktop restart.

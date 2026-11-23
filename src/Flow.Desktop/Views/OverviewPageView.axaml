@@ -127,8 +127,9 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="Real-time telemetry stream" Classes="section" AutomationProperties.HeadingLevel="2" />
-                        <Border Classes="pill primary" VerticalAlignment="Center">
-                            <TextBlock Text="1-MIN RESOLUTION" Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
+                        <Border Classes="pill primary" VerticalAlignment="Center" IsVisible="{Binding HasChartData}">
+                            <TextBlock Text="{Binding ChartResolutionText, StringFormat='{}{0} RESOLUTION'}"
+                                       Classes="caps" Foreground="{DynamicResource FlowPrimaryBrush}" />
                         </Border>
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
@@ -142,10 +143,12 @@
                         </StackPanel>
                     </StackPanel>
                 </Grid>
-                <TextBlock Text="{Binding ChartCaption}" Classes="dim" FontSize="11" />
+                <TextBlock Text="{Binding ChartCaption}" Classes="dim" FontSize="11" TextWrapping="Wrap" />
                 <Border Background="{DynamicResource FlowSurfaceLowBrush}" BorderBrush="{DynamicResource FlowBorderBrush}"
                         BorderThickness="1" CornerRadius="4" Padding="6">
                     <controls:TimeSeriesChart Height="252" Points="{Binding ChartPoints}"
+                                              WindowStart="{Binding ChartWindowStartUtc}"
+                                              WindowEnd="{Binding ChartWindowEndUtc}"
                                               IsTabStop="True"
                                               Summary="{Binding ChartCaption}"
                                               ToolTip.Tip="{Binding ChartCaption}"
@@ -231,7 +234,7 @@
                 <Border Classes="card">
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="Recent 1-minute buckets" Classes="section" AutomationProperties.HeadingLevel="2" />
+                            <TextBlock Text="Recent persisted buckets" Classes="section" AutomationProperties.HeadingLevel="2" />
                             <TextBlock Grid.Column="1" Text="SQLITE VIEW" Classes="caps" />
                         </Grid>
                         <Grid ColumnDefinitions="*,70,70" Margin="0,1">

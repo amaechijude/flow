@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Linq;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using Flow.Application.Queries;
 using Flow.Contracts.Monitoring;
 using Flow.Contracts.Usage;
 using Flow.Desktop.Controls;
@@ -72,11 +73,17 @@ public partial class OverviewPageViewModel : ViewModelBase
 
     [ObservableProperty] public partial bool HasChartData { get; set; }
     [ObservableProperty] public partial string ChartCaption { get; set; } = "";
+    [ObservableProperty] public partial string ChartResolutionText { get; set; } = "1m";
+    [ObservableProperty] public partial DateTimeOffset ChartWindowStartUtc { get; set; }
+    [ObservableProperty] public partial DateTimeOffset ChartWindowEndUtc { get; set; }
     [ObservableProperty] public partial bool HasNoApplications { get; set; } = true;
     [ObservableProperty] public partial bool HasNoInterfaces { get; set; } = true;
     [ObservableProperty] public partial bool HasNoBuckets { get; set; } = true;
 
-    public ObservableCollection<ChartPoint> ChartPoints { get; } = new();
+    // A new list is assigned on every snapshot: Avalonia bindings do not
+    // re-evaluate when an already-bound collection is only mutated in place,
+    // which left the chart empty on launch despite populated KPI cards.
+    [ObservableProperty] public partial IReadOnlyList<ChartPoint> ChartPoints { get; set; } = Array.Empty<ChartPoint>();
     public ObservableCollection<ApplicationRow> TopApplications { get; } = new();
     public ObservableCollection<InterfaceRow> Interfaces { get; } = new();
     public ObservableCollection<TimeSeriesRow> RecentBuckets { get; } = new();
@@ -123,7 +130,7 @@ public partial class OverviewPageViewModel : ViewModelBase
         {
             PeakValue = "0";
             PeakUnit = "B";
-            PeakDetail = "No 1-minute buckets in range.";
+            PeakDetail = "No persisted buckets in the selected range.";
         }
         else
         {
@@ -134,13 +141,17 @@ public partial class OverviewPageViewModel : ViewModelBase
         }
         BucketCountText = $"{series.Count} bucket{(series.Count == 1 ? "" : "s")}";
 
-        ChartPoints.Clear();
+        var points = new List<ChartPoint>(series.Count);
         foreach (var p in series)
-            ChartPoints.Add(new ChartPoint(p.BucketStartUtc, p.RxBytes, p.TxBytes));
-        HasChartData = ChartPoints.Count > 0;
+            points.Add(new ChartPoint(p.BucketStartUtc, p.RxBytes, p.TxBytes));
+        ChartPoints = points;
+        HasChartData = points.Count > 0;
+        ChartWindowStartUtc = snapshot.StartUtc;
+        ChartWindowEndUtc = snapshot.EndUtc;
+        ChartResolutionText = ResolveChartResolution(series, snapshot.StartUtc, snapshot.EndUtc);
         ChartCaption = series.Count == 0
-            ? "No persisted 1-minute buckets for this range."
-            : $"{series.Count} persisted buckets · {DisplayTime.Bucket(series[0].BucketStartUtc)} – {DisplayTime.Bucket(series[^1].BucketStartUtc)} local";
+            ? $"No persisted buckets in the selected window · {DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc)}"
+            : $"{series.Count} {ChartResolutionText} buckets · data {DisplayTime.Bucket(series[0].BucketStartUtc)} – {DisplayTime.Bucket(series[^1].BucketStartUtc)} · window {DisplayTime.Range(snapshot.StartUtc, snapshot.EndUtc)}";
 
         var grandTotal = Math.Max(1, total);
         TopApplications.Clear();
@@ -183,5 +194,32 @@ public partial class OverviewPageViewModel : ViewModelBase
             MonitoringState.Degraded or MonitoringState.Paused or MonitoringState.Initializing => WarningBrush,
             _ => ErrorBrush,
         };
+    }
+
+    /// <summary>
+    /// Resolution actually present in the loaded series (bucket spacing), not a
+    /// hardcoded label. With no data, the policy granularity is shown instead.
+    /// </summary>
+    internal static string ResolveChartResolution(
+        IReadOnlyList<UsageTimePointDto> series, DateTimeOffset startUtc, DateTimeOffset endUtc)
+    {
+        if (series.Count > 1)
+        {
+            long smallest = long.MaxValue;
+            for (var i = 1; i < series.Count; i++)
+            {
+                var delta = Math.Abs((series[i].BucketStartUtc - series[i - 1].BucketStartUtc).Ticks);
+                if (delta > 0 && delta < smallest) smallest = delta;
+            }
+            if (smallest != long.MaxValue)
+            {
+                if (smallest <= TimeSpan.FromMinutes(1).Ticks) return "1m";
+                if (smallest <= TimeSpan.FromMinutes(5).Ticks) return "5m";
+                if (smallest <= TimeSpan.FromHours(1).Ticks) return "1h";
+                if (smallest <= TimeSpan.FromDays(1).Ticks) return "1d";
+                return "1mo";
+            }
+        }
+        return UsageGranularityPolicy.Choose(startUtc, endUtc);
     }
 }
