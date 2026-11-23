@@ -5,10 +5,14 @@ desktop GUI. It records real persisted usage in SQLite and separates attributed
 per-process traffic from explicit unattributed traffic. It is a prototype with a
 buildable `.deb`, not a release-quality package.
 
+**Prebuilt package (no source build):**
+[flow_0.1.0_amd64.deb](https://github.com/amaechijude/flow/releases/latest/download/flow_0.1.0_amd64.deb)
+— see [Install from the prebuilt `.deb`](#install-from-the-prebuilt-deb-no-source-build).
+
 ## Current status
 
 - Build: `dotnet build Flow.slnx -v minimal`
-- Tests: `dotnet test Flow.slnx -v minimal` → **86/86 passing**
+- Tests: `dotnet test Flow.slnx -v minimal` → **92/92 passing**
 - Desktop: functional shell with Overview, Apps & Processes, Network Interfaces,
   Diagnostics, Reports, History, Settings, and Comparison pages; CSV/JSON export uses a real
   file picker and includes provenance/caveats. Interactive and custom-drawn
@@ -22,59 +26,33 @@ buildable `.deb`, not a release-quality package.
 `procfs` mode is unattributed by design: it reports real interface totals only.
 The eBPF provider is required for per-process attribution.
 
-## Run (development)
+## Install from the prebuilt `.deb` (no source build)
+
+Download `flow_0.1.0_amd64.deb` from the
+[latest GitHub release](https://github.com/amaechijude/flow/releases/latest).
+No compiler, SDK, or BPF toolchain is needed on the target machine — the
+package ships the daemon, the desktop app, and the eBPF loader.
+
+### Requirements
+
+- Ubuntu 24.04 or newer (target: 26.04 LTS), `amd64`, with a graphical login.
+- `sudo`; `systemd` and a user session D-Bus are needed for live daemon↔desktop IPC.
+- Runtime packages: `dotnet-runtime-10.0`, `libbpf1`, `libelf1`, `zlib1g`.
+  If .NET 10 is not in your distro repositories, install that runtime from
+  Microsoft or use the `dpkg --force-depends` form below — both shipped
+  binaries are framework-dependent.
+- For per-process attribution: a Linux kernel with BPF/BTF support and enough
+  privilege to load the collector (root/CAP_BPF). Without it, Flow falls back to
+  `procfs` mode, which reports real interface totals only (explicitly
+  unattributed).
+- Do **not** run the desktop GUI as root.
+
+### Install
 
 ```bash
-dotnet build Flow.slnx -v minimal
-dotnet test Flow.slnx -v minimal
-
-# Unattributed interface totals, no privileges
-Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
-
-# Privileged per-process attribution (prototype loader)
-sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" \
-  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
-
-# Headless collector role (no D-Bus registration; intended for systemd)
-Flow__Mode=collector Flow__Monitor=procfs Flow__DatabasePath=/var/lib/flow/flow.db \
-  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
-
-# Session IPC role (no monitor; intended for systemd --user)
-Flow__Mode=session Flow__DatabasePath=/var/lib/flow/flow.db \
-  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
-
-# Desktop
-dotnet run --project src/Flow.Desktop/Flow.Desktop.csproj
-```
-
-The privileged loader must be built from `prototype/bpf/` before using
-`Flow__Monitor=ebpf`. See `prototype/bpf/README.md`.
-
-## Install (prototype `.deb`)
-
-**Prerequisites:** Ubuntu 24.04+ with a graphical login, sudo, and the runtime
-dependencies (`dotnet-runtime-10.0`, `libbpf1`, `libelf1`, `zlib1g`). A systemd
-user session and session D-Bus are required for live IPC.
-
-On the build machine, compile the eBPF loader and build the package
-(`clang`, `bpftool`, libbpf/libelf/zlib dev packages are required):
-
-```bash
-clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I prototype/bpf \
-  -c prototype/bpf/flow_tcp_bytes.bpf.c -o prototype/bpf/flow_tcp_bytes.bpf.o
-bpftool gen skeleton prototype/bpf/flow_tcp_bytes.bpf.o > prototype/bpf/flow_tcp_bytes.skel.h
-cc -O2 -g -Wall -Wextra -I prototype/bpf \
-  -o prototype/bpf/flow_tcp_bytes_loader prototype/bpf/flow_tcp_bytes_loader.c -lbpf -lelf -lz
-
-./packaging/build-deb.sh
-# output: packaging/build/flow_0.1.0_amd64.deb
-```
-
-Copy the `.deb` to the target machine, then install it:
-
-```bash
+# from the folder containing the downloaded file
 sudo apt install ./flow_0.1.0_amd64.deb
-# If .NET 10 is not in the distro repos, use the prototype form:
+# If dependency resolution fails (e.g. .NET 10 is not packaged for your release):
 sudo dpkg --force-depends -i ./flow_0.1.0_amd64.deb
 ```
 
@@ -96,8 +74,8 @@ systemctl --user enable --now flow-daemon.service    # user, read-only D-Bus IPC
 
 Open Flow from the applications menu. The launcher passes
 `Flow__DatabasePath=/var/lib/flow/flow.db`; the collector writes that database
-and the session daemon serves queries from it. Do **not** run the desktop as root.
-Allow ~10 s after startup for the first real flush, then click ⟳.
+and the session daemon serves queries from it. Allow ~10 s after startup for the
+first real flush, then click ⟳.
 
 Verify:
 
@@ -106,13 +84,72 @@ systemctl is-active flow-collector.service
 systemctl --user is-active flow-daemon.service
 busctl --user call org.flow.Daemon /org/flow/Daemon org.flow.Daemon1 GetContractVersion
 # -> i 3
-FLOW_READONLY=1 ./packaging/validate-user-session.sh
 ```
 
-If the UI shows `DAEMON OFFLINE` with `0 B`, check
-`journalctl -u flow-collector.service -n 30`; older packages failed with
+If the UI shows `DAEMON OFFLINE` with `0 B`, check your `flow` group membership
+and `journalctl -u flow-collector.service -n 30`; older packages failed with
 `attempt to write a readonly database`. See `packaging/README.md` →
-"Troubleshooting" for the fix and the rebuild that includes it.
+"Troubleshooting" for details (requires the source tree).
+
+## Build from source
+
+### Requirements
+
+- `git`, the .NET 10 SDK, and standard build tools (`build-essential`).
+- eBPF toolchain: `clang`, `llvm`, `bpftool`, `libbpf-dev`, `libelf-dev`,
+  `zlib1g-dev`, plus kernel headers/BTF (`/sys/kernel/btf/vmlinux`).
+- The runtime packages listed above and a graphical session for the desktop.
+- Optional validation tools: `dbus-daemon` and Docker (for `test-install.sh`).
+
+### Build the eBPF loader
+
+The loader and BPF objects are build artifacts, not committed sources:
+
+```bash
+clang -O2 -g -target bpf -D__TARGET_ARCH_x86 -I prototype/bpf \
+  -c prototype/bpf/flow_tcp_bytes.bpf.c -o prototype/bpf/flow_tcp_bytes.bpf.o
+bpftool gen skeleton prototype/bpf/flow_tcp_bytes.bpf.o > prototype/bpf/flow_tcp_bytes.skel.h
+cc -O2 -g -Wall -Wextra -I prototype/bpf \
+  -o prototype/bpf/flow_tcp_bytes_loader prototype/bpf/flow_tcp_bytes_loader.c -lbpf -lelf -lz
+```
+
+### Build the solution and package
+
+```bash
+dotnet build Flow.slnx -v minimal
+dotnet test Flow.slnx -v minimal       # 92/92 passing
+./packaging/build-deb.sh               # packaging/build/flow_0.1.0_amd64.deb
+./packaging/test-deb.sh                # layout + maintainer-script checks
+./packaging/test-install.sh            # optional: disposable Docker install test
+```
+
+The resulting `.deb` can then be installed with the steps above.
+
+### Run from the source tree (no package)
+
+```bash
+# Unattributed interface totals, no privileges
+Flow__Monitor=procfs dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
+
+# Privileged per-process attribution (requires the loader built above)
+sudo env Flow__Monitor=ebpf Flow__DatabasePath="$HOME/.local/share/flow/flow.db" \
+  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
+
+# Headless collector role (no D-Bus registration; intended for systemd)
+Flow__Mode=collector Flow__Monitor=procfs Flow__DatabasePath=/var/lib/flow/flow.db \
+  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
+
+# Session IPC role (no monitor; intended for systemd --user)
+Flow__Mode=session Flow__DatabasePath=/var/lib/flow/flow.db \
+  dotnet run --project src/Flow.Daemon/Flow.Daemon.csproj
+
+# Desktop (never as root)
+Flow__DatabasePath="$HOME/.local/share/flow/flow.db" \
+  dotnet run --project src/Flow.Desktop/Flow.Desktop.csproj
+```
+
+The privileged loader must be built from `prototype/bpf/` before using
+`Flow__Monitor=ebpf`. See `prototype/bpf/README.md`.
 
 ## Uninstall and clean reinstall
 
