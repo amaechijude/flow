@@ -51,7 +51,7 @@ package ships the daemon, the desktop app, and the eBPF loader.
 
 ```bash
 # from the folder containing the downloaded file
-sudo dpkg i ./flow_0.1.0_amd64.deb
+sudo apt install ./flow_0.1.0_amd64.deb
 # If dependency resolution fails (e.g. .NET 10 is not packaged for your release):
 sudo dpkg --force-depends -i ./flow_0.1.0_amd64.deb
 ```
